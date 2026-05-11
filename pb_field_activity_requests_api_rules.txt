@@ -1,0 +1,19 @@
+# field_activity_requests — untuk setiap bagian di bawah, salin HANYA baris yang diawali @ (bukan baris #).
+
+# → kotak List
+@request.auth.id != "" && (user = @request.auth.id || @request.auth.role = "hr" || @request.auth.role_code = "hr" || @request.auth.role = "owner")
+
+# → kotak View
+@request.auth.id != "" && (user = @request.auth.id || @request.auth.role = "hr" || @request.auth.role_code = "hr" || @request.auth.role = "owner")
+
+# → kotak Create (@request.data, bukan @request.body)
+@request.auth.id != "" && @request.data.user = @request.auth.id
+
+# → kotak Update
+@request.auth.id != "" && ((user = @request.auth.id && status = "pending_hr") || @request.auth.role = "hr" || @request.auth.role_code = "hr" || @request.auth.role = "owner")
+
+# → kotak Delete
+@request.auth.id != "" && (@request.auth.role = "owner" || @request.auth.role = "hr" || @request.auth.role_code = "hr")
+
+# Cadangan jika Create error (relation):
+# @request.auth.id != "" && @request.data.user.id = @request.auth.id

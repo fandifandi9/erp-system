@@ -1,0 +1,185 @@
+{
+  "migration_steps": [
+    {
+      "step": 1,
+      "action": "CREATE_COLLECTION",
+      "name": "division_quotas",
+      "type": "base",
+      "schema": [
+        {
+          "name": "division",
+          "type": "text",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "max_people_per_day",
+          "type": "number",
+          "required": true,
+          "min": 1,
+          "max": 10
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "step": 2,
+      "action": "UPDATE_COLLECTION_leave_requests",
+      "note": "⚠️ MANUAL: Hapus field lama (date, devision, note) dan tambah field baru di PocketBase Admin",
+      "fields_to_delete": ["date", "devision", "note"],
+      "fields_to_add": [
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "min": 10
+        },
+        {
+          "name": "division",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "position",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "booking_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text",
+          "required": false,
+          "note": "Diisi aplikasi saat HR menolak; ditampilkan ke staff."
+        }
+      ],
+      "field_to_update": {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "options": ["pending", "approved", "rejected", "cancelled"],
+        "note": "HR menyetujui: pending→approved; menolak: pending→rejected. Staff batalkan: approved|pending→cancelled (sebelum mulai)."
+      }
+    },
+    {
+      "step": 3,
+      "action": "MANUAL_ADD_PROFILE_FIELD_leave_bookings_quota",
+      "note": "Tambah field Number opsional pada koleksi profiles: leave_bookings_quota (min 1). HR mengatur kuota pengajuan cuti per bulan per karyawan dari /hr/employees/[id]. Jika field belum ada, create/update profil dari app akan error — buat field dulu di PocketBase Admin.",
+      "profiles_fields_to_add": [
+        {
+          "name": "leave_bookings_quota",
+          "type": "number",
+          "required": false,
+          "min": 1,
+          "max": 52
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "action": "MANUAL_RULES_leave_requests_HR_LIST",
+      "note": "Tanpa rule ini, data terlihat di PocketBase Admin tapi halaman /hr/leave kosong: List hanya mengembalikan record milik user login.",
+      "leave_requests": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")"
+      },
+      "users_expand_note": "Untuk nama/email di kartu cuti (expand user), pastikan rule View koleksi users mengizinkan HR membaca karyawan lain (sesuaikan skema Anda)."
+    },
+    {
+      "step": 5,
+      "action": "MANUAL_ADD_leave_requests_hr_action",
+      "note": "Tambah field opsional di koleksi leave_requests agar tercatat HR mana yang menyetujui/menolak. Tanpa field ini, update approve/tolak bisa gagal dari PocketBase.",
+      "leave_requests_fields_to_add": [
+        { "name": "hr_action_by", "type": "text", "required": false, "note": "id user HR/owner" },
+        { "name": "hr_action_name", "type": "text", "required": false, "note": "nama tampilan snapshot" },
+        { "name": "hr_action_at", "type": "text", "required": false, "note": "ISO datetime keputusan" }
+      ]
+    },
+    {
+      "step": 6,
+      "action": "MANUAL_CREATE_COLLECTION_overtime_requests",
+      "note": "Koleksi untuk penunjukan lembur HR, pengajuan lembur staff, status & jejak HR. Di Admin → New collection → nama overtime_requests → tambah field di bawah. Relation user: koleksi users.",
+      "overtime_requests_fields": [
+        { "name": "user", "type": "relation", "required": true, "collection": "users", "maxSelect": 1, "cascadeDelete": false },
+        { "name": "work_date", "type": "date", "required": true },
+        { "name": "start_time", "type": "text", "required": true, "note": "Format HH:mm" },
+        { "name": "end_time", "type": "text", "required": true },
+        { "name": "hours", "type": "number", "required": false },
+        { "name": "source", "type": "select", "required": true, "values": ["hr_assignment", "staff_request"] },
+        { "name": "status", "type": "select", "required": true, "values": ["waiting_staff", "waiting_hr", "staff_accepted", "staff_declined", "hr_approved", "hr_rejected"] },
+        { "name": "reason", "type": "text", "required": true, "min": 5 },
+        { "name": "hr_note", "type": "text", "required": false },
+        { "name": "rejection_reason", "type": "text", "required": false },
+        { "name": "staff_decline_note", "type": "text", "required": false },
+        { "name": "created_by", "type": "text", "required": false },
+        { "name": "hr_action_by", "type": "text", "required": false },
+        { "name": "hr_action_name", "type": "text", "required": false },
+        { "name": "hr_action_at", "type": "text", "required": false, "note": "ISO datetime atau field Date PB" }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "createRule": "@request.auth.id != \"\"",
+        "updateRule": "@request.auth.id != \"\"",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\")"
+      },
+      "note_end": "Sesuaikan rule dengan keamanan yang diinginkan. Untuk produksi, perketat create (staff hanya boleh user=dirinya untuk pengajuan)."
+    },
+    {
+      "step": 7,
+      "action": "MANUAL_CREATE_COLLECTION_field_activity_requests",
+      "note": "Pengajuan aktivitas di luar kantor (meeting, kunjungan, dinas luar). HR menyetujui periode tanggal; pada hari itu check-in boleh di luar radius GPS. Relation user → users.",
+      "field_activity_requests_fields": [
+        { "name": "user", "type": "relation", "required": true, "collection": "users", "maxSelect": 1, "cascadeDelete": false },
+        { "name": "start_date", "type": "date", "required": true },
+        { "name": "end_date", "type": "date", "required": true },
+        { "name": "activity_type", "type": "select", "required": true, "values": ["meeting", "visit", "out_of_town", "other"] },
+        { "name": "destination", "type": "text", "required": true, "min": 2 },
+        { "name": "reason", "type": "text", "required": true, "min": 10 },
+        { "name": "status", "type": "select", "required": true, "values": ["pending_hr", "approved", "rejected", "cancelled"] },
+        { "name": "rejection_reason", "type": "text", "required": false },
+        { "name": "hr_action_by", "type": "text", "required": false },
+        { "name": "hr_action_name", "type": "text", "required": false },
+        { "name": "hr_action_at", "type": "text", "required": false, "note": "ISO datetime keputusan HR" }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "createRule": "@request.auth.id != \"\" && @request.data.user = @request.auth.id",
+        "updateRule": "@request.auth.id != \"\" && ((user = @request.auth.id && status = \"pending_hr\") || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\")"
+      },
+      "createRule_if_relation_error": "@request.auth.id != \"\" && @request.data.user.id = @request.auth.id",
+      "note_end": "Salin nilai suggested_rules ke Admin PB (tanpa label). Pakai @request.data bukan @request.body. Jika create masih error, coba createRule_if_relation_error."
+    }
+  ],
+  "default_data": [
+    {
+      "collection": "division_quotas",
+      "records": [
+        {"division": "IT", "max_people_per_day": 2},
+        {"division": "Marketing", "max_people_per_day": 2},
+        {"division": "Sales", "max_people_per_day": 3},
+        {"division": "Finance", "max_people_per_day": 2},
+        {"division": "HR", "max_people_per_day": 2}
+      ]
+    }
+  ]
+}

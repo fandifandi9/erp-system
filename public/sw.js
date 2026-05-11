@@ -1,0 +1,10 @@
+/* Minimal service worker — agar Chrome/Android mengizinkan “Install app” (PWA). */
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("fetch", () => {});
