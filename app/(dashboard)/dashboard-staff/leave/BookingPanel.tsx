@@ -18,9 +18,15 @@ import { checkProfileComplete } from "@/lib/profile";
 import { useRouter } from "next/navigation";
 import { CheckCircle, AlertTriangle, Loader2, AlertCircle as AlertIcon, Info, Users, TrendingUp } from "lucide-react";
 
-const HISTORY_TAB = "/dashboard-staff/leave?tab=history";
-
-export function StaffLeaveBookingPanel({ omitPageHeader = false }: { omitPageHeader?: boolean }) {
+export function StaffLeaveBookingPanel({
+  omitPageHeader = false,
+  /** Untuk PWA `/attendance/leave` — redirect riwayat tetap di rute yang sama. */
+  basePath = "/dashboard-staff/leave",
+}: {
+  omitPageHeader?: boolean;
+  basePath?: string;
+}) {
+  const historyTab = `${basePath}?tab=history`;
   const router = useRouter();
   const currentUser = pb.authStore.model;
   const currentUserId = currentUser?.id ?? "";
@@ -171,7 +177,7 @@ export function StaffLeaveBookingPanel({ omitPageHeader = false }: { omitPageHea
         await loadCalendarSnapshot();
 
         setTimeout(() => {
-          router.replace(HISTORY_TAB);
+          router.replace(historyTab);
         }, 2000);
         return true;
       }
@@ -463,7 +469,7 @@ export function StaffLeaveBookingPanel({ omitPageHeader = false }: { omitPageHea
         </p>
         <button
           type="button"
-          onClick={() => router.replace(HISTORY_TAB)}
+          onClick={() => router.replace(historyTab)}
           className="shrink-0 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
         >
           Lihat riwayat cuti

@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { UnsubscribeFunc } from "pocketbase";
 import { pb } from "@/lib/pocketbase";
 import { useRouter, usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { canAccess, getDefaultRouteForUser } from "@/lib/rbac";
+import { useStandaloneDisplay } from "@/lib/use-standalone-display";
+import {
+  clearWebSessionNonce,
+  shouldLogoutForSessionMismatch,
+} from "@/lib/auth-session";
 
 export default function DashboardLayout({
   children,
@@ -16,6 +20,31 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [checking, setChecking] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const preferDrawerNav = useStandaloneDisplay();
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    if (mobileNavOpen) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = prev || "";
+    return () => {
+      document.body.style.overflow = prev || "";
+    };
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileNavOpen]);
 
   // =========================
   // 🔐 ROUTE GUARD
@@ -42,8 +71,16 @@ export default function DashboardLayout({
 
         // ❌ kalau inactive
         if (freshUser.status !== "active") {
+          clearWebSessionNonce();
           pb.authStore.clear();
           router.replace("/login");
+          return;
+        }
+
+        if (shouldLogoutForSessionMismatch(freshUser as { session_nonce?: unknown })) {
+          clearWebSessionNonce();
+          pb.authStore.clear();
+          router.replace("/login?reason=session");
           return;
         }
 
@@ -58,6 +95,7 @@ export default function DashboardLayout({
 
       } catch (err) {
         console.error("GUARD ERROR:", err);
+        clearWebSessionNonce();
         pb.authStore.clear();
         router.replace("/login");
       }
@@ -69,35 +107,6 @@ export default function DashboardLayout({
       isMounted = false;
     };
   }, [router, pathname]);
-
-  // =========================
-  // 🔴 REALTIME LOGOUT (STATUS)
-  // =========================
-  useEffect(() => {
-    let unsubscribe: UnsubscribeFunc | undefined;
-
-    const setupSubscription = async () => {
-      unsubscribe = await pb.collection("users").subscribe("*", (e) => {
-        const current = pb.authStore.model;
-
-        if (!current) return;
-
-        // 🔥 hanya cek user yang sedang login
-        if (e.record.id === current.id) {
-          if (e.record.status !== "active") {
-            pb.authStore.clear();
-            window.location.href = "/login";
-          }
-        }
-      });
-    };
-
-    setupSubscription();
-
-    return () => {
-      void unsubscribe?.();
-    };
-  }, []);
 
   // =========================
   // ⏳ LOADING STATE
@@ -114,13 +123,21 @@ export default function DashboardLayout({
   // 🎨 UI
   // =========================
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar />
+    <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-slate-50 overflow-hidden">
+      <Sidebar
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
+        preferDrawerNav={preferDrawerNav}
+      />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Navbar />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Navbar
+          onOpenMobileNav={() => setMobileNavOpen(true)}
+          mobileNavOpen={mobileNavOpen}
+          preferDrawerNav={preferDrawerNav}
+        />
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 md:p-6">
           {children}
         </main>
       </div>

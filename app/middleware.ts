@@ -18,7 +18,11 @@ export function middleware(req: NextRequest) {
     pathname === "/sw.js" ||
     pathname.startsWith("/icons/") ||
     pathname === "/manifest.webmanifest" ||
-    pathname === "/manifest.json"
+    pathname === "/manifest.json" ||
+    pathname === "/icon" ||
+    pathname === "/apple-icon" ||
+    pathname === "/pwa-192" ||
+    pathname === "/pwa-512"
   ) {
     return NextResponse.next();
   }
@@ -51,6 +55,11 @@ export function middleware(req: NextRequest) {
 
   if (!authUser || allowedPaths.length === 0) {
     return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  /** Beranda PWA / — selalu ke pemilih mode (HP vs dashboard), bukan layout dashboard. */
+  if (pathname === "/" || pathname === "") {
+    return NextResponse.redirect(new URL("/entry", req.url));
   }
 
   // =========================

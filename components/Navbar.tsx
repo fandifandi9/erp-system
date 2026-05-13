@@ -2,9 +2,22 @@
 
 import { pb } from "@/lib/pocketbase";
 import Image from "next/image";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { getDefaultRouteForUser } from "@/lib/rbac";
+import { getDefaultRouteForUser, canAccess } from "@/lib/rbac";
+
+import { Clock, Menu } from "lucide-react";
+
+/** Samakan dengan Sidebar: drawer + hamburger sampai &lt; lg (1024px), hindari sidebar “desktop” di HP landscape / tablet. */
+function subscribeMaxLg(cb: () => void) {
+  const mq = window.matchMedia("(max-width: 1023px)");
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+
+function getMaxLg(): boolean {
+  return window.matchMedia("(max-width: 1023px)").matches;
+}
 
 type User = {
   id?: string;
@@ -18,7 +31,20 @@ type NavProfile = {
   avatar?: string;
 };
 
-export default function Navbar() {
+type NavbarProps = {
+  onOpenMobileNav?: () => void;
+  mobileNavOpen?: boolean;
+  /** PWA terpasang: selalu tampilkan tombol menu walau jendela lebar. */
+  preferDrawerNav?: boolean;
+};
+
+export default function Navbar({
+  onOpenMobileNav,
+  mobileNavOpen = false,
+  preferDrawerNav = false,
+}: NavbarProps) {
+  const narrow = useSyncExternalStore(subscribeMaxLg, getMaxLg, () => false);
+  const showHamburger = preferDrawerNav || narrow;
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<NavProfile | null>(null);
   const [open, setOpen] = useState(false);
@@ -95,11 +121,13 @@ export default function Navbar() {
   };
 
   const getProfileRoute = () => {
-    const role = user.role?.toLowerCase();
-    if (role === "staff") return "/dashboard-staff/profile";
-    if (role === "hr" || role === "owner") return "/hr/profile";
-    return getDefaultRouteForUser(user); // safe fallback
+    if (user && canAccess(user as Record<string, unknown>, "/profile")) return "/profile";
+    return getDefaultRouteForUser(user as Record<string, unknown>);
   };
+
+  const authUser = user as Record<string, unknown>;
+  const showAbsensiNav = canAccess(authUser, "/attendance");
+  const showProfilNav = canAccess(authUser, "/profile");
 
   return (
     <>
@@ -112,10 +140,22 @@ export default function Navbar() {
         </div>
       )}
 
-      <header className="w-full flex items-center justify-between px-6 h-16 bg-white border-b border-slate-200">
-        {/* LEFT */}
-        <div className="flex items-center gap-3">
-          <div className="text-base font-semibold text-slate-800 tracking-tight">
+      <header className="flex h-14 w-full shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 pt-[env(safe-area-inset-top,0px)] sm:h-16 sm:px-4 md:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            className={
+              (showHamburger ? "inline-flex" : "hidden") +
+              " shrink-0 items-center justify-center rounded-lg p-2 text-slate-700 hover:bg-slate-100"
+            }
+            aria-label="Buka menu"
+            aria-controls="app-sidebar"
+            aria-expanded={mobileNavOpen}
+            onClick={() => onOpenMobileNav?.()}
+          >
+            <Menu className="h-6 w-6" strokeWidth={2} />
+          </button>
+          <div className="truncate text-sm font-semibold tracking-tight text-slate-800 sm:text-base">
             SERBA ERP
           </div>
         </div>
@@ -154,21 +194,37 @@ export default function Navbar() {
 
           {/* DROPDOWN */}
           {open && (
-            <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 animate-in fade-in zoom-in-95">
-              <button
-                onClick={() => {
-                  setOpen(false);
-                  router.push(getProfileRoute());
-                }}
-                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-100 transition flex items-center gap-3"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                Profil Saya
-              </button>
+            <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 animate-in fade-in zoom-in-95">
+              {showAbsensiNav && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push("/attendance");
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-100 transition flex items-center gap-3"
+                >
+                  <Clock className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  Absensi
+                </button>
+              )}
+              {showProfilNav && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push(getProfileRoute());
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-100 transition flex items-center gap-3"
+                >
+                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Profil
+                </button>
+              )}
 
-              <div className="border-t border-slate-100" />
+              {(showAbsensiNav || showProfilNav) ? <div className="border-t border-slate-100" /> : null}
 
               <button
                 onClick={handleLogout}

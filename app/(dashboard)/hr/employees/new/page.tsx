@@ -12,6 +12,8 @@ import {
   getMaxBookingsPerMonth,
   PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD,
 } from "@/lib/leave";
+import { getErrorMessage } from "@/lib/errors";
+import { createDefaultProfileForUser } from "@/lib/profile";
 
 type RoleOption = {
   label: string;
@@ -54,39 +56,55 @@ export default function NewEmployeePage() {
   }, [roleCode]);
 
   const handleSubmit = async () => {
-    if (!email || !password) {
+    const emailTrim = email.trim();
+    if (!emailTrim || !password) {
       alert("Email & password wajib diisi");
       return;
     }
 
+    const displayName = (name.trim() || emailTrim.split("@")[0] || "Pengguna").trim();
+
     setLoading(true);
+    let createdUserId: string | null = null;
     try {
+      // Catatan produksi: jangan kirim field yang tidak ada di koleksi `users` PocketBase
+      // (mis. `joined_at`) — akan memicu 400 "Failed to create record".
       const user = await pb.collection("users").create({
-        email,
+        email: emailTrim,
         password,
         passwordConfirm: password,
-        name,
+        name: displayName,
         account_type: "user",
         role_code: roleCode,
         dashboard_access: dashboardAccess,
         role: roleCode,
         status: "inactive",
-        joined_at: new Date().toISOString(),
       });
+      createdUserId = user.id;
 
-      // Auto copy users -> profiles at creation time (kuota cuti per akun = default sistem; HR bisa ubah di detail pegawai).
-      await pb.collection("profiles").create({
-        user: user.id,
-        name,
-        email,
-        [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: getMaxBookingsPerMonth(),
-      });
+      // Profil: payload sama seperti ensureProfile (shift, profile_status, office_id).
+      // Sebelumnya hanya user+name+email+kuota → di produksi sering gagal walau `users` sudah tercipta → UI "gagal" tapi akun tetap di PB.
+      const profile = await createDefaultProfileForUser(user.id);
+      try {
+        await pb.collection("profiles").update(profile.id, {
+          [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: getMaxBookingsPerMonth(),
+        });
+      } catch (quotaErr) {
+        console.warn("leave_bookings_quota default tidak diset (field opsional di PB):", quotaErr);
+      }
 
       alert("User berhasil dibuat");
       router.push("/hr/employees");
     } catch (err: unknown) {
       console.error("CREATE ERROR:", err);
-      alert(err instanceof Error ? err.message : "Gagal membuat user");
+      if (createdUserId) {
+        try {
+          await pb.collection("users").delete(createdUserId);
+        } catch (delErr) {
+          console.error("Rollback user after profile error:", delErr);
+        }
+      }
+      alert(getErrorMessage(err, "Gagal membuat user"));
     } finally {
       setLoading(false);
     }

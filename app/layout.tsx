@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import PwaRegister from "@/components/PwaRegister";
+import WebSessionGuard from "@/components/WebSessionGuard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,8 +25,12 @@ export const metadata: Metadata = {
     title: "SERBA ERP",
   },
   icons: {
-    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
-    apple: [{ url: "/icons/icon-192.png", sizes: "180x180", type: "image/png" }],
+    icon: [
+      { url: "/icon", sizes: "32x32", type: "image/png" },
+      { url: "/pwa-192", sizes: "192x192", type: "image/png" },
+      { url: "/pwa-512", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
 };
 
@@ -52,6 +57,7 @@ export default function RootLayout({
     >
       <body className="min-h-full min-h-[100dvh] flex flex-col touch-manipulation">
         <PwaRegister />
+        <WebSessionGuard />
         {children}
       </body>
     </html>

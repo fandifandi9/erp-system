@@ -6,16 +6,14 @@ import { canAccess } from "@/lib/rbac";
 import {
   Banknote,
   Calendar,
-  Clock,
   MapPin,
   Moon,
   Navigation,
-  User,
 } from "lucide-react";
 
 export default function StaffPage() {
   const user = pb.authStore.model;
-  const showStaffMenu = user && canAccess(user, "/dashboard-staff/attendance");
+  const showStaffMenu = user && canAccess(user, "/dashboard-staff");
 
   const cardClass =
     "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-indigo-200 hover:shadow-md";
@@ -25,24 +23,13 @@ export default function StaffPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Staff Dashboard</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Pintasan ke absensi, cuti, lembur, dan pengajuan aktivitas luar kantor.
+          Modul cuti, lembur, slip gaji, dan aktivitas luar kantor. Absensi dan profil ada di halaman khusus (menu pojok
+          kanan atas).
         </p>
       </div>
 
       {showStaffMenu ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          <Link href="/dashboard-staff/attendance" className={cardClass}>
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-indigo-100 p-2.5">
-                <Clock className="h-5 w-5 text-indigo-600" />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-900">Absensi</p>
-                <p className="mt-1 text-sm text-slate-600">Check-in / check-out dengan GPS</p>
-              </div>
-            </div>
-          </Link>
-
           <Link href="/dashboard-staff/leave" className={cardClass}>
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-blue-100 p-2.5">
@@ -81,7 +68,7 @@ export default function StaffPage() {
             </div>
           </Link>
 
-          <Link href="/dashboard-staff/field-activity" className={cardClass}>
+          <Link href="/attendance/field-activity" className={cardClass}>
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-teal-100 p-2.5">
                 <Navigation className="h-5 w-5 text-teal-700" />
@@ -99,29 +86,21 @@ export default function StaffPage() {
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
           <p className="flex items-center gap-2 font-medium text-slate-800">
             <MapPin className="h-4 w-4" />
-            Akses terbatas
+            Akses dashboard staff terbatas
           </p>
           <p className="mt-2">
-            Akun Anda tidak memakai dashboard staff penuh. Gunakan menu samping untuk{" "}
+            Absensi dan profil tetap tersedia untuk semua akun: buka menu <strong className="text-slate-800">nama Anda</strong> di pojok kanan atas, lalu pilih{" "}
             <Link href="/attendance" className="font-medium text-indigo-600 underline-offset-2 hover:underline">
-              absensi
+              Absensi
             </Link>{" "}
             atau{" "}
             <Link href="/profile" className="font-medium text-indigo-600 underline-offset-2 hover:underline">
-              profil
+              Profil
             </Link>
             .
           </p>
         </div>
       )}
-
-      <Link
-        href="/dashboard-staff/profile"
-        className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-indigo-600"
-      >
-        <User className="h-4 w-4" />
-        Profil saya
-      </Link>
     </div>
   );
 }

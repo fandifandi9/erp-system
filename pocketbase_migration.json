@@ -168,6 +168,27 @@
       },
       "createRule_if_relation_error": "@request.auth.id != \"\" && @request.data.user.id = @request.auth.id",
       "note_end": "Salin nilai suggested_rules ke Admin PB (tanpa label). Pakai @request.data bukan @request.body. Jika create masih error, coba createRule_if_relation_error."
+    },
+    {
+      "step": 8,
+      "action": "MANUAL_users_session_nonce_and_mfa",
+      "note": "Keamanan titip akun (single session) + MFA. Lakukan di PocketBase Admin.",
+      "users_field_add": {
+        "name": "session_nonce",
+        "type": "text",
+        "required": false,
+        "max": 64,
+        "note": "Diisi otomatis oleh app web/mobile saat login. Login di perangkat lain mengganti nilai ini sehingga perangkat lama di-logout."
+      },
+      "users_update_rule": "Izinkan user memperbarui rekaman sendiri termasuk session_nonce. Contoh: @request.auth.id = id (sesuaikan dengan skema role Anda). Pastikan user tidak bisa mengubah role/status milik orang lain.",
+      "mfa_setup": [
+        "Buka Collections → users → Options (ikon roda gigi).",
+        "Aktifkan Identity/Password (biasanya sudah).",
+        "Aktifkan One-time password (OTP) dan konfigurasi email SMTP agar OTP terkirim.",
+        "Aktifkan Multi-factor authentication (MFA): wajib 2 metode berbeda → urutan umum: password lalu OTP email.",
+        "Tanpa MFA di server, aplikasi hanya memakai password (tetap ada rotasi session_nonce)."
+      ],
+      "optional": "Kurangi durasi token auth di collection users jika ingin token JWT kedaluwarsa lebih cepat (tambahan di samping session_nonce)."
     }
   ],
   "default_data": [

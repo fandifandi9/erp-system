@@ -149,7 +149,7 @@ export default function EmployeeDetailPage() {
   const [npwp, setNpwp] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
   const [profileStatus, setProfileStatus] = useState("");
-  const [lateTolerance, setLateTolerance] = useState(10);
+  const [lateToleranceInput, setLateToleranceInput] = useState("10");
   const [joinDate, setJoinDate] = useState("");
   const [leaveBookingsQuota, setLeaveBookingsQuota] = useState(
     () => String(getMaxBookingsPerMonth())
@@ -216,7 +216,7 @@ if (list.length > 0) {
   setNpwp(profileData.npwp || "");
   setEmployeeCode(profileData.employee_code || "");
   setProfileStatus(profileData.profile_status || "draft");
-  setLateTolerance(profileData.late_tolerance ?? 10);
+  setLateToleranceInput(String(Math.max(0, Math.floor(Number(profileData.late_tolerance ?? 10)))));
   setShiftStart(profileData.shift_start || "08:00");
   setShiftEnd(profileData.shift_end || "17:00");
   setJoinDate(joinDateFromPocketBase(profileData.join_date));
@@ -302,6 +302,11 @@ if (list.length > 0) {
       const quotaNum =
         parseLeaveBookingsQuotaFromProfile(leaveBookingsQuota) ?? getMaxBookingsPerMonth();
 
+      const lateTol = Math.min(
+        999,
+        Math.max(0, parseInt(lateToleranceInput.replace(/\D/g, "") || "0", 10) || 0)
+      );
+
       // Keep users.name aligned with HR profile name.
       await pb.collection("users").update(user.id, { name });
 
@@ -323,7 +328,7 @@ if (list.length > 0) {
           profile_status: profileStatus,
           shift_start: shiftStart,
           shift_end: shiftEnd,
-          late_tolerance: lateTolerance,
+          late_tolerance: lateTol,
           join_date: joinDateToPocketBase(joinDate),
           [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: quotaNum,
         });
@@ -346,7 +351,7 @@ if (list.length > 0) {
           profile_status: profileStatus,
           shift_start: shiftStart,
           shift_end: shiftEnd,
-          late_tolerance: lateTolerance,
+          late_tolerance: lateTol,
           join_date: joinDateToPocketBase(joinDate),
           [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: quotaNum,
         });
@@ -388,22 +393,22 @@ if (list.length > 0) {
   // UI
   // =========================
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
+    <div className="mx-auto max-w-5xl min-w-0 space-y-6 overflow-x-hidden px-4 py-6 sm:px-6">
 
       {/* HEADER */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-800">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold text-slate-800 sm:text-2xl">
             Detail Karyawan
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="mt-1 break-words text-sm text-slate-500">
             Kelola data akun & informasi HR
           </p>
         </div>
 
         <button
           onClick={() => router.back()}
-          className="text-sm text-slate-500 hover:text-slate-800 transition"
+          className="shrink-0 self-start text-sm text-slate-500 transition hover:text-slate-800"
         >
           ← Kembali
         </button>
@@ -418,12 +423,12 @@ if (list.length > 0) {
       )}
 
       {/* ACCOUNT INFO */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">
           Informasi Akun
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
 
           <Input label="Nama" value={name} onChange={setName} />
           <Input label="Email" value={user.email || ""} disabled />
@@ -438,12 +443,12 @@ if (list.length > 0) {
       </div>
 
       {/* HR DATA */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">
           Data HR
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
 
           <SelectField
             label="Posisi / Jabatan *"
@@ -494,57 +499,69 @@ if (list.length > 0) {
           <Input label="Kode Karyawan" value={employeeCode} onChange={setEmployeeCode} />
           
           {/* TANGGAL BERGABUNG */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+          <div className="min-w-0">
+            <label className="mb-2 block text-sm font-medium text-slate-700">
               Tanggal Bergabung
             </label>
             <input
               type="date"
               value={joinDate}
               onChange={(e) => setJoinDate(e.target.value)}
-              className={`mt-1 ${FORM_CONTROL}`}
+              className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
             />
           </div>
 
           {/* SHIFT */}
-          <div className="col-span-2 mt-4">
+          <div className="col-span-2 mt-4 min-w-0">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">
               Jam Kerja
               </h3>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-slate-500">Jam Masuk</label>
+              <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
+                <div className="min-w-0">
+                  <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">Jam Masuk</label>
                   <input
                   type="time"
                   value={shiftStart}
                   onChange={(e) => setShiftStart(e.target.value)}
-                  className={`mt-1 ${FORM_CONTROL}`}
+                  className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
                   />
                   </div>
                   
-                  <div>
-                    <label className="text-sm text-slate-500">Jam Pulang</label>
+                  <div className="min-w-0">
+                    <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">Jam Pulang</label>
                     <input
                     type="time"
                     value={shiftEnd}
                     onChange={(e) => setShiftEnd(e.target.value)}
-                    className={`mt-1 ${FORM_CONTROL}`}
+                    className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
                     />
                     </div>
                     </div>
                     </div>
                     
-                    {/* TOLERANSI */}
+                    {/* TOLERANSI — teks + inputMode numeric (type=number sering bermasalah saat diketik) */}
                     <Input
-                    label="Toleransi Telat (menit)"
-                    type="number"
-                    value={lateTolerance}
-                    onChange={(val) => setLateTolerance(Number(val) || 0)}
+                      label="Toleransi Telat (menit)"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={lateToleranceInput}
+                      onChange={(val) => {
+                        const t = val.replace(/\D/g, "");
+                        if (t.length > 3) return;
+                        setLateToleranceInput(t);
+                      }}
+                      onBlur={() => {
+                        const n = parseInt(lateToleranceInput || "0", 10);
+                        const c = Number.isNaN(n) ? 0 : Math.min(999, Math.max(0, n));
+                        setLateToleranceInput(String(c));
+                      }}
+                      placeholder="0–999"
                     />
 
           {/* OFFICE DROPDOWN */}
-          <div>
+          <div className="min-w-0 md:col-span-2">
             <label className="text-sm text-slate-500 block mb-1">
               Kantor / lokasi kerja * {!officeId && <span className="text-red-500">(wajib)</span>}
             </label>
@@ -597,11 +614,13 @@ if (list.length > 0) {
   );
 }
 
-/** Gaya kontrol form (selaras dengan input tanggal & kartu putih) */
+/** Gaya kontrol form — min-w-0 + text-base di HP (hindari teks tertimpa / zoom iOS); overflow horizontal aman. */
 const FORM_CONTROL =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none transition-colors " +
-  "text-slate-800 placeholder:text-slate-400 hover:border-slate-400 " +
-  "focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500";
+  "w-full min-w-0 max-w-full min-h-[2.75rem] rounded-xl border border-slate-300 bg-white px-3 py-3 text-base leading-snug outline-none transition-colors " +
+  "text-slate-900 placeholder:text-slate-500 hover:border-slate-400 " +
+  "focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 " +
+  "md:min-h-0 md:text-sm " +
+  "[-webkit-tap-highlight-color:transparent]";
 
 // =========================
 // SELECT NATIF — tampilan seragam (chevron custom)
@@ -620,11 +639,11 @@ function StyledSelect({
 }) {
   const empty = placeholderTone !== false && value === "";
   return (
-    <div className="relative mt-1">
+    <div className="relative mt-1 min-w-0">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`${FORM_CONTROL} appearance-none pr-10 ${empty ? "text-slate-400" : "text-slate-800"}`}
+        className={`${FORM_CONTROL} appearance-none overflow-x-auto text-left pr-10 ${empty ? "text-slate-400" : "text-slate-800"}`}
       >
         {children}
       </select>
@@ -664,9 +683,9 @@ function SelectField({
   const isLegacy = Boolean(value && !known.has(value));
 
   return (
-    <div>
-      <label className="text-sm text-slate-500 mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <span>{label}</span>
+    <div className="min-w-0">
+      <label className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+        <span className="min-w-0 break-words">{label}</span>
         {hint ? (
           <span
             className="inline-flex h-5 w-5 shrink-0 cursor-help items-center justify-center rounded-full border border-slate-400 text-[11px] font-semibold leading-none text-slate-500"
@@ -708,9 +727,12 @@ interface InputProps {
   hint?: string;
   value: string | number;
   onChange?: (value: string) => void;
+  onBlur?: () => void;
   disabled?: boolean;
   placeholder?: string;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  autoComplete?: string;
 }
 
 function Input({
@@ -718,14 +740,17 @@ function Input({
   hint,
   value,
   onChange,
+  onBlur,
   disabled = false,
   placeholder = "",
   type = "text",
+  inputMode,
+  autoComplete,
 }: InputProps) {
   return (
-    <div>
-      <label className="text-sm text-slate-500 mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <span>{label}</span>
+    <div className="min-w-0">
+      <label className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+        <span className="min-w-0 break-words">{label}</span>
         {hint ? (
           <span
             className="inline-flex h-5 w-5 shrink-0 cursor-help items-center justify-center rounded-full border border-slate-400 text-[11px] font-semibold leading-none text-slate-500"
@@ -742,8 +767,11 @@ function Input({
         value={value}
         disabled={disabled}
         placeholder={placeholder}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
+        onBlur={onBlur}
         onChange={(e) => onChange?.(e.target.value)}
-        className={`mt-1 ${FORM_CONTROL} ${
+        className={`mt-1 overflow-x-auto ${FORM_CONTROL} ${
           disabled ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
         }`}
       />
@@ -770,8 +798,8 @@ function SalaryInput({
   placeholder?: string;
 }) {
   return (
-    <div>
-      <label className="text-sm text-slate-500 mb-1 block">{label}</label>
+    <div className="min-w-0">
+      <label className="mb-1 block text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">{label}</label>
       <input
         type="text"
         inputMode="numeric"
@@ -782,9 +810,9 @@ function SalaryInput({
           const next = e.target.value.replace(/\D/g, "");
           onDigitsChange(next);
         }}
-        className={`mt-1 ${FORM_CONTROL}`}
+        className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
       />
-      <p className="mt-1 text-xs text-slate-400">
+      <p className="mt-1 break-words text-xs leading-snug text-slate-500 sm:text-slate-400">
         Ketik angka saja; pemisah ribuan (titik) mengikuti format Indonesia.
       </p>
     </div>

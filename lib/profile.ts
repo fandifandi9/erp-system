@@ -56,6 +56,37 @@ export interface User {
 // ========================================
 
 /**
+ * Buat satu record `profiles` baru untuk user (shift default + kantor aktif pertama).
+ * Dipakai `ensureProfile` dan halaman HR buat karyawan — payload harus sama agar produksi tidak gagal hanya di salah satu alur.
+ */
+export async function createDefaultProfileForUser(userId: string): Promise<Profile> {
+  const user = await pb.collection("users").getOne(userId);
+
+  let defaultOfficeId: string | null = null;
+  try {
+    const firstOffice = await pb.collection("offices").getFirstListItem(
+      `is_active=true`,
+      { requestKey: null }
+    );
+    defaultOfficeId = firstOffice.id;
+  } catch {
+    console.warn("⚠️ No active office found for new profile");
+  }
+
+  const newProfile = await pb.collection("profiles").create({
+    user: userId,
+    name: (user.name as string) || "",
+    email: (user.email as string) || "",
+    office_id: defaultOfficeId,
+    shift_start: "08:00",
+    shift_end: "17:00",
+    profile_status: "incomplete",
+  });
+
+  return newProfile as unknown as Profile;
+}
+
+/**
  * Ensure profile exists for user - AUTO CREATE if needed
  * Called on login or any profile access
  */
@@ -78,38 +109,12 @@ export async function ensureProfile(userId: string): Promise<{
   } catch {
     // Profile doesn't exist - AUTO CREATE
     console.warn("⚠️ Profile not found for user", userId, "- Creating...");
-    
+
     try {
-      // Get user data
-      const user = await pb.collection("users").getOne(userId);
-      
-      // Get first active office as default
-      let defaultOfficeId = null;
-      try {
-        const firstOffice = await pb.collection("offices").getFirstListItem(
-          "is_active=true",
-          { requestKey: null }
-        );
-        defaultOfficeId = firstOffice.id;
-      } catch {
-        console.warn("⚠️ No active office found");
-      }
-
-      // Create profile with basic data from users
-      const newProfile = await pb.collection("profiles").create({
-        user: userId,
-        name: user.name || "",
-        email: user.email || "",
-        office_id: defaultOfficeId,
-        shift_start: "08:00",
-        shift_end: "17:00",
-        profile_status: "incomplete", // Default to incomplete
-      });
-
+      const newProfile = await createDefaultProfileForUser(userId);
       console.log("✅ Auto-created profile:", newProfile.id);
-      
       return {
-        profile: newProfile as unknown as Profile,
+        profile: newProfile,
         created: true,
       };
     } catch (error: unknown) {

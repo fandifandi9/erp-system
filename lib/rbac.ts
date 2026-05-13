@@ -27,9 +27,11 @@ export const getDefaultDashboardAccessForRole = (roleCode: UserRoleCode): boolea
   DASHBOARD_ROLES.includes(roleCode);
 
 const DEFAULT_USER_ACCESS = [
+  "/entry",
   "/attendance",
   "/attendance/history",
   "/attendance/leave",
+  "/attendance/field-activity",
   "/profile",
 ];
 
@@ -49,7 +51,7 @@ const ROLE_ACCESS_BY_CODE: Record<UserRoleCode, string[]> = {
   ],
   manager: ["/dashboard-staff", ...DEFAULT_USER_ACCESS],
   staff: ["/dashboard-staff", ...DEFAULT_USER_ACCESS],
-  "staff-basic": [...DEFAULT_USER_ACCESS],
+  "staff-basic": ["/dashboard-staff", ...DEFAULT_USER_ACCESS],
   security: [...DEFAULT_USER_ACCESS],
   ob: [...DEFAULT_USER_ACCESS],
 };
@@ -119,13 +121,27 @@ export const getNormalizedUserSchemaFields = (
   };
 };
 
-export const getDefaultRouteForUser = (user: AuthUserShape | null | undefined): string => {
-  const auth = normalizeAuthModel(user);
+/**
+ * Fallback middleware / redirect: halaman pilih **Absensi (HP)** vs **Dashboard kerja**.
+ * Wajib ada di {@link DEFAULT_USER_ACCESS} agar middleware tidak memaksa ke dashboard.
+ */
+export const getDefaultRouteForUser = (_user: AuthUserShape | null | undefined): string => {
+  return "/entry";
+};
 
+/**
+ * Dashboard web “meja kerja” (sidebar): Owner, HR, atau staf dengan `dashboard_access`.
+ * Null jika akun hanya pakai modul HP (mis. satpam tanpa dashboard).
+ */
+export const getOperationalDashboardRoute = (
+  user: AuthUserShape | null | undefined
+): string | null => {
+  if (user == null) return null;
+  const auth = normalizeAuthModel(user);
   if (auth.accountType === "owner") return "/dashboard-owner";
-  if (!auth.dashboardAccess) return "/attendance";
   if (auth.roleCode === "hr") return "/hr";
-  return "/dashboard-staff";
+  if (auth.dashboardAccess) return "/dashboard-staff";
+  return null;
 };
 
 export const getAllowedPathsForUser = (user: AuthUserShape | null | undefined): string[] => {
@@ -163,8 +179,11 @@ export const KNOWN_ROUTES = [
   "/attendance",
   "/attendance/history",
   "/attendance/leave",
+  "/attendance/field-activity",
+  "/profile",
   "/system",
   "/system/users",
   "/system/register",
   "/login",
+  "/entry",
 ];

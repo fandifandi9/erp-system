@@ -220,8 +220,8 @@ export default function EmployeesPage() {
 
       {/* TABLE */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+        <table className="w-full text-sm text-slate-900">
+          <thead className="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-800">
             <tr>
               <th className="px-6 py-3 text-left">Nama</th>
               <th className="px-6 py-3 text-left">Email</th>
@@ -242,15 +242,15 @@ export default function EmployeesPage() {
                   key={profile.id}
                   className="border-t border-slate-100 hover:bg-slate-50"
                 >
-                  <td className="px-6 py-4 font-medium">
+                  <td className="px-6 py-4 font-semibold text-slate-900">
                     {profile.name}
                   </td>
 
-                  <td className="px-6 py-4 text-slate-500">
+                  <td className="px-6 py-4 text-slate-800">
                     {profile.email}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 text-slate-800">
                     {profile.position}
                   </td>
 
@@ -314,7 +314,7 @@ export default function EmployeesPage() {
         </table>
 
         {profiles.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
+          <div className="py-12 text-center text-sm font-medium text-slate-600">
             Belum ada data karyawan
           </div>
         )}

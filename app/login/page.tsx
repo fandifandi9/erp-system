@@ -1,25 +1,54 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
-import { getDefaultRouteForUser } from "@/lib/rbac";
 import { ensureAndSyncProfile } from "@/lib/profile";
+import PwaInstallBanner from "@/components/PwaInstallBanner";
+import { extractMfaId } from "@/lib/auth-mfa";
+import { registerWebSessionAfterAuth } from "@/lib/auth-session";
+
+type LoginStep = "password" | "otp";
 
 export default function LoginPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [step, setStep] = useState<LoginStep>("password");
+  const [otpId, setOtpId] = useState<string | null>(null);
+  const mfaIdRef = useRef<string | null>(null);
 
-  // =========================
-  // 🔐 LOGIN
-  // =========================
-  const handleLogin = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("reason") === "session") {
+      setError(
+        "Sesi Anda berakhir karena akun masuk di perangkat lain. Silakan login lagi."
+      );
+    }
+  }, []);
+
+  async function finalizeSuccessfulLogin(userId: string) {
+    await ensureAndSyncProfile(userId);
+    try {
+      await registerWebSessionAfterAuth(pb);
+    } catch (e) {
+      console.error(e);
+      pb.authStore.clear();
+      throw new Error(
+        "Login berhasil tetapi gagal memperbarui sesi perangkat. Pastikan koleksi users punya field `session_nonce` (text) dan aturan update mengizinkan user memperbarui rekaman sendiri."
+      );
+    }
+    router.push("/entry");
+  }
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
 
@@ -29,32 +58,46 @@ export default function LoginPage() {
     try {
       const authData = await pb
         .collection("users")
-        .authWithPassword(email, password);
+        .authWithPassword(email.trim(), password);
 
       const user = authData.record;
-
-      // 🔥 VALIDASI STATUS (KONSEP UTAMA KAMU)
       if (user.status !== "active") {
         pb.authStore.clear();
-        setError("Akun Anda dinonaktifkan oleh owner"); 
+        setError("Akun Anda dinonaktifkan oleh owner");
         return;
       }
 
-      // Ensure HR profile data is available and synced with users.
-      await ensureAndSyncProfile(user.id);
-
-      const path = getDefaultRouteForUser(user);
-      
-      if (!path) {
-        setError("Role tidak dikenali");
-        return;
-      }
-      
-      router.push(path);
-
+      await finalizeSuccessfulLogin(user.id);
     } catch (err: unknown) {
-      console.error("LOGIN ERROR:", err);
+      const mfaId = extractMfaId(err);
+      if (mfaId && email.trim()) {
+        mfaIdRef.current = mfaId;
+        try {
+          const sent = await pb.collection("users").requestOTP(email.trim());
+          const id =
+            typeof sent === "object" &&
+            sent !== null &&
+            "otpId" in sent &&
+            typeof (sent as { otpId: unknown }).otpId === "string"
+              ? (sent as { otpId: string }).otpId
+              : null;
+          if (!id) {
+            setError("Gagal mengirim kode OTP. Periksa pengaturan MFA di PocketBase.");
+            mfaIdRef.current = null;
+            return;
+          }
+          setOtpId(id);
+          setStep("otp");
+          setError("");
+        } catch (otpErr) {
+          console.error("requestOTP:", otpErr);
+          setError("Gagal mengirim kode ke email. Coba lagi atau hubungi admin.");
+          mfaIdRef.current = null;
+        }
+        return;
+      }
 
+      console.error("LOGIN ERROR:", err);
       const hasEmailError =
         typeof err === "object" &&
         err !== null &&
@@ -72,7 +115,7 @@ export default function LoginPage() {
       if (hasEmailError) {
         setError("Email tidak valid");
       } else if (hasPasswordError) {
-        setError("Password salah");
+        setError("Email atau kata sandi salah");
       } else {
         setError("Login gagal, cek kembali");
       }
@@ -81,9 +124,36 @@ export default function LoginPage() {
     }
   };
 
-  // =========================
-  // 🔁 RESET PASSWORD
-  // =========================
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading || !otpId || !mfaIdRef.current) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const authData = await pb.collection("users").authWithOTP(
+        otpId,
+        otpCode.trim(),
+        { query: { mfaId: mfaIdRef.current } }
+      );
+
+      const user = authData.record;
+      if (user.status !== "active") {
+        pb.authStore.clear();
+        setError("Akun Anda dinonaktifkan oleh owner");
+        return;
+      }
+
+      await finalizeSuccessfulLogin(user.id);
+    } catch (err: unknown) {
+      console.error("OTP LOGIN:", err);
+      setError("Kode OTP salah atau kedaluwarsa. Coba kirim ulang dari langkah sebelumnya.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleForgotPassword = async () => {
     if (!email) {
       setError("Masukkan email terlebih dahulu");
@@ -98,92 +168,124 @@ export default function LoginPage() {
     }
   };
 
-  // =========================
-  // 🎨 UI
-  // =========================
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center px-4">
-
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-slate-200 p-8">
-
-        {/* HEADER */}
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-800">
-            Serba ERP System
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Masuk ke dashboard ERP Anda
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4 pb-24 pt-6">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
+        <div className="mb-6 text-center">
+          <h1 className="text-2xl font-bold text-slate-800">Serba ERP System</h1>
+          <p className="mt-1 text-sm text-slate-700">
+            {step === "otp"
+              ? "Masukkan kode OTP dari email (verifikasi kedua MFA)."
+              : "Masuk ke dashboard ERP Anda"}
           </p>
         </div>
 
-        {/* ERROR */}
         {error && (
-          <div className="mb-4 text-sm bg-red-50 text-red-600 px-4 py-2 rounded-lg border border-red-100">
+          <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
             {error}
           </div>
         )}
 
-        {/* FORM */}
-        <form onSubmit={handleLogin} className="space-y-4">
-
-          {/* EMAIL */}
-          <div>
-            <label className="text-sm text-slate-600">Email</label>
-            <input
-              type="email"
-              placeholder="email@domain.com"
-              className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          {/* PASSWORD */}
-          <div>
-            <label className="text-sm text-slate-600">Password</label>
-
-            <div className="relative mt-1">
+        {step === "password" ? (
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-800">Email</label>
               <input
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none pr-12"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                type="email"
+                placeholder="email@domain.com"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-600 focus:ring-2 focus:ring-indigo-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="username"
               />
+            </div>
 
+            <div>
+              <label className="text-sm font-medium text-slate-800">Password</label>
+              <div className="relative mt-1">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Minimal 8 karakter"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 pr-12 text-base text-slate-900 outline-none placeholder:text-slate-600 focus:ring-2 focus:ring-indigo-500"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-700 hover:text-slate-900"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="text-right">
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                onClick={handleForgotPassword}
+                className="text-sm text-indigo-600 hover:underline"
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                Lupa password?
               </button>
             </div>
-          </div>
 
-          {/* FORGOT */}
-          <div className="text-right">
             <button
-              type="button"
-              onClick={handleForgotPassword}
-              className="text-sm text-indigo-600 hover:underline"
+              disabled={loading}
+              className="w-full rounded-xl bg-indigo-600 py-3 font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
             >
-              Lupa password?
+              {loading ? "Memproses..." : "Masuk"}
             </button>
-          </div>
-
-          {/* BUTTON */}
-          <button
-            disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-medium disabled:opacity-60"
-          >
-            {loading ? "Memproses..." : "Masuk"}
-          </button>
-
-        </form>
+          </form>
+        ) : (
+          <form onSubmit={handleOtpSubmit} className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Kode sekali pakai telah dikirim ke <strong>{email}</strong>. Buka kotak
+              masuk (dan folder spam).
+            </p>
+            <div>
+              <label className="text-sm font-medium text-slate-800">Kode OTP</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="6 digit"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setStep("password");
+                  setOtpCode("");
+                  setOtpId(null);
+                  mfaIdRef.current = null;
+                  setError("");
+                }}
+              >
+                Kembali
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 rounded-xl bg-indigo-600 py-3 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {loading ? "Memverifikasi..." : "Verifikasi"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
+
+      <PwaInstallBanner />
     </div>
   );
 }

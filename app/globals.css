@@ -25,6 +25,13 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Kontras placeholder & isian form di Windows / browser dengan forced-colors ringan */
+input::placeholder,
+textarea::placeholder {
+  color: #475569;
+  opacity: 1;
+}
+
 /* PWA / mobile: tinggi viewport dinamis, area aman notch, kurangi “rubber band” */
 @supports (height: 100dvh) {
   html,

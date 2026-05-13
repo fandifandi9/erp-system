@@ -15,9 +15,13 @@ import {
 import { useRouter } from "next/navigation";
 import { Calendar, Clock, Loader2, Plus, XCircle, CheckCircle, AlertTriangle, Building2 } from "lucide-react";
 
-const LEAVE_MODULE_PATH = "/dashboard-staff/leave";
-
-export function StaffLeaveHistoryPanel({ omitPageHeader = false }: { omitPageHeader?: boolean }) {
+export function StaffLeaveHistoryPanel({
+  omitPageHeader = false,
+  basePath = "/dashboard-staff/leave",
+}: {
+  omitPageHeader?: boolean;
+  basePath?: string;
+}) {
   const router = useRouter();
   const currentUserId = pb.authStore.model?.id ?? "";
 
@@ -142,7 +146,7 @@ export function StaffLeaveHistoryPanel({ omitPageHeader = false }: { omitPageHea
             <p className="mt-1 text-slate-500">Lihat semua booking cuti Anda</p>
           </div>
           <button
-            onClick={() => router.replace(LEAVE_MODULE_PATH)}
+            onClick={() => router.replace(basePath)}
             className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 font-medium text-white transition hover:bg-indigo-700"
           >
             <Plus className="h-4 w-4" />
@@ -197,7 +201,7 @@ export function StaffLeaveHistoryPanel({ omitPageHeader = false }: { omitPageHea
           <p className="mb-2 text-slate-600">Belum ada riwayat booking</p>
           <p className="mb-4 text-sm text-slate-400">Lakukan booking cuti pertama Anda</p>
           <button
-            onClick={() => router.replace(LEAVE_MODULE_PATH)}
+            onClick={() => router.replace(basePath)}
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-2 text-white transition hover:bg-indigo-700"
           >
             <Plus className="h-4 w-4" />

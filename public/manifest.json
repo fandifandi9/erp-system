@@ -1,16 +1,30 @@
 {
-  "name": "ERP PRO System",
-  "short_name": "ERPPRO",
-  "description": "Enterprise Resource Planning System",
+  "name": "SERBA ERP",
+  "short_name": "SERBA ERP",
+  "description": "Sistem ERP — absensi, HR, cuti, lembur, aktivitas luar, payroll.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#4f46e5",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/icon-192x192.png",
+      "src": "/pwa-192",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
