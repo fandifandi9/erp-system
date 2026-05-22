@@ -12,6 +12,10 @@ import {
 import { detectSuspiciousGPSJump, getDeviceInfo } from "./device-fingerprint";
 import { getErrorMessage } from "./errors";
 import { userHasApprovedFieldActivityForDate } from "./field_activity";
+import {
+  syncOperationalAccessAfterCheckIn,
+  syncOperationalAccessAfterCheckOut,
+} from "./operational-access-sync";
 
 /** Sejalan default form HR pegawai ketika profil tanpa toleransi eksplisit. */
 export const DEFAULT_LATE_TOLERANCE_MINUTES = 10;
@@ -100,6 +104,88 @@ export function resolveProfileShift(profile: Profile): {
   return { shiftStart, shiftEndDisplay };
 }
 
+/** Hari Sabtu atau Minggu untuk kalender tanggal `YYYY-MM-DD` (waktu setempat browser). */
+export function isWeekendYmd(dateYmd: string): boolean {
+  const ymd = dateYmd.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return false;
+  const dow = d.getDay();
+  return dow === 0 || dow === 6;
+}
+
+/** Pasangan jam lawas `shift_*_weekend` (satu untuk Sabtu+Minggu) — dipakai jika hari spesifik kosong. */
+function legacyWeekendShiftPair(profile: Profile): { start: string; end: string } | null {
+  const a =
+    profile.shift_start_weekend != null ? String(profile.shift_start_weekend).trim() : "";
+  const b = profile.shift_end_weekend != null ? String(profile.shift_end_weekend).trim() : "";
+  return a && b ? { start: a, end: b } : null;
+}
+
+/**
+ * Jam kerja efektif menurut tanggal: Sabtu / Minggu bisa beda dari Sen–Jumat dan beda satu sama lain
+ * bila HR mengisi pasangan shift per hari di profil.
+ */
+export function resolveProfileShiftForDate(profile: Profile, dateYmd: string): {
+  shiftStart: string;
+  shiftEndDisplay: string;
+  usedCustomShiftForDay: boolean;
+} {
+  const base = resolveProfileShift(profile);
+  if (!isWeekendYmd(dateYmd)) {
+    return { ...base, usedCustomShiftForDay: false };
+  }
+  const ymd = dateYmd.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    return { ...base, usedCustomShiftForDay: false };
+  }
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    return { ...base, usedCustomShiftForDay: false };
+  }
+  const dow = d.getDay();
+  if (dow === 6) {
+    const ss =
+      profile.shift_start_saturday != null ? String(profile.shift_start_saturday).trim() : "";
+    const se = profile.shift_end_saturday != null ? String(profile.shift_end_saturday).trim() : "";
+    if (ss && se) {
+      return {
+        shiftStart: ss,
+        shiftEndDisplay: se,
+        usedCustomShiftForDay: true,
+      };
+    }
+    const legSat = legacyWeekendShiftPair(profile);
+    if (legSat) {
+      return {
+        shiftStart: legSat.start,
+        shiftEndDisplay: legSat.end,
+        usedCustomShiftForDay: true,
+      };
+    }
+  }
+  if (dow === 0) {
+    const ss = profile.shift_start_sunday != null ? String(profile.shift_start_sunday).trim() : "";
+    const se = profile.shift_end_sunday != null ? String(profile.shift_end_sunday).trim() : "";
+    if (ss && se) {
+      return {
+        shiftStart: ss,
+        shiftEndDisplay: se,
+        usedCustomShiftForDay: true,
+      };
+    }
+    const legSun = legacyWeekendShiftPair(profile);
+    if (legSun) {
+      return {
+        shiftStart: legSun.start,
+        shiftEndDisplay: legSun.end,
+        usedCustomShiftForDay: true,
+      };
+    }
+  }
+  return { ...base, usedCustomShiftForDay: false };
+}
+
 /** Escape PocketBase filter string literals */
 function pbEsc(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -115,6 +201,8 @@ export interface AttendanceRecord {
   date: string;
   check_in?: string;
   check_out?: string;
+  /** Nama file di koleksi `attendance_logs` (field file PocketBase) */
+  check_in_selfie?: string;
   status: "present" | "late" | "absent" | "leave";
   late_minutes: number;
   work_hours: number;
@@ -154,6 +242,15 @@ export interface Profile {
   department?: string;
   shift_start: string; // HH:mm format
   shift_end: string; // HH:mm format
+  /** HH:mm — Sabtu, harus berpasangan shift_end_saturday */
+  shift_start_saturday?: string;
+  shift_end_saturday?: string;
+  /** HH:mm — Minggu */
+  shift_start_sunday?: string;
+  shift_end_sunday?: string;
+  /** @deprecated Lihat shift_start_saturday / shift_start_sunday */
+  shift_start_weekend?: string;
+  shift_end_weekend?: string;
   /** Alias di beberapa skema PocketBase */
   work_end?: string;
   office_id: string;
@@ -161,6 +258,8 @@ export interface Profile {
   grace_minutes?: number;
   /** Menit grace setelah shift_start — masih dianggap on time */
   late_tolerance?: number;
+  /** HR: wajibkan unggah foto selfie saat check-in (audit) */
+  require_checkin_selfie?: boolean;
 }
 
 export interface LeaveRequest {
@@ -468,11 +567,27 @@ export async function getAttendanceHistory(
   }
 }
 
+/** HR mengaktifkan `profiles.require_checkin_selfie` → staff wajib lampirkan foto saat check-in. */
+export function profileRequiresCheckinSelfie(
+  profile: { require_checkin_selfie?: unknown } | null | undefined
+): boolean {
+  if (!profile) return false;
+  return parseAttendanceBool(profile.require_checkin_selfie, false);
+}
+
+export type CheckInOptions = {
+  /** Foto selfie check-in (file image). Wajib jika profil memakai `require_checkin_selfie`. */
+  selfie?: File | Blob | null;
+};
+
 // ========================================
 // ✅ CHECK-IN LOGIC
 // ========================================
  
-export async function checkIn(userId: string): Promise<{
+export async function checkIn(
+  userId: string,
+  options?: CheckInOptions
+): Promise<{
   success: boolean;
   message: string;
   data?: AttendanceRecord;
@@ -534,7 +649,16 @@ export async function checkIn(userId: string): Promise<{
     }
 
     const profile = profileRaw as Profile;
-    const { shiftStart, shiftEndDisplay } = resolveProfileShift(profile);
+    const selfieRequired = profileRequiresCheckinSelfie(profile);
+    if (selfieRequired && !options?.selfie) {
+      return {
+        success: false,
+        message:
+          "HR mewajibkan foto selfie saat check-in untuk akun Anda. Ambil foto terlebih dahulu, lalu check-in lagi.",
+      };
+    }
+
+    const { shiftStart, shiftEndDisplay } = resolveProfileShiftForDate(profile, todayYmd);
     const rules = await fetchAttendanceRules();
     const enforceGeo = !rules.allowRemote && rules.gpsRequired;
     let fieldActivityApproved = false;
@@ -795,9 +919,19 @@ export async function checkIn(userId: string): Promise<{
     console.log("│  ├─ ip_address:", dataToSave.ip_address);
     console.log("│  └─ is_suspicious:", dataToSave.is_suspicious);
 
-    const record = await pb.collection("attendance_logs").create(dataToSave);
+    const createBody: Record<string, unknown> = { ...dataToSave };
+    if (options?.selfie) {
+      createBody.check_in_selfie = options.selfie;
+    }
+
+    const record = await pb.collection("attendance_logs").create(createBody);
 
     console.log("└─ ✅ Saved to database (ID:", record.id, ")\n");
+
+    const op = await syncOperationalAccessAfterCheckIn(userId);
+    if (!op.ok) {
+      console.warn("⚠️ Akses web operasional tidak diperbarui (field users / rule PocketBase):", op.error);
+    }
 
     console.log("═══════════════════════════════════════════════════");
     console.log("✅ CHECK-IN SUCCESS!");
@@ -887,6 +1021,11 @@ export async function checkOut(userId: string): Promise<{
       work_hours: workHours,
     });
     console.log("└─ ✅ Record updated successfully\n");
+
+    const op = await syncOperationalAccessAfterCheckOut(userId);
+    if (!op.ok) {
+      console.warn("⚠️ Cutoff akses web operasional gagal (field users / rule):", op.error);
+    }
 
     console.log("═══════════════════════════════════════════════════");
     console.log("✅ CHECK-OUT SUCCESS!");

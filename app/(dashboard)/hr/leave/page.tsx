@@ -24,7 +24,12 @@ import {
   Settings,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { canAccess } from "@/lib/rbac";
+import {
+  formatIdr,
+  fetchApprovedLeavesOnDate,
+} from "@/lib/hr-compensation";
 
 type HrLeaveRow = LeaveRequestRow & {
   expand?: {
@@ -50,6 +55,11 @@ export default function LeaveMonitoringPage() {
   const [periodMode, setPeriodMode] = useState<"all" | "month">("all");
   const [periodYear, setPeriodYear] = useState(now.getFullYear());
   const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1);
+  const [dateFilter, setDateFilter] = useState("");
+  const [onDateLeaves, setOnDateLeaves] = useState<
+    Awaited<ReturnType<typeof fetchApprovedLeavesOnDate>>
+  >([]);
+  const [onDateLoading, setOnDateLoading] = useState(false);
 
   const [rejectModalId, setRejectModalId] = useState<string | null>(null);
   const [rejectReasonDraft, setRejectReasonDraft] = useState("");
@@ -123,6 +133,25 @@ export default function LeaveMonitoringPage() {
     fetchLeaves();
   }, [hasAccess, fetchLeaves]);
 
+  useEffect(() => {
+    if (!hasAccess || !dateFilter) {
+      setOnDateLeaves([]);
+      return;
+    }
+    let ok = true;
+    setOnDateLoading(true);
+    void (async () => {
+      const rows = await fetchApprovedLeavesOnDate(dateFilter);
+      if (ok) {
+        setOnDateLeaves(rows);
+        setOnDateLoading(false);
+      }
+    })();
+    return () => {
+      ok = false;
+    };
+  }, [hasAccess, dateFilter]);
+
   const runApprove = async (id: string) => {
     setActingId(id);
     try {
@@ -188,6 +217,14 @@ export default function LeaveMonitoringPage() {
     if (!s || !e) return "—";
     if (s === e) return formatDate(start);
     return `${formatDate(start)} - ${formatDate(end)}`;
+  };
+
+  const leaveTouchesDate = (start: string, end: string, ymd: string) => {
+    const s = coerceLeaveYmd(start);
+    const e = coerceLeaveYmd(end);
+    const d = ymd.slice(0, 10);
+    if (!s || !e || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+    return s <= d && e >= d;
   };
 
   const calculateDays = (start: string, end: string) => {
@@ -275,7 +312,9 @@ export default function LeaveMonitoringPage() {
     const divVal =
       leave.division || String((leave as { devision?: string }).devision ?? "").trim();
     const matchesDiv = divisionFilter === "all" || divVal === divisionFilter;
-    return matchesSearch && matchesDiv;
+    const matchesDate =
+      !dateFilter || leaveTouchesDate(leave.start_date, leave.end_date, dateFilter);
+    return matchesSearch && matchesDiv && matchesDate;
   });
 
   if (loading) {
@@ -308,13 +347,22 @@ export default function LeaveMonitoringPage() {
             menggunakan <strong>tanggal cuti</strong>, bukan tanggal pengajuan.
           </p>
         </div>
-        <button
-          onClick={() => router.push("/hr/leave/settings")}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition flex items-center gap-2 font-medium"
-        >
-          <Settings className="w-4 h-4" />
-          Division Quota Settings
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/hr/compensation/settings"
+            className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition flex items-center gap-2 font-medium text-sm"
+          >
+            Pengaturan nominal cuti
+          </Link>
+          <button
+            type="button"
+            onClick={() => router.push("/hr/leave/settings")}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition flex items-center gap-2 font-medium text-sm"
+          >
+            <Settings className="w-4 h-4" />
+            Kuota divisi
+          </button>
+        </div>
       </div>
 
       {/* INFO BANNER */}
@@ -500,8 +548,63 @@ export default function LeaveMonitoringPage() {
               </option>
             ))}
           </select>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
+            <Calendar className="h-4 w-4 shrink-0 text-slate-400" />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="text-sm text-slate-700 focus:outline-none"
+              title="Filter cuti yang jatuh pada tanggal ini"
+            />
+            {dateFilter ? (
+              <button
+                type="button"
+                onClick={() => setDateFilter("")}
+                className="text-xs font-medium text-indigo-600 hover:underline"
+              >
+                Reset
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
+
+      {dateFilter ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4">
+          <p className="text-sm font-semibold text-emerald-900">
+            Cuti disetujui pada tanggal {formatDate(dateFilter)}
+          </p>
+          {onDateLoading ? (
+            <div className="mt-3 flex justify-center py-4">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-700" />
+            </div>
+          ) : onDateLeaves.length === 0 ? (
+            <p className="mt-2 text-sm text-emerald-800">Tidak ada cuti disetujui pada tanggal ini.</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {onDateLeaves.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm"
+                >
+                  <span className="font-medium text-slate-800">
+                    {row.userName} · {row.division}
+                  </span>
+                  <span className="text-emerald-800">
+                    {formatIdr(row.daily_rate)}/hari
+                    {row.compensation_amount > 0 ? (
+                      <span className="ml-2 text-slate-600">
+                        (total rentang: {formatIdr(row.compensation_amount)})
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
 
       {/* LEAVE REQUESTS */}
       {loading ? (
@@ -513,7 +616,7 @@ export default function LeaveMonitoringPage() {
           <Calendar className="w-16 h-16 mx-auto mb-4 text-slate-300" />
           <p className="text-lg font-medium text-slate-800">Tidak ada data</p>
           <p className="text-sm text-slate-500 mt-1">
-            {searchQuery || divisionFilter !== "all"
+            {searchQuery || divisionFilter !== "all" || dateFilter
               ? "Tidak ditemukan hasil untuk filter ini"
               : "Belum ada booking cuti"}
           </p>
@@ -605,6 +708,18 @@ export default function LeaveMonitoringPage() {
                       <p className="text-xs text-slate-500 mb-1">Alasan:</p>
                       <p className="text-sm text-slate-700">{leave.reason}</p>
                     </div>
+
+                    {leave.status === "approved" &&
+                    (leave.compensation_amount != null && leave.compensation_amount > 0) ? (
+                      <p className="mb-2 text-sm font-medium text-emerald-800">
+                        Kompensasi: {formatIdr(leave.compensation_amount)}
+                        {leave.daily_compensation_rate != null && leave.daily_compensation_rate > 0 ? (
+                          <span className="ml-1 text-xs font-normal text-emerald-700">
+                            ({formatIdr(leave.daily_compensation_rate)}/hari)
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : null}
 
                     {leave.status === "rejected" && Boolean(leave.rejection_reason?.trim()) && (
                       <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 mb-2">

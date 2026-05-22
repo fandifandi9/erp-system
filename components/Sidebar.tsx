@@ -5,18 +5,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { canAccess, getOperationalDashboardRoute, normalizeAuthModel } from "@/lib/rbac";
+import { canAccessInventory } from "@/lib/inventory/access";
 
 type SidebarProps = {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
-  /** PWA terpasang: selalu drawer (sidebar tersembunyi sampai menu dibuka), walau jendela lebar. */
-  preferDrawerNav?: boolean;
 };
 
 export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
-  preferDrawerNav = false,
 }: SidebarProps) {
   const [user, setUser] = useState<Record<string, unknown> | null>(null);
 
@@ -30,6 +28,7 @@ export default function Sidebar({
   const role = auth.roleCode;
   const isOwner = auth.accountType === "owner";
   const canManageHr = canAccess(user, "/hr");
+  const canInventory = canAccessInventory(user);
 
   const menuClass =
     "block px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition active:bg-slate-800";
@@ -38,16 +37,10 @@ export default function Sidebar({
     "text-xs text-slate-400 mb-2 mt-4 uppercase tracking-wide";
 
   const closeIfMobile = () => {
-    if (preferDrawerNav) {
-      onMobileClose?.();
-      return;
-    }
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       onMobileClose?.();
     }
   };
-
-  const pwaDrawer = preferDrawerNav;
 
   return (
     <div className="w-0 shrink-0 overflow-visible lg:w-64 lg:shrink-0">
@@ -56,7 +49,7 @@ export default function Sidebar({
           type="button"
           aria-label="Tutup menu"
           className={
-            "fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-[2px] " + (pwaDrawer ? "" : "lg:hidden")
+            "fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-[2px] lg:hidden"
           }
           onClick={() => onMobileClose?.()}
         />
@@ -67,12 +60,8 @@ export default function Sidebar({
         className={
           "flex h-full max-h-[100dvh] w-[min(19rem,90vw)] shrink-0 flex-col bg-slate-900 text-white " +
           "fixed inset-y-0 left-0 z-50 shadow-2xl transition-transform duration-200 ease-out " +
-          (pwaDrawer
-            ? mobileOpen
-              ? "translate-x-0"
-              : "-translate-x-full"
-            : "lg:static lg:z-auto lg:w-64 lg:max-h-none lg:shadow-none " +
-              (mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"))
+          "lg:static lg:z-auto lg:w-64 lg:max-h-none lg:shadow-none " +
+            (mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
         }
       >
 
@@ -82,7 +71,7 @@ export default function Sidebar({
           type="button"
           className={
             "rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white " +
-            (pwaDrawer ? "" : "lg:hidden")
+            "lg:hidden"
           }
           aria-label="Tutup menu"
           onClick={() => onMobileClose?.()}
@@ -93,17 +82,7 @@ export default function Sidebar({
 
       <div className="flex flex-1 flex-col space-y-4 overflow-y-auto overscroll-contain px-3 pb-4 pt-2 md:px-4">
         <div>
-          <p className={sectionTitle}>Absensi &amp; beranda</p>
-          {canAccess(user, "/attendance") && (
-            <Link href="/attendance" className={menuClass} onClick={closeIfMobile}>
-              <span className="flex items-center gap-2">
-                <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Absensi (HP)
-              </span>
-            </Link>
-          )}
+          <p className={sectionTitle}>Beranda</p>
           {getOperationalDashboardRoute(user) ? (
             <Link href={getOperationalDashboardRoute(user)!} className={menuClass} onClick={closeIfMobile}>
               <span className="flex items-center gap-2">
@@ -115,6 +94,20 @@ export default function Sidebar({
             </Link>
           ) : null}
         </div>
+
+        {canInventory && (
+          <div>
+            <p className={sectionTitle}>Gudang &amp; Inventory</p>
+            <Link href="/inventory" className={menuClass} onClick={closeIfMobile}>
+              <span className="flex items-center gap-2">
+                <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                Inventory SERBA
+              </span>
+            </Link>
+          </div>
+        )}
 
         {canManageHr && (
           <div>
@@ -162,6 +155,24 @@ export default function Sidebar({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
                 Lembur
+              </span>
+            </Link>
+
+            <Link href="/hr/work-calendar" className={menuClass} onClick={closeIfMobile}>
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Jadwal &amp; libur kantor
+              </span>
+            </Link>
+
+            <Link href="/hr/compensation/settings" className={menuClass} onClick={closeIfMobile}>
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Pengaturan nominal
               </span>
             </Link>
 
@@ -227,7 +238,7 @@ export default function Sidebar({
               </span>
             </Link>
 
-            <Link href="/attendance/field-activity" className={menuClass} onClick={closeIfMobile}>
+            <Link href="/dashboard-staff/field-activity" className={menuClass} onClick={closeIfMobile}>
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />

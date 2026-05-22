@@ -7,6 +7,11 @@ import { ClientResponseError } from "pocketbase";
 import { pb } from "./pocketbase";
 import { getErrorMessage } from "./errors";
 import {
+  computeOvertimePayAmount,
+  computeOvertimePaySimple,
+  fetchHrCompensationSettings,
+} from "./hr-compensation";
+import {
   HR_ACTION_AT_FIELD,
   HR_ACTION_BY_FIELD,
   HR_ACTION_NAME_FIELD,
@@ -41,6 +46,12 @@ export interface OvertimeRequest {
   hr_action_by?: string;
   hr_action_name?: string;
   hr_action_at?: string;
+  /** Tarif per jam (Rp) — diisi HR saat penunjukan/approve. */
+  hourly_rate?: number;
+  /** Pengali (mis. 1.5). */
+  pay_multiplier?: number;
+  /** Jam × tarif × pengali — disimpan untuk payroll. */
+  pay_amount?: number;
   created: string;
   updated: string;
 }
@@ -142,10 +153,62 @@ export function normalizeOvertimeFromPb(items: unknown[]): OvertimeRequest[] {
       hr_action_by: String(raw[HR_ACTION_BY_FIELD] ?? raw.hr_action_by ?? "").trim() || undefined,
       hr_action_name: String(raw[HR_ACTION_NAME_FIELD] ?? raw.hr_action_name ?? "").trim() || undefined,
       hr_action_at: String(raw[HR_ACTION_AT_FIELD] ?? raw.hr_action_at ?? "").trim() || undefined,
+      hourly_rate:
+        raw.hourly_rate != null && raw.hourly_rate !== ""
+          ? Math.round(Number(raw.hourly_rate) || 0)
+          : undefined,
+      pay_multiplier:
+        raw.pay_multiplier != null && raw.pay_multiplier !== ""
+          ? Number(raw.pay_multiplier) || undefined
+          : undefined,
+      pay_amount:
+        raw.pay_amount != null && raw.pay_amount !== ""
+          ? Math.round(Number(raw.pay_amount) || 0)
+          : undefined,
       created: String(raw.created ?? ""),
       updated: String(raw.updated ?? ""),
     };
   });
+}
+
+async function resolveOvertimeRates(input?: {
+  hourly_rate?: number;
+  pay_multiplier?: number;
+}): Promise<{ hourly_rate: number; pay_multiplier: number }> {
+  const settings = await fetchHrCompensationSettings();
+  return {
+    hourly_rate: Math.max(
+      0,
+      Math.round(
+        input?.hourly_rate != null && input.hourly_rate > 0
+          ? input.hourly_rate
+          : settings?.overtime_hourly_rate ?? 0
+      )
+    ),
+    pay_multiplier: Math.max(
+      1,
+      input?.pay_multiplier != null && input.pay_multiplier > 0
+        ? input.pay_multiplier
+        : settings?.overtime_multiplier ?? 1
+    ),
+  };
+}
+
+function buildOvertimePayFields(
+  hours: number,
+  rates: { hourly_rate: number; pay_multiplier?: number },
+  payAmountOverride?: number
+): { hourly_rate: number; pay_multiplier: number; pay_amount: number } {
+  const mult = Math.max(1, rates.pay_multiplier ?? 1);
+  const amount =
+    payAmountOverride != null && payAmountOverride >= 0
+      ? Math.round(payAmountOverride)
+      : computeOvertimePaySimple(hours, rates.hourly_rate);
+  return {
+    hourly_rate: rates.hourly_rate,
+    pay_multiplier: mult,
+    pay_amount: amount,
+  };
 }
 
 export async function fetchOvertimeForHr(): Promise<OvertimeRequest[]> {
@@ -174,6 +237,8 @@ export async function createHrAssignment(input: {
   end_time: string;
   reason: string;
   hr_note?: string;
+  hourly_rate?: number;
+  pay_multiplier?: number;
 }): Promise<{ success: boolean; message: string }> {
   const uid = pb.authStore.model?.id;
   if (!uid) return { success: false, message: "Login HR diperlukan." };
@@ -188,6 +253,12 @@ export async function createHrAssignment(input: {
   const hours = computeOvertimeHours(input.start_time, input.end_time);
   if (hours <= 0) return { success: false, message: "Rentang jam tidak valid." };
 
+  const rates = await resolveOvertimeRates({
+    hourly_rate: input.hourly_rate,
+    pay_multiplier: input.pay_multiplier,
+  });
+  const payFields = buildOvertimePayFields(hours, rates);
+
   try {
     await pb.collection(COLLECTION).create({
       user: input.userId.trim(),
@@ -200,6 +271,7 @@ export async function createHrAssignment(input: {
       reason,
       hr_note: (input.hr_note ?? "").trim(),
       created_by: String(uid),
+      ...payFields,
     });
     return { success: true, message: "Penunjukan lembur terkirim. Staff dapat menerima atau menolak." };
   } catch (e: unknown) {
@@ -252,10 +324,17 @@ export async function staffAcceptAssignment(requestId: string): Promise<{ succes
       return { success: false, message: "Status tidak lagi menunggu respons Anda." };
     }
     if (overtimeUserId(raw as { user?: unknown }) !== uid) {
-      return { success: false, message: "Bukan penunjukan untuk akun Anda." };
+      return { success: false, message: "Bukan data lembur untuk akun Anda." };
     }
     await pb.collection(COLLECTION).update(requestId, { status: "staff_accepted" });
-    return { success: true, message: "Penunjukan lembur diterima." };
+    const src = String(raw.source);
+    return {
+      success: true,
+      message:
+        src === "staff_request"
+          ? "Persetujuan HR diterima. Lembur masuk perhitungan gaji."
+          : "Penunjukan lembur diterima.",
+    };
   } catch (e: unknown) {
     if (e instanceof ClientResponseError && e.status === 404) {
       return { success: false, message: "Data lembur tidak ditemukan." };
@@ -289,18 +368,28 @@ export async function staffDeclineAssignment(
   }
 }
 
-export async function hrApproveStaffRequest(requestId: string): Promise<{ success: boolean; message: string }> {
+export async function hrApproveStaffRequest(
+  requestId: string,
+  options?: { hourly_rate?: number; pay_amount?: number }
+): Promise<{ success: boolean; message: string }> {
   try {
     const rec = await pb.collection(COLLECTION).getOne(requestId);
     const raw = rec as unknown as Record<string, unknown>;
     if (String(raw.source) !== "staff_request" || String(raw.status) !== "waiting_hr") {
       return { success: false, message: "Hanya pengajuan staff yang menunggu HR yang dapat disetujui." };
     }
+    const hours = Number(raw.hours) || computeOvertimeHours(String(raw.start_time), String(raw.end_time));
+    const rates = await resolveOvertimeRates({ hourly_rate: options?.hourly_rate });
+    const payFields = buildOvertimePayFields(hours, rates, options?.pay_amount);
     await pb.collection(COLLECTION).update(requestId, {
-      status: "hr_approved",
+      status: "waiting_staff",
       ...hrActionPayload(),
+      ...payFields,
     });
-    return { success: true, message: "Pengajuan lembur disetujui." };
+    return {
+      success: true,
+      message: `Nominal ${payFields.pay_amount.toLocaleString("id-ID")} dikirim ke staff. Menunggu konfirmasi staff.`,
+    };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyetujui.") };
   }
@@ -330,7 +419,7 @@ export async function hrRejectStaffRequest(
 }
 
 export const OVERTIME_STATUS_LABEL: Record<OvertimeStatus, string> = {
-  waiting_staff: "Menunggu respons staff",
+  waiting_staff: "Menunggu konfirmasi staff",
   waiting_hr: "Menunggu ACC HR",
   staff_accepted: "Staff terima",
   staff_declined: "Staff tolak",

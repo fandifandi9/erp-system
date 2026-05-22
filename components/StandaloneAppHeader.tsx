@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 export type StandaloneAppHeaderProps = {
-  /** Tautan logo + judul (biasanya `/attendance`). */
+  /** Tautan logo + judul (mis. `/` → middleware ke dashboard kerja). */
   homeHref?: string;
   /** Label konteks halaman, mis. "Absensi" atau "Profil". */
   subtitle?: string;
@@ -17,12 +17,12 @@ export type StandaloneAppHeaderProps = {
  * Header konsisten untuk rute di luar layout dashboard (logo + SERBA ERP).
  */
 export default function StandaloneAppHeader({
-  homeHref = "/attendance",
+  homeHref = "/",
   subtitle,
   endSlot,
 }: StandaloneAppHeaderProps) {
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white pt-[env(safe-area-inset-top,0px)] shadow-sm">
+    <header className="sticky top-0 z-20 border-b border-slate-200/90 bg-white/95 pt-[env(safe-area-inset-top,0px)] shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
       <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:min-h-[4rem] sm:gap-4 sm:px-6 sm:py-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
           <Link
@@ -32,9 +32,9 @@ export default function StandaloneAppHeader({
           >
             <span className="relative flex h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5 sm:h-14 sm:w-14">
               <Image
-                src="/pwa-192"
-                width={192}
-                height={192}
+                src="/icon"
+                width={32}
+                height={32}
                 className="absolute inset-0 h-full w-full object-cover"
                 alt=""
                 priority

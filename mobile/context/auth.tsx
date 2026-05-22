@@ -13,9 +13,16 @@ import { extractMfaId } from "../lib/auth-mfa";
 import {
   clearMobileSessionNonce,
   getMobileSessionNonce,
+  ensureMobileSessionNonceSynced,
   registerMobileSessionAfterAuth,
   shouldLogoutMobileSessionMismatch,
 } from "../lib/auth-session";
+import {
+  pocketBaseRealtimeDisabled,
+  pocketBaseSessionPollIntervalMs,
+} from "@/lib/pocketbase-realtime-config";
+import { clearOfflineQueue } from "@/lib/offline-queue/storage";
+import { notifyOfflineQueueChanged } from "@/lib/offline-queue/enqueue";
 
 type AuthModel = RecordModel & {
   id: string;
@@ -55,9 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsub = pb.authStore.onChange(() => {
       bump((n) => n + 1);
     }, true);
-    const t = setTimeout(() => setHydrated(true), 50);
+
+    const raf = requestAnimationFrame(() => setHydrated(true));
+    const fallback = setTimeout(() => setHydrated(true), 800);
+
     return () => {
-      clearTimeout(t);
+      cancelAnimationFrame(raf);
+      clearTimeout(fallback);
       unsub();
     };
   }, []);
@@ -124,6 +135,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     await clearMobileSessionNonce();
     pb.authStore.clear();
+    try {
+      await clearOfflineQueue();
+      notifyOfflineQueueChanged();
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
@@ -138,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const verify = async () => {
       if (!pb.authStore.isValid) return;
       try {
+        await ensureMobileSessionNonceSynced(pb);
         const fresh = await pb.collection("users").getOne(uid, { requestKey: null });
         if (
           await shouldLogoutMobileSessionMismatch(
@@ -154,20 +172,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     void verify();
 
+    let pollId: ReturnType<typeof setInterval> | undefined;
+
     void (async () => {
       unsubRef.current?.();
-      unsubRef.current = await pb.collection("users").subscribe("*", async (e) => {
-        if (e.record?.id !== uid) return;
-        const server = String(e.record.session_nonce ?? "").trim();
-        const local = (await getMobileSessionNonce())?.trim() ?? "";
-        if (server && local && server !== local) {
-          await clearMobileSessionNonce();
-          pb.authStore.clear();
-        }
-      });
+      unsubRef.current = undefined;
+
+      if (pocketBaseRealtimeDisabled()) {
+        const every = pocketBaseSessionPollIntervalMs();
+        pollId = setInterval(() => void verify(), every);
+        return;
+      }
+
+      try {
+        unsubRef.current = await pb.collection("users").subscribe(uid, async (e) => {
+          try {
+            if (e.record?.id !== uid) return;
+            const server = String(e.record.session_nonce ?? "").trim();
+            const local = (await getMobileSessionNonce())?.trim() ?? "";
+            if (server && local && server !== local) {
+              await clearMobileSessionNonce();
+              pb.authStore.clear();
+            }
+          } catch {
+            /* jangan biarkan callback realtime mem-crash app */
+          }
+        });
+      } catch {
+        const every = pocketBaseSessionPollIntervalMs();
+        pollId = setInterval(() => void verify(), every);
+      }
     })();
 
     return () => {
+      if (pollId) {
+        clearInterval(pollId);
+        pollId = undefined;
+      }
       void unsubRef.current?.();
       unsubRef.current = undefined;
     };

@@ -1,17 +1,6 @@
-"use client";
+import FieldActivityStaffPanel from "@/components/FieldActivityStaffPanel";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
-/** Aktivitas luar kantor dipindah ke zona absensi mandiri: `/attendance/field-activity`. */
-export default function StaffFieldActivityRedirectPage() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/attendance/field-activity");
-  }, [router]);
-  return (
-    <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-600">
-      Mengalihkan ke absensi → aktivitas luar kantor…
-    </div>
-  );
+/** Aktivitas luar kantor di dashboard kerja (absensi/check-in hanya app native). */
+export default function StaffFieldActivityPage() {
+  return <FieldActivityStaffPanel />;
 }

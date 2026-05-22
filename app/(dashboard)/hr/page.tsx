@@ -4,6 +4,7 @@ import { pb } from "@/lib/pocketbase";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Users, TrendingUp, Clock, AlertTriangle, Calendar, MapPin, Moon, Navigation } from "lucide-react";
+import { MissedCheckoutReminderBanner } from "@/components/MissedCheckoutReminderBanner";
 
 export default function HRPage() {
   const [stats, setStats] = useState({
@@ -112,6 +113,8 @@ export default function HRPage() {
           Terakhir diperbarui: {lastUpdate.toLocaleTimeString("id-ID")} (auto-refresh setiap 30 detik)
         </p>
       </div>
+
+      <MissedCheckoutReminderBanner />
 
       {/* STATS CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -247,6 +250,11 @@ export default function HRPage() {
           <li>Data diperbarui secara real-time</li>
           <li>Statistik menampilkan data hari ini</li>
           <li>Klik pada card untuk melihat detail lengkap</li>
+          <li>
+            Audit selfie: di <strong className="text-slate-800">Kelola Karyawan</strong> → detail pegawai → centang{" "}
+            <em>Wajibkan foto selfie saat check-in</em> (field <code className="rounded bg-slate-100 px-0.5">profiles.require_checkin_selfie</code>
+            ). Owner dan HR bisa mengubahnya sesuai akses PocketBase.
+          </li>
         </ul>
       </div>
     </div>

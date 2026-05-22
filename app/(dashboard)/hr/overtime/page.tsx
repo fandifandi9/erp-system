@@ -13,8 +13,17 @@ import {
   type OvertimeRequest,
   type OvertimeStatus,
 } from "@/lib/overtime";
+import { filterTimeHmTyping, formalizeTimeHmInput } from "@/lib/time-hm-input";
 import { canAccess } from "@/lib/rbac";
+import {
+  fetchHrCompensationSettings,
+  formatIdr,
+  computeOvertimePaySimple,
+  computeOvertimePayAmount,
+} from "@/lib/hr-compensation";
+import { formatIntegerId, parseIntegerInput } from "@/lib/format-number";
 import { Loader2, Moon, User, CheckCircle, XCircle, Plus, Clock, Calendar } from "lucide-react";
+import Link from "next/link";
 
 type HrRow = OvertimeRequest & {
   expand?: {
@@ -40,7 +49,10 @@ export default function HrOvertimePage() {
   const [assignEnd, setAssignEnd] = useState("22:00");
   const [assignReason, setAssignReason] = useState("");
   const [assignHrNote, setAssignHrNote] = useState("");
+  const [assignHourly, setAssignHourly] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
+  const [approveId, setApproveId] = useState<string | null>(null);
+  const [approveHourly, setApproveHourly] = useState("");
 
   const current = pb.authStore.model;
   const hasAccess = !!current && canAccess(current, "/hr/overtime");
@@ -108,6 +120,17 @@ export default function HrOvertimePage() {
     if (!assignDate) setAssignDate(todayYmd());
   }, [assignDate]);
 
+  useEffect(() => {
+    if (!hasAccess) return;
+    void (async () => {
+      const s = await fetchHrCompensationSettings();
+      if (s) {
+        setAssignHourly(String(s.overtime_hourly_rate));
+        setApproveHourly(String(s.overtime_hourly_rate));
+      }
+    })();
+  }, [hasAccess]);
+
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (filter === "wait_staff") return r.status === "waiting_staff";
@@ -131,12 +154,28 @@ export default function HrOvertimePage() {
     };
   }, [rows]);
 
-  const runApprove = async (id: string) => {
-    setActing(id);
-    const res = await hrApproveStaffRequest(id);
+  const openApprove = (row: HrRow) => {
+    setApproveId(row.id);
+    setApproveHourly(
+      row.hourly_rate != null ? String(row.hourly_rate) : assignHourly || "0"
+    );
+  };
+
+  const runApprove = async () => {
+    if (!approveId || !approveRow) return;
+    setActing(approveId);
+    const rate = parseIntegerInput(approveHourly);
+    const pay = computeOvertimePaySimple(approveRow.hours, rate);
+    const res = await hrApproveStaffRequest(approveId, {
+      hourly_rate: rate,
+      pay_amount: pay,
+    });
     setActing(null);
     alert(res.message);
-    if (res.success) void load();
+    if (res.success) {
+      setApproveId(null);
+      void load();
+    }
   };
 
   const runReject = async () => {
@@ -154,14 +193,20 @@ export default function HrOvertimePage() {
 
   const submitAssign = async (e: React.FormEvent) => {
     e.preventDefault();
+    const startHm = formalizeTimeHmInput(assignStart);
+    const endHm = formalizeTimeHmInput(assignEnd);
+    setAssignStart(startHm);
+    setAssignEnd(endHm);
     setAssignBusy(true);
     const res = await createHrAssignment({
       userId: assignUser,
       work_date: assignDate,
-      start_time: assignStart,
-      end_time: assignEnd,
+      start_time: startHm,
+      end_time: endHm,
       reason: assignReason,
       hr_note: assignHrNote,
+      hourly_rate: parseIntegerInput(assignHourly),
+      pay_multiplier: 1,
     });
     setAssignBusy(false);
     alert(res.message);
@@ -198,6 +243,14 @@ export default function HrOvertimePage() {
     row.expand?.user?.email?.trim() ||
     row.user?.slice(0, 8) + "…";
 
+  const assignHours = computeOvertimeHours(assignStart, assignEnd);
+  const assignPreviewPay = computeOvertimePaySimple(assignHours, parseIntegerInput(assignHourly));
+
+  const approveRow = approveId ? rows.find((r) => r.id === approveId) : null;
+  const approvePreviewPay = approveRow
+    ? computeOvertimePaySimple(approveRow.hours, parseIntegerInput(approveHourly))
+    : 0;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -206,6 +259,12 @@ export default function HrOvertimePage() {
           <p className="mt-1 text-sm text-slate-500">
             Penunjukan lembur ke karyawan (staff terima/tolak), dan persetujuan pengajuan lembur dari staff.
           </p>
+          <Link
+            href="/hr/compensation/settings"
+            className="mt-2 inline-block text-sm font-medium text-indigo-600 hover:underline"
+          >
+            Pengaturan tarif default →
+          </Link>
         </div>
         <button
           type="button"
@@ -278,28 +337,48 @@ export default function HrOvertimePage() {
               <label className="text-xs font-medium text-slate-600">Jam mulai * (HH:mm)</label>
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 required
-                placeholder="18:00"
+                maxLength={5}
+                placeholder="09:00"
                 value={assignStart}
-                onChange={(e) => setAssignStart(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onChange={(e) => setAssignStart(filterTimeHmTyping(e.target.value))}
+                onBlur={() => setAssignStart((v) => formalizeTimeHmInput(v))}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm tabular-nums"
               />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600">Jam selesai * (HH:mm)</label>
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 required
-                placeholder="22:00"
+                maxLength={5}
+                placeholder="18:00"
                 value={assignEnd}
-                onChange={(e) => setAssignEnd(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onChange={(e) => setAssignEnd(filterTimeHmTyping(e.target.value))}
+                onBlur={() => setAssignEnd((v) => formalizeTimeHmInput(v))}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm tabular-nums"
               />
             </div>
           </div>
-          <p className="text-xs text-slate-600">
-            Perkiraan durasi:{" "}
-            <strong>{computeOvertimeHours(assignStart, assignEnd).toFixed(2)} jam</strong>
+          <div>
+            <label className="text-xs font-medium text-slate-600">Tarif lembur per jam (Rp)</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={assignHourly ? formatIntegerId(parseIntegerInput(assignHourly)) : ""}
+              onChange={(e) => setAssignHourly(e.target.value.replace(/\D/g, ""))}
+              placeholder="100000"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <p className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm text-slate-700">
+            <strong>{formatIdr(parseIntegerInput(assignHourly))}</strong>/jam ×{" "}
+            <strong>{assignHours.toFixed(2)}</strong> jam ={" "}
+            <strong className="text-indigo-700">{formatIdr(assignPreviewPay)}</strong>
           </p>
           <div>
             <label className="text-xs font-medium text-slate-600">Keterangan untuk sistem *</label>
@@ -404,6 +483,26 @@ export default function HrOvertimePage() {
                         <strong>Staff menolak:</strong> {row.staff_decline_note}
                       </p>
                     )}
+                    {(row.pay_amount != null && row.pay_amount > 0) ||
+                    (row.hourly_rate != null && row.hourly_rate > 0) ? (
+                      <p className="mt-2 text-sm font-medium text-emerald-800">
+                        Bayaran:{" "}
+                        {row.pay_amount != null && row.pay_amount > 0
+                          ? formatIdr(row.pay_amount)
+                          : formatIdr(
+                              computeOvertimePayAmount(
+                                row.hours,
+                                row.hourly_rate ?? 0,
+                                row.pay_multiplier ?? 1.5
+                              )
+                            )}
+                        {row.hourly_rate != null && row.hourly_rate > 0 ? (
+                          <span className="ml-1 text-xs font-normal text-emerald-700">
+                            ({formatIdr(row.hourly_rate)}/jam × {row.hours} jam)
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : null}
                     {formatOvertimeHrActionSummary(row) && (
                       <p className="mt-2 text-xs text-slate-500">
                         HR: {formatOvertimeHrActionSummary(row)}
@@ -417,7 +516,7 @@ export default function HrOvertimePage() {
                     <button
                       type="button"
                       disabled={acting === row.id}
-                      onClick={() => void runApprove(row.id)}
+                      onClick={() => openApprove(row)}
                       className="inline-flex items-center gap-1 rounded-xl bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
                     >
                       {acting === row.id ? (
@@ -444,6 +543,54 @@ export default function HrOvertimePage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {approveId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            role="dialog"
+          >
+            <h2 className="text-lg font-semibold text-slate-800">Setujui pengajuan lembur</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {approveRow
+                ? `${displayName(approveRow)} · ${approveRow.work_date} · ${approveRow.hours} jam`
+                : "Atur nominal lalu kirim ke staff untuk dikonfirmasi."}
+            </p>
+            <div className="mt-4">
+              <label className="text-xs font-medium text-slate-600">Tarif lembur per jam (Rp)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={approveHourly ? formatIntegerId(parseIntegerInput(approveHourly)) : ""}
+                onChange={(e) => setApproveHourly(e.target.value.replace(/\D/g, ""))}
+                placeholder="100000"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <p className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              {formatIdr(parseIntegerInput(approveHourly))}/jam × {approveRow?.hours ?? 0} jam ={" "}
+              <strong>{formatIdr(approvePreviewPay)}</strong>
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setApproveId(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={acting === approveId}
+                onClick={() => void runApprove()}
+                className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {acting === approveId ? "Menyimpan…" : "Kirim ke staff"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

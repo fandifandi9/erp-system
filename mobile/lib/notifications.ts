@@ -2,15 +2,25 @@ import { useEffect, useRef } from "react";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+let notificationHandlerReady = false;
+
+function ensureNotificationHandler() {
+  if (notificationHandlerReady) return;
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    notificationHandlerReady = true;
+  } catch {
+    /* release APK tanpa FCM penuh */
+  }
+}
 
 /**
  * Minta izin notifikasi + (native build) daftarkan push token.
@@ -25,6 +35,7 @@ export function usePushRegistration(enabled: boolean) {
 
     void (async () => {
       try {
+        ensureNotificationHandler();
         const { status: existing } =
           await Notifications.getPermissionsAsync();
         let finalStatus = existing;

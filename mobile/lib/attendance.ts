@@ -12,6 +12,12 @@ import {
   validateGPSRadius,
 } from "./gps";
 import { getDeviceInfo } from "./device";
+import {
+  syncOperationalAccessAfterCheckIn,
+  syncOperationalAccessAfterCheckOut,
+} from "./operational-access-sync";
+import { isRetriableTransportError } from "./network";
+import { enqueueOfflineItem } from "./offline-queue/enqueue";
 
 export const DEFAULT_LATE_TOLERANCE_MINUTES = 10;
 const DEFAULT_OFFICE_RADIUS_M = 100;
@@ -38,6 +44,7 @@ export interface AttendanceRecord {
   date: string;
   check_in?: string;
   check_out?: string;
+  check_in_selfie?: string;
   status: "present" | "late" | "absent" | "leave";
   late_minutes: number;
   work_hours: number;
@@ -76,9 +83,16 @@ export interface Profile {
   department?: string;
   shift_start: string;
   shift_end: string;
+  shift_start_saturday?: string;
+  shift_end_saturday?: string;
+  shift_start_sunday?: string;
+  shift_end_sunday?: string;
+  shift_start_weekend?: string;
+  shift_end_weekend?: string;
   work_end?: string;
   grace_minutes?: number;
   late_tolerance?: number;
+  require_checkin_selfie?: boolean;
 }
 
 export async function fetchAttendanceRules(): Promise<AttendanceRules> {
@@ -139,6 +153,85 @@ export function resolveProfileShift(profile: Profile): {
     (profile.work_end && String(profile.work_end).trim()) ||
     "17:00";
   return { shiftStart, shiftEndDisplay };
+}
+
+export function isWeekendYmd(dateYmd: string): boolean {
+  const ymd = dateYmd.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return false;
+  const dow = d.getDay();
+  return dow === 0 || dow === 6;
+}
+
+function legacyWeekendShiftPair(profile: Profile): { start: string; end: string } | null {
+  const a =
+    profile.shift_start_weekend != null ? String(profile.shift_start_weekend).trim() : "";
+  const b = profile.shift_end_weekend != null ? String(profile.shift_end_weekend).trim() : "";
+  return a && b ? { start: a, end: b } : null;
+}
+
+export function resolveProfileShiftForDate(
+  profile: Profile,
+  dateYmd: string
+): {
+  shiftStart: string;
+  shiftEndDisplay: string;
+  usedCustomShiftForDay: boolean;
+} {
+  const base = resolveProfileShift(profile);
+  if (!isWeekendYmd(dateYmd)) {
+    return { ...base, usedCustomShiftForDay: false };
+  }
+  const ymd = dateYmd.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    return { ...base, usedCustomShiftForDay: false };
+  }
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    return { ...base, usedCustomShiftForDay: false };
+  }
+  const dow = d.getDay();
+  if (dow === 6) {
+    const ss =
+      profile.shift_start_saturday != null ? String(profile.shift_start_saturday).trim() : "";
+    const se = profile.shift_end_saturday != null ? String(profile.shift_end_saturday).trim() : "";
+    if (ss && se) {
+      return {
+        shiftStart: ss,
+        shiftEndDisplay: se,
+        usedCustomShiftForDay: true,
+      };
+    }
+    const legSat = legacyWeekendShiftPair(profile);
+    if (legSat) {
+      return {
+        shiftStart: legSat.start,
+        shiftEndDisplay: legSat.end,
+        usedCustomShiftForDay: true,
+      };
+    }
+  }
+  if (dow === 0) {
+    const ss = profile.shift_start_sunday != null ? String(profile.shift_start_sunday).trim() : "";
+    const se = profile.shift_end_sunday != null ? String(profile.shift_end_sunday).trim() : "";
+    if (ss && se) {
+      return {
+        shiftStart: ss,
+        shiftEndDisplay: se,
+        usedCustomShiftForDay: true,
+      };
+    }
+    const legSun = legacyWeekendShiftPair(profile);
+    if (legSun) {
+      return {
+        shiftStart: legSun.start,
+        shiftEndDisplay: legSun.end,
+        usedCustomShiftForDay: true,
+      };
+    }
+  }
+  return { ...base, usedCustomShiftForDay: false };
 }
 
 export function getTodayDate(): string {
@@ -379,10 +472,23 @@ async function userHasApprovedFieldActivityForDate(
   }
 }
 
-export async function checkIn(userId: string): Promise<{
+export function profileRequiresCheckinSelfie(
+  profile: { require_checkin_selfie?: unknown } | null | undefined
+): boolean {
+  if (!profile) return false;
+  return parseAttendanceBool(profile.require_checkin_selfie, false);
+}
+
+export type CheckInSelfiePayload = { uri: string; name?: string; type?: string };
+
+export async function checkIn(
+  userId: string,
+  options?: { selfie?: CheckInSelfiePayload | null }
+): Promise<{
   success: boolean;
   message: string;
   data?: AttendanceRecord;
+  queued?: boolean;
 }> {
   try {
     if (!userId) {
@@ -410,7 +516,14 @@ export async function checkIn(userId: string): Promise<{
       };
     }
     const profile = profileRaw;
-    const { shiftStart } = resolveProfileShift(profile);
+    if (profileRequiresCheckinSelfie(profile) && !options?.selfie?.uri) {
+      return {
+        success: false,
+        message:
+          "HR mewajibkan foto selfie saat check-in. Ambil foto dulu, lalu check-in lagi.",
+      };
+    }
+    const { shiftStart } = resolveProfileShiftForDate(profile, todayYmd);
     const rules = await fetchAttendanceRules();
     const enforceGeo = !rules.allowRemote && rules.gpsRequired;
     let fieldActivityApproved = false;
@@ -584,12 +697,53 @@ export async function checkIn(userId: string): Promise<{
       dataToSave.lng = userLocation.lng;
     }
 
-    const record = await pb.collection("attendance_logs").create(dataToSave);
-    return {
-      success: true,
-      message: `Absensi OK. ${gpsValidation.message}`,
-      data: record as unknown as AttendanceRecord,
-    };
+    const selfie = options?.selfie;
+    try {
+      const record = await pb.collection("attendance_logs").create(
+        selfie?.uri
+          ? {
+              ...dataToSave,
+              check_in_selfie: {
+                uri: selfie.uri,
+                name: selfie.name || "checkin_selfie.jpg",
+                type: selfie.type || "image/jpeg",
+              },
+            }
+          : dataToSave
+      );
+
+      const op = await syncOperationalAccessAfterCheckIn(userId);
+      if (!op.ok) {
+        console.warn("[mobile] Akses web operasional tidak diperbarui (users / rule PB):", op.error);
+      }
+
+      return {
+        success: true,
+        message: `Absensi OK. ${gpsValidation.message}`,
+        data: record as unknown as AttendanceRecord,
+      };
+    } catch (error: unknown) {
+      if (!selfie?.uri && isRetriableTransportError(error)) {
+        await enqueueOfflineItem({
+          type: "attendance_checkin",
+          payload: {
+            user_id: userId,
+            date_ymd: todayYmd,
+            dataToSave,
+          },
+          idempotency_key: `att_ci_${userId}_${todayYmd}`,
+        });
+        return {
+          success: true,
+          queued: true,
+          message: `Tersimpan lokal — akan disinkron otomatis. ${gpsValidation.message}`,
+        };
+      }
+      return {
+        success: false,
+        message: getErrorMessage(error, "Check-in gagal"),
+      };
+    }
   } catch (error: unknown) {
     return {
       success: false,
@@ -602,6 +756,7 @@ export async function checkOut(userId: string): Promise<{
   success: boolean;
   message: string;
   data?: AttendanceRecord;
+  queued?: boolean;
 }> {
   try {
     if (!userId) {
@@ -619,15 +774,46 @@ export async function checkOut(userId: string): Promise<{
     }
     const now = new Date();
     const workHours = calculateWorkHours(record.check_in, now.toISOString());
-    const updated = await pb.collection("attendance_logs").update(record.id, {
-      check_out: now.toISOString(),
-      work_hours: workHours,
-    });
-    return {
-      success: true,
-      message: `Check-out OK. Jam kerja: ${workHours} j`,
-      data: updated as unknown as AttendanceRecord,
-    };
+    const checkOutIso = now.toISOString();
+    try {
+      const updated = await pb.collection("attendance_logs").update(record.id, {
+        check_out: checkOutIso,
+        work_hours: workHours,
+      });
+
+      const op = await syncOperationalAccessAfterCheckOut(userId);
+      if (!op.ok) {
+        console.warn("[mobile] Cutoff akses web operasional gagal (users / rule PB):", op.error);
+      }
+
+      return {
+        success: true,
+        message: `Check-out OK. Jam kerja: ${workHours} j`,
+        data: updated as unknown as AttendanceRecord,
+      };
+    } catch (error: unknown) {
+      if (isRetriableTransportError(error)) {
+        await enqueueOfflineItem({
+          type: "attendance_checkout",
+          payload: {
+            user_id: userId,
+            record_id: record.id,
+            check_out: checkOutIso,
+            work_hours: workHours,
+          },
+          idempotency_key: `att_co_${record.id}`,
+        });
+        return {
+          success: true,
+          queued: true,
+          message: `Check-out tersimpan lokal — akan disinkron otomatis (±${workHours} j).`,
+        };
+      }
+      return {
+        success: false,
+        message: getErrorMessage(error, "Check-out gagal"),
+      };
+    }
   } catch (error: unknown) {
     return {
       success: false,

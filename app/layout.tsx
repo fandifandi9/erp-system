@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import PwaRegister from "@/components/PwaRegister";
+import BlurActiveInputOnRoute from "@/components/BlurActiveInputOnRoute";
+import WebPwaCleanup from "@/components/WebPwaCleanup";
 import WebSessionGuard from "@/components/WebSessionGuard";
 import "./globals.css";
 
@@ -19,17 +20,8 @@ export const metadata: Metadata = {
   description: "Sistem ERP — absensi, HR, cuti, lembur, aktivitas luar, payroll.",
   applicationName: "SERBA ERP",
   formatDetection: { telephone: false },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "SERBA ERP",
-  },
   icons: {
-    icon: [
-      { url: "/icon", sizes: "32x32", type: "image/png" },
-      { url: "/pwa-192", sizes: "192x192", type: "image/png" },
-      { url: "/pwa-512", sizes: "512x512", type: "image/png" },
-    ],
+    icon: [{ url: "/icon", sizes: "32x32", type: "image/png" }],
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
 };
@@ -56,8 +48,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full min-h-[100dvh] flex flex-col touch-manipulation">
-        <PwaRegister />
+        <WebPwaCleanup />
         <WebSessionGuard />
+        <BlurActiveInputOnRoute />
         {children}
       </body>
     </html>

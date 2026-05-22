@@ -3,11 +3,21 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
+import { ClientResponseError } from "pocketbase";
 import { pb } from "@/lib/pocketbase";
 import { ensureAndSyncProfile } from "@/lib/profile";
-import PwaInstallBanner from "@/components/PwaInstallBanner";
+import { AppVersionWatermark } from "@/components/AppVersionWatermark";
 import { extractMfaId } from "@/lib/auth-mfa";
 import { registerWebSessionAfterAuth } from "@/lib/auth-session";
+import { blurActiveElement } from "@/lib/blur-active-input";
+import { getDefaultRouteForUser } from "@/lib/rbac";
+import { syncPbAuthCookie } from "@/lib/pb-auth-cookie";
+
+function isPocketBaseUnreachable(err: unknown): boolean {
+  if (err instanceof ClientResponseError && err.status === 0) return true;
+  if (err instanceof TypeError && String(err.message).includes("fetch")) return true;
+  return false;
+}
 
 type LoginStep = "password" | "otp";
 
@@ -45,7 +55,9 @@ export default function LoginPage() {
         "Login berhasil tetapi gagal memperbarui sesi perangkat. Pastikan koleksi users punya field `session_nonce` (text) dan aturan update mengizinkan user memperbarui rekaman sendiri."
       );
     }
-    router.push("/entry");
+    syncPbAuthCookie(pb);
+    blurActiveElement();
+    router.push(getDefaultRouteForUser(pb.authStore.model as Record<string, unknown>));
   }
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -98,6 +110,16 @@ export default function LoginPage() {
       }
 
       console.error("LOGIN ERROR:", err);
+      if (isPocketBaseUnreachable(err)) {
+        const host =
+          typeof process.env.NEXT_PUBLIC_POCKETBASE_URL === "string"
+            ? process.env.NEXT_PUBLIC_POCKETBASE_URL
+            : "PocketBase";
+        setError(
+          `Tidak terhubung ke server (${host}). Pastikan PocketBase online, URL di .env.local benar, dan jaringan Anda tidak memblokir akses (timeout / firewall).`
+        );
+        return;
+      }
       const hasEmailError =
         typeof err === "object" &&
         err !== null &&
@@ -120,6 +142,7 @@ export default function LoginPage() {
         setError("Login gagal, cek kembali");
       }
     } finally {
+      blurActiveElement();
       setLoading(false);
     }
   };
@@ -148,8 +171,15 @@ export default function LoginPage() {
       await finalizeSuccessfulLogin(user.id);
     } catch (err: unknown) {
       console.error("OTP LOGIN:", err);
+      if (isPocketBaseUnreachable(err)) {
+        setError(
+          "Tidak terhubung ke server PocketBase. Periksa koneksi internet dan status backend sebelum mencoba lagi."
+        );
+        return;
+      }
       setError("Kode OTP salah atau kedaluwarsa. Coba kirim ulang dari langkah sebelumnya.");
     } finally {
+      blurActiveElement();
       setLoading(false);
     }
   };
@@ -165,6 +195,8 @@ export default function LoginPage() {
       alert("Link reset dikirim ke email");
     } catch {
       setError("Gagal kirim email reset");
+    } finally {
+      blurActiveElement();
     }
   };
 
@@ -285,7 +317,7 @@ export default function LoginPage() {
         )}
       </div>
 
-      <PwaInstallBanner />
+      <AppVersionWatermark variant="login" />
     </div>
   );
 }

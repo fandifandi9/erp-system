@@ -6,6 +6,7 @@ import {
   getDefaultRouteForUser,
   getAllowedPathsForUser,
 } from "@/lib/rbac";
+import { shouldDenyOperationalWebAccess } from "@/lib/operational-access-gate";
 
 // =========================
 // 🚀 MIDDLEWARE
@@ -13,22 +14,23 @@ import {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // PWA: manifest, icons, service worker (tanpa cookie — jangan redirect ke login)
+  // Aset publik (ikon, SW cleanup) — tanpa cookie
   if (
     pathname === "/sw.js" ||
     pathname.startsWith("/icons/") ||
-    pathname === "/manifest.webmanifest" ||
-    pathname === "/manifest.json" ||
     pathname === "/icon" ||
-    pathname === "/apple-icon" ||
-    pathname === "/pwa-192" ||
-    pathname === "/pwa-512"
+    pathname === "/apple-icon"
   ) {
     return NextResponse.next();
   }
 
   // 🔓 allow login
   if (pathname.startsWith("/login")) {
+    return NextResponse.next();
+  }
+
+  // Bridge sesi app native → web (tanpa cookie; auth lewat hash)
+  if (pathname.startsWith("/mobile-bridge")) {
     return NextResponse.next();
   }
 
@@ -57,9 +59,14 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  /** Beranda PWA / — selalu ke pemilih mode (HP vs dashboard), bukan layout dashboard. */
+  /** URL lawas modul absensi web → dashboard kerja (absensi hanya app native). */
+  if (pathname === "/entry" || pathname.startsWith("/attendance")) {
+    return NextResponse.redirect(new URL(getDefaultRouteForUser(authUser), req.url));
+  }
+
+  /** Beranda / — ke dashboard kerja atau profil. */
   if (pathname === "/" || pathname === "") {
-    return NextResponse.redirect(new URL("/entry", req.url));
+    return NextResponse.redirect(new URL(getDefaultRouteForUser(authUser), req.url));
   }
 
   // =========================
@@ -87,6 +94,14 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(
       new URL(getDefaultRouteForUser(authUser), req.url)
     );
+  }
+
+  if (shouldDenyOperationalWebAccess(pathname, authUser)) {
+    const lock = new URL("/erp-locked", req.url);
+    if (pathname !== "/erp-locked") {
+      lock.searchParams.set("next", `${pathname}${req.nextUrl.search || ""}`);
+    }
+    return NextResponse.redirect(lock);
   }
 
   return NextResponse.next();

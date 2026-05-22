@@ -12,6 +12,8 @@
 import { ClientResponseError } from "pocketbase";
 import { pb } from "./pocketbase";
 import { getErrorMessage } from "./errors";
+import { computeLeaveCompensationAmount } from "./hr-compensation";
+import { resolveLeaveDailyRateForUser } from "./profile";
 
 // ========================================
 // 🔐 TYPES
@@ -43,6 +45,10 @@ export interface LeaveRequest {
   hr_action_name?: string;
   /** ISO waktu HR menyetujui/menolak. */
   hr_action_at?: string;
+  /** Nominal per hari (snapshot saat approve). */
+  daily_compensation_rate?: number;
+  /** Total kompensasi cuti (hari × tarif harian). */
+  compensation_amount?: number;
 }
 
 export interface DivisionQuota {
@@ -88,18 +94,34 @@ export const PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD = "leave_bookings_quota";
  * Hanya mengembalikan angka jika 1–52; selain itu null (caller memakai default sistem).
  */
 export function parseLeaveBookingsQuotaFromProfile(raw: unknown): number | null {
-  if (raw == null) return null;
+  if (raw == null || raw === "") return null;
   if (typeof raw === "number" && Number.isFinite(raw)) {
     const n = Math.floor(raw);
     return n >= 1 && n <= 52 ? n : null;
   }
   if (typeof raw === "string") {
-    const t = raw.trim();
+    const t = raw.trim().replace(/\./g, "").replace(/,/g, "");
     if (!t) return null;
     const n = parseInt(t, 10);
     if (Number.isNaN(n)) return null;
     const f = Math.floor(n);
     return f >= 1 && f <= 52 ? f : null;
+  }
+  return null;
+}
+
+/** Ambil kuota dari record profil PB (beberapa nama field lawas). */
+export function leaveBookingsQuotaFromProfileRecord(
+  profile: Record<string, unknown>
+): number | null {
+  const candidates = [
+    profile[PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD],
+    profile.leave_booking_quota,
+    profile.leave_quota,
+  ];
+  for (const c of candidates) {
+    const parsed = parseLeaveBookingsQuotaFromProfile(c);
+    if (parsed != null) return parsed;
   }
   return null;
 }
@@ -260,8 +282,7 @@ export async function resolveMaxBookingsPerMonthForUser(userId: string): Promise
     });
     const prof = list.items[0];
     if (!prof) return MAX_BOOKINGS_PER_MONTH;
-    const raw = (prof as Record<string, unknown>)[PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD];
-    const parsed = parseLeaveBookingsQuotaFromProfile(raw);
+    const parsed = leaveBookingsQuotaFromProfileRecord(prof as Record<string, unknown>);
     if (parsed != null) return parsed;
   } catch {
     /* profil tidak ada / rule */
@@ -646,12 +667,22 @@ export async function approveLeaveRequestByHr(requestId: string): Promise<{
       };
     }
 
+    const dailyRate = await resolveLeaveDailyRateForUser(userId);
+    const compensation_amount = computeLeaveCompensationAmount(start, end, dailyRate);
+
     await pb.collection("leave_requests").update(requestId, {
       status: "approved",
       ...buildHrActionPayload(),
+      daily_compensation_rate: dailyRate,
+      compensation_amount,
     });
 
-    return { success: true, message: "Pengajuan disetujui." };
+    const payHint =
+      dailyRate > 0
+        ? ` Kompensasi: ${compensation_amount.toLocaleString("id-ID")} (${dailyRate.toLocaleString("id-ID")}/hari).`
+        : "";
+
+    return { success: true, message: `Pengajuan disetujui.${payHint}` };
   } catch (error: unknown) {
     return {
       success: false,
@@ -1073,6 +1104,14 @@ export function normalizeLeaveRequestsFromPb(items: unknown[]): LeaveRequest[] {
       hr_action_by: String(raw[HR_ACTION_BY_FIELD] ?? raw.hr_action_by ?? "").trim() || undefined,
       hr_action_name: String(raw[HR_ACTION_NAME_FIELD] ?? raw.hr_action_name ?? "").trim() || undefined,
       hr_action_at: String(raw[HR_ACTION_AT_FIELD] ?? raw.hr_action_at ?? "").trim() || undefined,
+      daily_compensation_rate:
+        raw.daily_compensation_rate != null && raw.daily_compensation_rate !== ""
+          ? Math.round(Number(raw.daily_compensation_rate) || 0)
+          : undefined,
+      compensation_amount:
+        raw.compensation_amount != null && raw.compensation_amount !== ""
+          ? Math.round(Number(raw.compensation_amount) || 0)
+          : undefined,
     };
   });
 }

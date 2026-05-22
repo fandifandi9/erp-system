@@ -16,7 +16,8 @@ import {
   Filter,
   TrendingUp,
   MapPin,
-  Loader2
+  Loader2,
+  Camera,
 } from "lucide-react";
 
 interface AttendanceData {
@@ -25,6 +26,7 @@ interface AttendanceData {
   date: string;
   check_in?: string;
   check_out?: string;
+  check_in_selfie?: string;
   status: string;
   late_minutes: number;
   work_hours: number;
@@ -179,11 +181,12 @@ export default function HRAttendancePage() {
   // =========================
   const handleExport = () => {
     const csvContent = [
-      ["Nama", "Tanggal", "Check In", "Check Out", "Status", "Terlambat (menit)", "Jam Kerja", "Jarak (m)", "Mencurigakan"],
+      ["Nama", "Tanggal", "Check In", "Selfie", "Check Out", "Status", "Terlambat (menit)", "Jam Kerja", "Jarak (m)", "Mencurigakan"],
       ...data.map(item => [
         item.expand?.user?.name || "-",
         new Date(item.check_in || item.date).toLocaleDateString("id-ID"),
         item.check_in ? new Date(item.check_in).toLocaleTimeString("id-ID") : "-",
+        item.check_in_selfie ? "Ya" : "-",
         item.check_out ? new Date(item.check_out).toLocaleTimeString("id-ID") : "-",
         item.status,
         item.late_minutes || 0,
@@ -464,6 +467,9 @@ export default function HRAttendancePage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
                     Check In
                   </th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
+                    Selfie
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
                     Check Out
                   </th>
@@ -485,7 +491,7 @@ export default function HRAttendancePage() {
               <tbody className="divide-y divide-slate-100">
                 {data.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                       <Users className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                       <p>Tidak ada data absensi</p>
                     </td>
@@ -519,6 +525,25 @@ export default function HRAttendancePage() {
                           <p className="text-xs text-yellow-600">
                             +{item.late_minutes} menit
                           </p>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3 text-center">
+                        {item.check_in_selfie ? (
+                          <a
+                            href={pb.files.getURL(
+                              item as unknown as RecordModel,
+                              item.check_in_selfie
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100"
+                          >
+                            <Camera className="h-3.5 w-3.5" aria-hidden />
+                            Lihat
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
                         )}
                       </td>
 

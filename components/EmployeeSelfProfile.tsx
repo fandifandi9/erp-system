@@ -23,6 +23,7 @@ import {
 import { ensureAndSyncProfile, syncUserDataToProfile } from "@/lib/profile";
 import { normalizeAuthModel } from "@/lib/rbac";
 import { getErrorMessage } from "@/lib/errors";
+import { blurActiveElement } from "@/lib/blur-active-input";
 
 function roleLabelStaff(user: Record<string, unknown> | null | undefined): string {
   if (!user) return "-";
@@ -172,6 +173,7 @@ export function EmployeeSelfProfile() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Gagal update profil");
     } finally {
+      blurActiveElement();
       setSaving(false);
     }
   };
@@ -218,6 +220,7 @@ export function EmployeeSelfProfile() {
     } catch (err: unknown) {
       setPasswordError(getErrorMessage(err, "Gagal mengubah kata sandi. Periksa sandi lama atau rule PocketBase."));
     } finally {
+      blurActiveElement();
       setPasswordSaving(false);
     }
   };

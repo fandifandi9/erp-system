@@ -3,10 +3,10 @@ import { ImageResponse } from "next/og";
 type Props = { size: number };
 
 /**
- * Satu sumber visual untuk favicon, Apple Touch, dan ikon PWA.
+ * Satu sumber visual untuk favicon dan Apple Touch Icon.
  * Full bleed (isi penuh kotak), latar opaque — menghindari padding putih di iOS / launcher.
  *
- * Untuk mengganti merek: ubah gradien / huruf di bawah, atau ganti rute di manifest
+ * Untuk mengganti merek: ubah gradien / huruf di bawah.
  * agar memakai file statis di `public/icons/` (PNG buatan desain).
  */
 export function serbaIconImageResponse({ size }: Props) {

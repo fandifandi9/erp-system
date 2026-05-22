@@ -8,11 +8,14 @@ import {
   Platform,
   ActivityIndicator,
   StyleSheet,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/context/auth";
 import { getPocketBaseUrl } from "@/lib/env";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, pocketBaseUnreachableMessage } from "@/lib/errors";
+import { PWA } from "@/constants/pwaTheme";
 
 type Step = "password" | "otp";
 
@@ -30,12 +33,17 @@ export default function LoginScreen() {
   const baseUrl = getPocketBaseUrl();
 
   async function onPasswordSubmit() {
+    Keyboard.dismiss();
     setErr(null);
     setLoading(true);
     try {
       const res = await signInWithPassword(email, password);
       if (res.kind === "success") {
-        router.replace("/(tabs)/attendance");
+        Keyboard.dismiss();
+        // Hindari race navigasi + auth hydrate di release build
+        requestAnimationFrame(() => {
+          router.replace("/(tabs)/attendance");
+        });
         return;
       }
       setOtpId(res.otpId);
@@ -43,22 +51,31 @@ export default function LoginScreen() {
       setStep("otp");
       setOtpCode("");
     } catch (e: unknown) {
-      setErr(getErrorMessage(e, "Login gagal"));
+      setErr(pocketBaseUnreachableMessage(e, baseUrl) ?? getErrorMessage(e, "Login gagal"));
     } finally {
+      Keyboard.dismiss();
       setLoading(false);
     }
   }
 
   async function onOtpSubmit() {
     if (!otpId || !mfaId) return;
+    Keyboard.dismiss();
     setErr(null);
     setLoading(true);
     try {
       await signInWithOtp(otpId, otpCode, mfaId);
-      router.replace("/(tabs)/attendance");
+      Keyboard.dismiss();
+      requestAnimationFrame(() => {
+        router.replace("/(tabs)/attendance");
+      });
     } catch (e: unknown) {
-      setErr(getErrorMessage(e, "Kode OTP salah atau kedaluwarsa"));
+      setErr(
+        pocketBaseUnreachableMessage(e, baseUrl) ??
+          getErrorMessage(e, "Kode OTP salah atau kedaluwarsa")
+      );
     } finally {
+      Keyboard.dismiss();
       setLoading(false);
     }
   }
@@ -68,8 +85,10 @@ export default function LoginScreen() {
       style={styles.wrap}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>ERP Staff</Text>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.tapOuter}>
+          <View style={styles.card}>
+            <Text style={styles.title}>SERBA ERP</Text>
         <Text style={styles.sub}>
           {step === "otp"
             ? "Masukkan kode OTP dari email (MFA)."
@@ -112,7 +131,7 @@ export default function LoginScreen() {
               disabled={loading || !email.trim() || !password}
             >
               {loading ? (
-                <ActivityIndicator color="#0f172a" />
+                <ActivityIndicator color="#ffffff" />
               ) : (
                 <Text style={styles.btnText}>Masuk</Text>
               )}
@@ -150,7 +169,7 @@ export default function LoginScreen() {
                 disabled={loading || !otpCode.trim()}
               >
                 {loading ? (
-                  <ActivityIndicator color="#0f172a" />
+                  <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text style={styles.btnText}>Verifikasi</Text>
                 )}
@@ -163,7 +182,9 @@ export default function LoginScreen() {
           Token sesi di SecureStore. Jika akun masuk di perangkat lain, sesi ini
           akan logout otomatis.
         </Text>
-      </View>
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -171,56 +192,69 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: PWA.screenBg,
+  },
+  tapOuter: {
+    flex: 1,
     justifyContent: "center",
     padding: 24,
+    width: "100%",
   },
   card: {
-    backgroundColor: "#1e293b",
+    backgroundColor: PWA.surface,
     borderRadius: 16,
     padding: 24,
     gap: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: PWA.border,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "700",
-    color: "#f8fafc",
+    color: PWA.text,
+    letterSpacing: -0.3,
   },
-  sub: { color: "#94a3b8", fontSize: 14 },
-  warn: { color: "#fbbf24", fontSize: 13 },
-  url: { color: "#64748b", fontSize: 12 },
+  sub: { color: PWA.textSecondary, fontSize: 14, lineHeight: 20 },
+  warn: { color: "#b45309", fontSize: 13, fontWeight: "600" },
+  url: { color: PWA.textMuted, fontSize: 12 },
   input: {
-    backgroundColor: "#0f172a",
-    borderRadius: 10,
+    backgroundColor: PWA.slate50,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    color: "#f8fafc",
+    color: PWA.text,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: PWA.border,
   },
-  err: { color: "#f87171", fontSize: 14 },
-  otpHint: { color: "#94a3b8", fontSize: 13 },
+  err: { color: PWA.red700, fontSize: 14 },
+  otpHint: { color: PWA.textMuted, fontSize: 13 },
   row: { flexDirection: "row", gap: 10, marginTop: 4 },
   btn: {
-    backgroundColor: "#38bdf8",
-    borderRadius: 10,
+    backgroundColor: PWA.indigo,
+    borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 4,
   },
   btnFlex: { flex: 1, marginTop: 0 },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: "#0f172a", fontWeight: "700", fontSize: 16 },
+  btnDisabled: { opacity: 0.55 },
+  btnText: { color: "#ffffff", fontWeight: "700", fontSize: 16 },
   secondary: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#475569",
-    borderRadius: 10,
+    borderColor: PWA.border,
+    backgroundColor: PWA.surface,
+    borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryText: { color: "#e2e8f0", fontWeight: "600" },
-  hint: { color: "#64748b", fontSize: 12, marginTop: 8 },
+  secondaryText: { color: PWA.textSecondary, fontWeight: "600" },
+  hint: { color: PWA.textMuted, fontSize: 12, marginTop: 8, lineHeight: 18 },
 });

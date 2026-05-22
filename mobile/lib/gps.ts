@@ -37,6 +37,14 @@ export function enforceMaxGpsAccuracy(
   }
 }
 
+/** Format distance in meters for UI (aligned with web `lib/gps.ts`). */
+export function formatDistance(meters: number): string {
+  if (meters < 1000) {
+    return `${Math.round(meters)}m`;
+  }
+  return `${(meters / 1000).toFixed(2)}km`;
+}
+
 export function validateGPSRadius(
   userLat: number,
   userLng: number,

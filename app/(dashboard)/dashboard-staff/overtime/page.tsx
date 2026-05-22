@@ -13,6 +13,9 @@ import {
   type OvertimeRequest,
   type OvertimeStatus,
 } from "@/lib/overtime";
+import { formatIdr } from "@/lib/hr-compensation";
+import { blurActiveElement } from "@/lib/blur-active-input";
+import { filterTimeHmTyping, formalizeTimeHmInput } from "@/lib/time-hm-input";
 import { canAccess } from "@/lib/rbac";
 import {
   Loader2,
@@ -77,8 +80,8 @@ export default function StaffOvertimePage() {
     if (!formDate) setFormDate(todayYmd());
   }, [formDate]);
 
-  const pendingHrAssign = useMemo(
-    () => rows.filter((r) => r.source === "hr_assignment" && r.status === "waiting_staff"),
+  const pendingConfirm = useMemo(
+    () => rows.filter((r) => r.status === "waiting_staff"),
     [rows]
   );
 
@@ -100,11 +103,15 @@ export default function StaffOvertimePage() {
 
   const submitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    const startHm = formalizeTimeHmInput(formStart);
+    const endHm = formalizeTimeHmInput(formEnd);
+    setFormStart(startHm);
+    setFormEnd(endHm);
     setFormBusy(true);
     const res = await createStaffOvertimeRequest({
       work_date: formDate,
-      start_time: formStart,
-      end_time: formEnd,
+      start_time: startHm,
+      end_time: endHm,
       reason: formReason,
     });
     setFormBusy(false);
@@ -114,15 +121,24 @@ export default function StaffOvertimePage() {
       setShowForm(false);
       void load();
     }
+    blurActiveElement();
   };
 
-  const accept = async (id: string) => {
-    if (!confirm("Terima penunjukan lembur ini?")) return;
+  const accept = async (id: string, fromHrApproval?: boolean) => {
+    if (
+      !confirm(
+        fromHrApproval
+          ? "Terima persetujuan HR (nominal lembur akan masuk gaji)?"
+          : "Terima penunjukan lembur ini?"
+      )
+    )
+      return;
     setActing(id);
     const res = await staffAcceptAssignment(id);
     setActing(null);
     alert(res.message);
     if (res.success) void load();
+    blurActiveElement();
   };
 
   const decline = async () => {
@@ -136,6 +152,7 @@ export default function StaffOvertimePage() {
       void load();
     }
     alert(res.message);
+    blurActiveElement();
   };
 
   if (!hasAccess || !current) {
@@ -159,14 +176,14 @@ export default function StaffOvertimePage() {
         </p>
       </div>
 
-      {pendingHrAssign.length > 0 && (
+      {pendingConfirm.length > 0 && (
         <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/80 p-5">
           <div className="mb-3 flex items-center gap-2 text-amber-900">
             <AlertTriangle className="h-5 w-5" />
-            <span className="font-semibold">Perlu tanggapan Anda ({pendingHrAssign.length})</span>
+            <span className="font-semibold">Perlu konfirmasi Anda ({pendingConfirm.length})</span>
           </div>
           <div className="space-y-3">
-            {pendingHrAssign.map((r) => (
+            {pendingConfirm.map((r) => (
               <div
                 key={r.id}
                 className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -181,12 +198,25 @@ export default function StaffOvertimePage() {
                       <strong>Dari HR:</strong> {r.hr_note}
                     </p>
                   ) : null}
+                  {r.pay_amount != null && r.pay_amount > 0 ? (
+                    <p className="mt-2 text-sm font-semibold text-emerald-800">
+                      Bayaran: {formatIdr(r.pay_amount)}
+                      {r.hourly_rate ? (
+                        <span className="ml-1 text-xs font-normal">
+                          ({formatIdr(r.hourly_rate)}/jam × {r.hours} jam)
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  {r.source === "staff_request" ? (
+                    <p className="mt-1 text-xs text-amber-800">HR sudah setujui — konfirmasi untuk final.</p>
+                  ) : null}
                 </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     disabled={acting === r.id}
-                    onClick={() => void accept(r.id)}
+                    onClick={() => void accept(r.id, r.source === "staff_request")}
                     className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 sm:flex-none"
                   >
                     {acting === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
@@ -240,25 +270,33 @@ export default function StaffOvertimePage() {
               Perkiraan: <strong>{computeOvertimeHours(formStart, formEnd).toFixed(2)} jam</strong>
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Jam mulai</label>
+              <label className="text-xs font-medium text-slate-600">Jam mulai (HH:mm)</label>
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 required
+                maxLength={5}
                 value={formStart}
-                onChange={(e) => setFormStart(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="18:00"
+                onChange={(e) => setFormStart(filterTimeHmTyping(e.target.value))}
+                onBlur={() => setFormStart((v) => formalizeTimeHmInput(v))}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm tabular-nums"
+                placeholder="09:00"
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Jam selesai</label>
+              <label className="text-xs font-medium text-slate-600">Jam selesai (HH:mm)</label>
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 required
+                maxLength={5}
                 value={formEnd}
-                onChange={(e) => setFormEnd(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="22:00"
+                onChange={(e) => setFormEnd(filterTimeHmTyping(e.target.value))}
+                onBlur={() => setFormEnd((v) => formalizeTimeHmInput(v))}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm tabular-nums"
+                placeholder="18:00"
               />
             </div>
           </div>

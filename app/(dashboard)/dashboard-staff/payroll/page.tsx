@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchStaffPayrollSlips, type StaffPayrollSlip } from "@/lib/payroll";
 import { canAccess } from "@/lib/rbac";
 import { Banknote, Loader2 } from "lucide-react";
+import { StaffBenefitCard } from "@/components/StaffBenefitCard";
 
 function money(n: number): string {
   return new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
@@ -66,6 +67,8 @@ export default function StaffPayrollPage() {
         </p>
       </div>
 
+      {uid ? <StaffBenefitCard userId={uid} /> : null}
+
       {loading ? (
         <div className="flex items-center gap-2 text-slate-500">
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -114,6 +117,24 @@ export default function StaffPayrollPage() {
                   value={money(s.leave_encashment_amount)}
                   hint={s.leave_encashment_reason}
                 />
+                {s.leave_quota_credit_amount > 0 ? (
+                  <Row
+                    label="Kredit kuota cuti"
+                    value={money(s.leave_quota_credit_amount)}
+                    hint={s.leave_quota_credit_reason}
+                  />
+                ) : null}
+                {s.extra_bonus_amount > 0 ? (
+                  <Row
+                    label="Bonus extra"
+                    value={money(s.extra_bonus_amount)}
+                    hint={
+                      s.extra_bonus_eligible
+                        ? s.extra_bonus_reason
+                        : `Tidak cair. ${s.extra_bonus_reason ?? ""}`
+                    }
+                  />
+                ) : null}
                 <Row label="Potongan terlambat" value={money(s.late_deduction)} muted />
                 <Row label="Potongan absensi" value={money(s.absence_deduction)} muted />
                 <div className="my-2 border-t border-slate-100" />

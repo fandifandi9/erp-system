@@ -6,7 +6,7 @@ import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from "
 import { useRouter } from "next/navigation";
 import { getDefaultRouteForUser, canAccess } from "@/lib/rbac";
 
-import { Clock, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 
 /** Samakan dengan Sidebar: drawer + hamburger sampai &lt; lg (1024px), hindari sidebar “desktop” di HP landscape / tablet. */
 function subscribeMaxLg(cb: () => void) {
@@ -34,17 +34,14 @@ type NavProfile = {
 type NavbarProps = {
   onOpenMobileNav?: () => void;
   mobileNavOpen?: boolean;
-  /** PWA terpasang: selalu tampilkan tombol menu walau jendela lebar. */
-  preferDrawerNav?: boolean;
 };
 
 export default function Navbar({
   onOpenMobileNav,
   mobileNavOpen = false,
-  preferDrawerNav = false,
 }: NavbarProps) {
   const narrow = useSyncExternalStore(subscribeMaxLg, getMaxLg, () => false);
-  const showHamburger = preferDrawerNav || narrow;
+  const showHamburger = narrow;
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<NavProfile | null>(null);
   const [open, setOpen] = useState(false);
@@ -126,7 +123,6 @@ export default function Navbar({
   };
 
   const authUser = user as Record<string, unknown>;
-  const showAbsensiNav = canAccess(authUser, "/attendance");
   const showProfilNav = canAccess(authUser, "/profile");
 
   return (
@@ -195,19 +191,6 @@ export default function Navbar({
           {/* DROPDOWN */}
           {open && (
             <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 animate-in fade-in zoom-in-95">
-              {showAbsensiNav && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    router.push("/attendance");
-                  }}
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-100 transition flex items-center gap-3"
-                >
-                  <Clock className="h-4 w-4 shrink-0" strokeWidth={2} />
-                  Absensi
-                </button>
-              )}
               {showProfilNav && (
                 <button
                   type="button"
@@ -224,7 +207,7 @@ export default function Navbar({
                 </button>
               )}
 
-              {(showAbsensiNav || showProfilNav) ? <div className="border-t border-slate-100" /> : null}
+              {showProfilNav ? <div className="border-t border-slate-100" /> : null}
 
               <button
                 onClick={handleLogout}

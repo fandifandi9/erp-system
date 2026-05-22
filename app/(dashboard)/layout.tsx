@@ -6,11 +6,11 @@ import { useRouter, usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { canAccess, getDefaultRouteForUser } from "@/lib/rbac";
-import { useStandaloneDisplay } from "@/lib/use-standalone-display";
 import {
   clearWebSessionNonce,
   shouldLogoutForSessionMismatch,
 } from "@/lib/auth-session";
+import { AppVersionWatermark } from "@/components/AppVersionWatermark";
 
 export default function DashboardLayout({
   children,
@@ -21,7 +21,6 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [checking, setChecking] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const preferDrawerNav = useStandaloneDisplay();
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -123,24 +122,25 @@ export default function DashboardLayout({
   // 🎨 UI
   // =========================
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-slate-50 overflow-hidden">
-      <Sidebar
-        mobileOpen={mobileNavOpen}
-        onMobileClose={() => setMobileNavOpen(false)}
-        preferDrawerNav={preferDrawerNav}
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Navbar
-          onOpenMobileNav={() => setMobileNavOpen(true)}
-          mobileNavOpen={mobileNavOpen}
-          preferDrawerNav={preferDrawerNav}
+    <>
+      <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-slate-50 overflow-hidden">
+        <Sidebar
+          mobileOpen={mobileNavOpen}
+          onMobileClose={() => setMobileNavOpen(false)}
         />
 
-        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 md:p-6">
-          {children}
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Navbar
+            onOpenMobileNav={() => setMobileNavOpen(true)}
+            mobileNavOpen={mobileNavOpen}
+          />
+
+          <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 md:p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+      <AppVersionWatermark variant="dashboard" />
+    </>
   );
 }

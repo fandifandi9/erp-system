@@ -23,8 +23,7 @@ export default function StaffPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Staff Dashboard</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Modul cuti, lembur, slip gaji, dan aktivitas luar kantor. Absensi dan profil ada di halaman khusus (menu pojok
-          kanan atas).
+          Modul cuti, lembur, slip gaji, dan aktivitas luar kantor. Absensi (check-in/out) hanya di <strong className="text-slate-700">app native</strong>; profil dari menu pojok kanan atas.
         </p>
       </div>
 
@@ -68,7 +67,7 @@ export default function StaffPage() {
             </div>
           </Link>
 
-          <Link href="/attendance/field-activity" className={cardClass}>
+          <Link href="/dashboard-staff/field-activity" className={cardClass}>
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-teal-100 p-2.5">
                 <Navigation className="h-5 w-5 text-teal-700" />
@@ -89,11 +88,8 @@ export default function StaffPage() {
             Akses dashboard staff terbatas
           </p>
           <p className="mt-2">
-            Absensi dan profil tetap tersedia untuk semua akun: buka menu <strong className="text-slate-800">nama Anda</strong> di pojok kanan atas, lalu pilih{" "}
-            <Link href="/attendance" className="font-medium text-indigo-600 underline-offset-2 hover:underline">
-              Absensi
-            </Link>{" "}
-            atau{" "}
+            Check-in/out dari <strong className="text-slate-800">app mobile SERBA</strong>. Profil: menu{" "}
+            <strong className="text-slate-800">nama Anda</strong> lalu{" "}
             <Link href="/profile" className="font-medium text-indigo-600 underline-offset-2 hover:underline">
               Profil
             </Link>

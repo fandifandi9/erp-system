@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { pb } from "@/lib/pocketbase";
+import { getDefaultRouteForUser } from "@/lib/rbac";
+
 export default function Home() {
   const router = useRouter();
 
@@ -13,8 +15,7 @@ export default function Home() {
       router.push("/login");
       return;
     }
-    router.push("/entry");
-
+    router.push(getDefaultRouteForUser(user as Record<string, unknown>));
   }, [router]);
 
   return null;

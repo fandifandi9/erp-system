@@ -189,6 +189,190 @@
         "Tanpa MFA di server, aplikasi hanya memakai password (tetap ada rotasi session_nonce)."
       ],
       "optional": "Kurangi durasi token auth di collection users jika ingin token JWT kedaluwarsa lebih cepat (tambahan di samping session_nonce)."
+    },
+    {
+      "step": 9,
+      "action": "MANUAL_selfie_checkin_audit",
+      "note": "Selfie check-in + flag HR. Konfigurasi manual di PocketBase Admin.",
+      "profiles_field_add": {
+        "name": "require_checkin_selfie",
+        "type": "bool",
+        "required": false,
+        "note": "Diset HR di detail pegawai. true = staff wajib lampirkan foto selfie sebelum check-in disimpan (PWA + app native)."
+      },
+      "attendance_logs_field_add": {
+        "name": "check_in_selfie",
+        "type": "file",
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": ["image/jpeg", "image/png", "image/webp"],
+        "note": "Foto wajib/opsional saat check-in. Sesuaikan createRule/updateRule agar user hanya bisa mengunggah file pada rekaman absensi miliknya; HR/owner boleh membaca."
+      }
+    },
+    {
+      "step": 10,
+      "action": "MANUAL_users_operational_web_access_flags",
+      "note": "Gate ERP web + reminder HR/Owner. Field pada koleksi users diisi otomatis saat check-in/out (lib/operational-access-sync). Tanpa field ini, sync gagal diam-diam. Update rule users harus mengizinkan user mem-patch field operasional milik sendiri (id = @request.auth.id) tanpa mengubah role orang lain.",
+      "users_fields_to_add": [
+        { "name": "is_checked_in", "type": "bool", "required": false, "note": "true saat sedang ada sesi check-in aktif" },
+        { "name": "shift_active", "type": "bool", "required": false, "note": "mirror shift aktif untuk UI/server" },
+        { "name": "web_access", "type": "bool", "required": false, "note": "true = middleware mengizinkan area operasional web (bukan owner/hr bypass)" },
+        { "name": "last_checkin", "type": "text", "required": false, "note": "ISO datetime terakhir check-in" },
+        { "name": "last_checkout", "type": "text", "required": false, "note": "ISO datetime terakhir check-out" }
+      ],
+      "users_update_rule_hint": "Gabungkan dengan rule session_nonce Anda: misalnya @request.auth.id = id && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || …) untuk admin; untuk karyawan biasa izinkan update hanya jika id = @request.auth.id pada subset field (PB tidak memisah field-level rule — pertimbangkan hooks atau rule ketat + hanya app yang mengirim patch terbatas). Minimal: pastikan user bisa update rekaman sendiri untuk field boolean/text di atas.",
+      "list_rule_hint": "Reminder HR memakai filter is_checked_in=true pada users — pastikan listRule mengizinkan HR/owner melihat karyawan (bukan hanya diri sendiri)."
+    },
+    {
+      "step": 11,
+      "action": "MANUAL_CREATE_COLLECTION_hr_compensation_settings",
+      "note": "Satu record aktif (is_active=true) untuk tarif default lembur & kompensasi cuti. HR/Owner mengisi lewat /hr/compensation/settings.",
+      "hr_compensation_settings_fields": [
+        { "name": "name", "type": "text", "required": true, "note": "mis. Default" },
+        { "name": "is_active", "type": "bool", "required": false, "note": "true = dipakai fetchHrCompensationSettings" },
+        { "name": "overtime_hourly_rate", "type": "number", "required": true, "note": "Rp per jam" },
+        { "name": "overtime_multiplier", "type": "number", "required": true, "note": "mis. 1.5" },
+        { "name": "leave_daily_compensation_rate", "type": "number", "required": true, "note": "Rp per hari cuti disetujui" }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"owner\""
+      }
+    },
+    {
+      "step": 12,
+      "action": "MANUAL_ADD_overtime_requests_pay_fields",
+      "note": "Disnapshot saat HR menunjuk lembur atau menyetujui pengajuan staff. Tanpa field ini, pay_amount tidak tersimpan.",
+      "overtime_requests_fields_to_add": [
+        { "name": "hourly_rate", "type": "number", "required": false },
+        { "name": "pay_multiplier", "type": "number", "required": false },
+        { "name": "pay_amount", "type": "number", "required": false, "note": "jam × tarif × pengali" }
+      ]
+    },
+    {
+      "step": 13,
+      "action": "MANUAL_ADD_leave_requests_compensation_fields",
+      "note": "Disnapshot saat HR menyetujui cuti dari pengaturan leave_daily_compensation_rate.",
+      "leave_requests_fields_to_add": [
+        { "name": "daily_compensation_rate", "type": "number", "required": false },
+        { "name": "compensation_amount", "type": "number", "required": false, "note": "hari kalender × tarif harian" }
+      ]
+    },
+    {
+      "step": 14,
+      "action": "MANUAL_ADD_PROFILE_benefit_fields",
+      "note": "Per karyawan di /hr/employees/[id]: tarif cuti/hari, kuota cuti/bulan (leave_bookings_quota sudah ada), bonus extra.",
+      "profiles_fields_to_add": [
+        { "name": "leave_daily_rate", "type": "number", "required": false, "note": "Rp per hari — kredit kuota tidak terpakai" },
+        { "name": "extra_bonus_amount", "type": "number", "required": false, "note": "mis. 500000" },
+        { "name": "extra_bonus_enabled", "type": "bool", "required": false }
+      ],
+      "payroll_items_fields_to_add": [
+        { "name": "leave_quota_credit_days", "type": "number", "required": false },
+        { "name": "leave_quota_credit_amount", "type": "number", "required": false },
+        { "name": "leave_quota_credit_reason", "type": "text", "required": false },
+        { "name": "extra_bonus_amount", "type": "number", "required": false },
+        { "name": "extra_bonus_eligible", "type": "bool", "required": false },
+        { "name": "extra_bonus_reason", "type": "text", "required": false }
+      ]
+    },
+    {
+      "step": 15,
+      "action": "CREATE_COLLECTION_work_calendar_settings",
+      "note": "Jadwal hari kerja global (checkbox per hari Minggu–Sabtu). Default aplikasi: semua true = operasional 7 hari. Dipakai payroll + bonus extra + alpha.",
+      "name": "work_calendar_settings",
+      "type": "base",
+      "schema": [
+        { "name": "name", "type": "text", "required": false },
+        { "name": "is_active", "type": "bool", "required": false },
+        { "name": "work_sunday", "type": "bool", "required": false },
+        { "name": "work_monday", "type": "bool", "required": false },
+        { "name": "work_tuesday", "type": "bool", "required": false },
+        { "name": "work_wednesday", "type": "bool", "required": false },
+        { "name": "work_thursday", "type": "bool", "required": false },
+        { "name": "work_friday", "type": "bool", "required": false },
+        { "name": "work_saturday", "type": "bool", "required": false }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "step": 16,
+      "action": "CREATE_COLLECTION_office_holidays",
+      "note": "Tanggal libur kantor / cuti bersama — tidak dihitung sebagai hari kerja wajib.",
+      "name": "office_holidays",
+      "type": "base",
+      "schema": [
+        { "name": "date", "type": "date", "required": true },
+        { "name": "name", "type": "text", "required": false },
+        { "name": "is_active", "type": "bool", "required": false }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "step": 17,
+      "action": "MANUAL_ADD_PROFILE_deduction_overrides",
+      "note": "Opsional — tarif potongan telat/absensi per karyawan ( /hr/employees/[id] ).",
+      "profiles_fields_to_add": [
+        {
+          "name": "late_deduction_rupiah_per_minute",
+          "type": "number",
+          "required": false,
+          "note": ">0 = override; 0/kosong = dari gaji pokok"
+        },
+        {
+          "name": "absence_deduction_rupiah_per_day",
+          "type": "number",
+          "required": false,
+          "note": ">0 = override; 0/kosong = gaji÷30"
+        },
+        {
+          "name": "shift_start_saturday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm — pasangan shift_end_saturday"
+        },
+        {
+          "name": "shift_end_saturday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm"
+        },
+        {
+          "name": "shift_start_sunday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm — pasangan shift_end_sunday"
+        },
+        {
+          "name": "shift_end_sunday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm"
+        },
+        {
+          "name": "shift_start_weekend",
+          "type": "text",
+          "required": false,
+          "note": "LEGACY opsional — fallback jika Sabtu/Minggu baru kosong; bisa dihapus setelah migrasi"
+        },
+        {
+          "name": "shift_end_weekend",
+          "type": "text",
+          "required": false,
+          "note": "LEGACY — berpasangan shift_start_weekend"
+        }
+      ]
     }
   ],
   "default_data": [

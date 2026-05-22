@@ -4,6 +4,20 @@
 
 import { pb } from "./pocketbase";
 import { getErrorMessage } from "./errors";
+import { fetchHrCompensationSettings } from "./hr-compensation";
+
+export const PROFILE_LEAVE_DAILY_RATE_FIELD = "leave_daily_rate";
+export const PROFILE_EXTRA_BONUS_AMOUNT_FIELD = "extra_bonus_amount";
+export const PROFILE_EXTRA_BONUS_ENABLED_FIELD = "extra_bonus_enabled";
+/** >0 = override tarif potongan telat per menit (selain itu dari gaji pokok ÷ 30 ÷ 8 ÷ 60) */
+export const PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD = "late_deduction_rupiah_per_minute";
+/** >0 = override tarif per hari alpha / tidak masuk (selain itu gaji pokok ÷ 30) */
+export const PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD = "absence_deduction_rupiah_per_day";
+/** Jam Sabtu / Minggu terpisah (HR) — tiap hari harus berpasangan masuk–pulang jika dipakai */
+export const PROFILE_SHIFT_START_SATURDAY_FIELD = "shift_start_saturday";
+export const PROFILE_SHIFT_END_SATURDAY_FIELD = "shift_end_saturday";
+export const PROFILE_SHIFT_START_SUNDAY_FIELD = "shift_start_sunday";
+export const PROFILE_SHIFT_END_SUNDAY_FIELD = "shift_end_sunday";
 
 // ========================================
 // 🔐 TYPES
@@ -36,8 +50,28 @@ export interface Profile {
   work_end?: string;
   shift_start: string;
   shift_end: string;
+  /** Sabtu — dipakai jika `shift_start_saturday` & `shift_end_saturday` keduanya ada */
+  shift_start_saturday?: string;
+  shift_end_saturday?: string;
+  /** Minggu — dipakai jika `shift_start_sunday` & `shift_end_sunday` keduanya ada */
+  shift_start_sunday?: string;
+  shift_end_sunday?: string;
+  /** @deprecated Dipakai fallback absensi jika Sabtu/Minggu baru belum diisi */
+  shift_start_weekend?: string;
+  shift_end_weekend?: string;
+  /** HR: wajibkan foto selfie saat check-in (audit) */
+  require_checkin_selfie?: boolean;
   /** Kuota pengajuan cuti per bulan (HR); opsional di PocketBase — lihat `lib/leave.ts`. */
   leave_bookings_quota?: number;
+  /** Kompensasi per hari cuti + kredit kuota tidak terpakai (Rp). */
+  leave_daily_rate?: number;
+  /** Bonus extra bulanan jika syarat kehadiran terpenuhi (Rp). */
+  extra_bonus_amount?: number;
+  extra_bonus_enabled?: boolean;
+  /** Override potongan telat (Rp/menit). 0/kosong = dari gaji pokok. */
+  late_deduction_rupiah_per_minute?: number;
+  /** Override potongan alpha (Rp/hari). 0/kosong = gaji ÷ 30. */
+  absence_deduction_rupiah_per_day?: number;
   profile_status: "incomplete" | "complete";
   created: string;
   updated: string;
@@ -363,4 +397,36 @@ export async function checkProfileComplete(
       serverUnreachable: true,
     };
   }
+}
+
+function profileToNumber(v: unknown, fallback = 0): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
+function pbEscape(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/** Tarif cuti per hari dari profil karyawan, fallback pengaturan global HR. */
+export async function resolveLeaveDailyRateForUser(userId: string): Promise<number> {
+  if (!userId?.trim()) return 0;
+  try {
+    const list = await pb.collection("profiles").getList(1, 1, {
+      filter: `user="${pbEscape(userId)}"`,
+      sort: "-updated",
+      requestKey: null,
+    });
+    const prof = list.items[0] as Record<string, unknown> | undefined;
+    const fromProf = Math.max(0, Math.round(profileToNumber(prof?.[PROFILE_LEAVE_DAILY_RATE_FIELD], 0)));
+    if (fromProf > 0) return fromProf;
+  } catch {
+    /* profil tidak ada */
+  }
+  const global = await fetchHrCompensationSettings();
+  return Math.max(0, Math.round(global?.leave_daily_compensation_rate ?? 0));
 }

@@ -12,7 +12,8 @@ import {
   type FieldActivityRequest,
   type FieldActivityType,
 } from "@/lib/field_activity";
-import { canAccess } from "@/lib/rbac";
+import { blurActiveElement } from "@/lib/blur-active-input";
+import { canAccess, getOperationalDashboardRoute } from "@/lib/rbac";
 import { Calendar, Loader2, MapPin, Send, XCircle, ExternalLink } from "lucide-react";
 
 const TYPES: FieldActivityType[] = ["meeting", "visit", "out_of_town", "other"];
@@ -21,7 +22,7 @@ function pbUserIdSnapshot(): string {
   return (pb.authStore.model as { id?: string } | null)?.id ?? "";
 }
 
-/** Form & riwayat aktivitas luar kantor (staff). Dipakai `/attendance/field-activity` dan layout dashboard staff. */
+/** Form & riwayat aktivitas luar kantor (staff) di dashboard kerja. */
 export default function FieldActivityStaffPanel() {
   const uid = useSyncExternalStore(
     (onStoreChange) => pb.authStore.onChange(onStoreChange),
@@ -40,9 +41,11 @@ export default function FieldActivityStaffPanel() {
   const [reason, setReason] = useState("");
 
   const hasAccess =
-    !!pb.authStore.model &&
-    (canAccess(pb.authStore.model, "/attendance/field-activity") ||
-      canAccess(pb.authStore.model, "/dashboard-staff/field-activity"));
+    !!pb.authStore.model && canAccess(pb.authStore.model, "/dashboard-staff/field-activity");
+
+  const dashHref = pb.authStore.model
+    ? getOperationalDashboardRoute(pb.authStore.model) ?? "/profile"
+    : "/profile";
 
   const load = useCallback(async () => {
     if (!uid) {
@@ -104,6 +107,7 @@ export default function FieldActivityStaffPanel() {
       setReason("");
       void load();
     }
+    blurActiveElement();
   };
 
   const badge = (r: FieldActivityRequest) => {
@@ -139,11 +143,11 @@ export default function FieldActivityStaffPanel() {
           (GPS tetap dipakai untuk audit).
         </p>
         <Link
-          href="/attendance"
+          href={dashHref}
           className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:underline"
         >
           <ExternalLink className="h-4 w-4" />
-          Kembali ke Absensi
+          Kembali ke dashboard kerja
         </Link>
       </div>
 

@@ -4,8 +4,9 @@ import { pb } from "@/lib/pocketbase";
 import {
   getMaxBookingsPerMonth,
   PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD,
-  parseLeaveBookingsQuotaFromProfile,
+  leaveBookingsQuotaFromProfileRecord,
 } from "@/lib/leave";
+import { formatIntegerId } from "@/lib/format-number";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -28,10 +29,21 @@ type EmployeeProfile = {
   status: string;
   /** Maks. pengajuan cuti (pending + disetujui) per bulan kalender; dari profil atau default. */
   leaveBookingsQuota: number;
+  /** HR: wajib selfie sebelum check-in (app native). */
+  requireCheckinSelfie: boolean;
 };
 
 function escapePbFilterString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function profileRequiresSelfie(raw: Record<string, unknown>): boolean {
+  const v = raw.require_checkin_selfie;
+  return (
+    v === true ||
+    String(v).toLowerCase() === "true" ||
+    Number(v) === 1
+  );
 }
 
 function profileUserId(raw: { user?: unknown }): string | null {
@@ -124,17 +136,33 @@ export default function EmployeesPage() {
     const fetchProfiles = async () => {
       try {
         const res = await pb.collection("profiles").getFullList({
-          sort: "-created",
+          sort: "-updated",
           requestKey: null,
         });
 
         if (!isMounted) return;
 
-        const userIds = res.map((p) => profileUserId(p as { user?: unknown })).filter(Boolean) as string[];
+        /** Satu baris per user — profil terbaru (hindari duplikat tampil kuota lama). */
+        const latestProfileByUser = new Map<string, (typeof res)[0]>();
+        for (const profile of res) {
+          const uid = profileUserId(profile as { user?: unknown });
+          if (!uid) continue;
+          const existing = latestProfileByUser.get(uid);
+          if (!existing) {
+            latestProfileByUser.set(uid, profile);
+            continue;
+          }
+          const tNew = new Date(String(profile.updated || profile.created || 0)).getTime();
+          const tOld = new Date(String(existing.updated || existing.created || 0)).getTime();
+          if (tNew >= tOld) latestProfileByUser.set(uid, profile);
+        }
+
+        const deduped = [...latestProfileByUser.values()];
+        const userIds = deduped.map((p) => profileUserId(p as { user?: unknown })).filter(Boolean) as string[];
         const usersById = await fetchUsersByIds(userIds);
         const defaultQuota = getMaxBookingsPerMonth();
 
-        const combinedData = res.map((profile) => {
+        const combinedData = deduped.map((profile) => {
           const uid = profileUserId(profile as { user?: unknown });
           const u = uid ? usersById.get(uid) : undefined;
 
@@ -142,9 +170,9 @@ export default function EmployeesPage() {
           const emailFromUser = u?.email?.trim();
           const email = emailFromProfile || emailFromUser || "-";
 
-          const rawQuota = (profile as Record<string, unknown>)[PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD];
+          const pr = profile as Record<string, unknown>;
           const leaveBookingsQuota =
-            parseLeaveBookingsQuotaFromProfile(rawQuota) ?? defaultQuota;
+            leaveBookingsQuotaFromProfileRecord(pr) ?? defaultQuota;
 
           return {
             id: profile.id,
@@ -155,6 +183,7 @@ export default function EmployeesPage() {
             role: ((u?.role_code || u?.role || "-") as string).toString(),
             status: u?.status || "inactive",
             leaveBookingsQuota,
+            requireCheckinSelfie: profileRequiresSelfie(pr),
           };
         });
 
@@ -226,6 +255,7 @@ export default function EmployeesPage() {
               <th className="px-6 py-3 text-left">Nama</th>
               <th className="px-6 py-3 text-left">Email</th>
               <th className="px-6 py-3 text-left">Posisi</th>
+              <th className="px-6 py-3 text-center">Selfie wajib</th>
               <th className="px-6 py-3 text-left">Kuota cuti / bulan</th>
               <th className="px-6 py-3 text-left">Role</th>
               <th className="px-6 py-3 text-left">Status</th>
@@ -254,8 +284,22 @@ export default function EmployeesPage() {
                     {profile.position}
                   </td>
 
+                  <td className="px-6 py-4 text-center">
+                    <span
+                      className={`inline-block rounded-lg px-2 py-1 text-xs font-semibold ${
+                        profile.requireCheckinSelfie
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {profile.requireCheckinSelfie ? "Ya" : "Tidak"}
+                    </span>
+                  </td>
+
                   <td className="px-6 py-4">
-                    <span className="font-semibold text-slate-800">{profile.leaveBookingsQuota}×</span>
+                    <span className="font-semibold text-slate-800">
+                      {formatIntegerId(profile.leaveBookingsQuota)}×
+                    </span>
                     <span className="block text-xs text-slate-500">booking / bulan</span>
                   </td>
 

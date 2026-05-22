@@ -6,9 +6,20 @@ import {
   getMaxBookingsPerMonth,
   PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD,
   parseLeaveBookingsQuotaFromProfile,
+  leaveBookingsQuotaFromProfileRecord,
 } from "@/lib/leave";
+import { formatIntegerId, parseIntegerInput } from "@/lib/format-number";
+import {
+  PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD,
+  PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD,
+  PROFILE_SHIFT_END_SATURDAY_FIELD,
+  PROFILE_SHIFT_END_SUNDAY_FIELD,
+  PROFILE_SHIFT_START_SATURDAY_FIELD,
+  PROFILE_SHIFT_START_SUNDAY_FIELD,
+} from "@/lib/profile";
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { coerceBrowserTimeToHm, formalizeTimeHmInput } from "@/lib/time-hm-input";
 
 type EmployeeUser = {
   id: string;
@@ -25,6 +36,11 @@ type EmployeeProfile = {
   department?: string;
   /** Kuota pengajuan cuti (pending + disetujui) per bulan kalender — opsional di PocketBase */
   leave_bookings_quota?: number;
+  leave_daily_rate?: number;
+  extra_bonus_amount?: number;
+  extra_bonus_enabled?: boolean;
+  late_deduction_rupiah_per_minute?: number;
+  absence_deduction_rupiah_per_day?: number;
   salary?: number;
   office_id?: string;
   phone?: string;
@@ -37,7 +53,15 @@ type EmployeeProfile = {
   late_tolerance?: number;
   shift_start?: string;
   shift_end?: string;
+  shift_start_saturday?: string;
+  shift_end_saturday?: string;
+  shift_start_sunday?: string;
+  shift_end_sunday?: string;
+  /** Lama: satu pasangan untuk Sabtu+Minggu — tampil di form jika hari baru kosong */
+  shift_start_weekend?: string;
+  shift_end_weekend?: string;
   join_date?: string;
+  require_checkin_selfie?: boolean;
   expand?: {
     user?: EmployeeUser;
   };
@@ -126,6 +150,65 @@ function joinDateToPocketBase(raw: string): string | null {
   return d;
 }
 
+/** Normalisasi nilai jam dari record PocketBase untuk dibandingkan dengan state form. */
+function profileHmFromPb(v: unknown): string {
+  if (v == null) return "";
+  return formalizeTimeHmInput(String(v).trim()) || "";
+}
+
+/**
+ * Jika field Sabtu/Minggu belum ada di schema `profiles`, PocketBase mengabaikan key tersebut
+ * tanpa error — UI terlihat "sukses" padahal jam tidak tersimpan.
+ */
+function weekendShiftRoundTripError(
+  saved: Record<string, unknown>,
+  satStart: string,
+  satEnd: string,
+  sunStart: string,
+  sunEnd: string
+): string | null {
+  const wantSat = Boolean(satStart && satEnd);
+  const wantSun = Boolean(sunStart && sunEnd);
+  const fs = formalizeTimeHmInput(satStart) || "";
+  const fe = formalizeTimeHmInput(satEnd) || "";
+  const us = formalizeTimeHmInput(sunStart) || "";
+  const ue = formalizeTimeHmInput(sunEnd) || "";
+
+  if (wantSat) {
+    if (
+      profileHmFromPb(saved[PROFILE_SHIFT_START_SATURDAY_FIELD]) !== fs ||
+      profileHmFromPb(saved[PROFILE_SHIFT_END_SATURDAY_FIELD]) !== fe
+    ) {
+      return "Sabtu";
+    }
+  } else {
+    if (
+      profileHmFromPb(saved[PROFILE_SHIFT_START_SATURDAY_FIELD]) !== "" ||
+      profileHmFromPb(saved[PROFILE_SHIFT_END_SATURDAY_FIELD]) !== ""
+    ) {
+      return "Sabtu (mengosongkan)";
+    }
+  }
+
+  if (wantSun) {
+    if (
+      profileHmFromPb(saved[PROFILE_SHIFT_START_SUNDAY_FIELD]) !== us ||
+      profileHmFromPb(saved[PROFILE_SHIFT_END_SUNDAY_FIELD]) !== ue
+    ) {
+      return "Minggu";
+    }
+  } else {
+    if (
+      profileHmFromPb(saved[PROFILE_SHIFT_START_SUNDAY_FIELD]) !== "" ||
+      profileHmFromPb(saved[PROFILE_SHIFT_END_SUNDAY_FIELD]) !== ""
+    ) {
+      return "Minggu (mengosongkan)";
+    }
+  }
+
+  return null;
+}
+
 export default function EmployeeDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -154,11 +237,21 @@ export default function EmployeeDetailPage() {
   const [leaveBookingsQuota, setLeaveBookingsQuota] = useState(
     () => String(getMaxBookingsPerMonth())
   );
+  const [leaveDailyRate, setLeaveDailyRate] = useState("");
+  const [extraBonusAmount, setExtraBonusAmount] = useState("");
+  const [extraBonusEnabled, setExtraBonusEnabled] = useState(false);
+  const [lateDeductionPerMinute, setLateDeductionPerMinute] = useState("");
+  const [absenceDeductionPerDay, setAbsenceDeductionPerDay] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [shiftStart, setShiftStart] = useState("08:00");
   const [shiftEnd, setShiftEnd] = useState("17:00");
+  const [shiftStartSaturday, setShiftStartSaturday] = useState("");
+  const [shiftEndSaturday, setShiftEndSaturday] = useState("");
+  const [shiftStartSunday, setShiftStartSunday] = useState("");
+  const [shiftEndSunday, setShiftEndSunday] = useState("");
+  const [requireCheckinSelfie, setRequireCheckinSelfie] = useState(false);
 
   // =========================
   // FETCH DATA
@@ -183,17 +276,20 @@ export default function EmployeeDetailPage() {
 
       // Fetch profile with user data
       const list = await pb.collection("profiles").getFullList({
-  filter: `user="${id}"`,
-  expand: "user,office_id",
-  requestKey: null,
-});
+        filter: `user="${id}"`,
+        sort: "-updated",
+        expand: "user,office_id",
+        requestKey: null,
+      });
 
-if (list.length > 1) {
-  alert("Data profile duplicate! Hubungi admin.");
-}
+      if (list.length > 1) {
+        console.warn(
+          `[hr/employees/${id}] Ada ${list.length} profil untuk user yang sama — memakai yang terbaru di-update.`
+        );
+      }
 
-if (list.length > 0) {
-  const profileData = list[0] as unknown as EmployeeProfile;
+      if (list.length > 0) {
+        const profileData = list[0] as unknown as EmployeeProfile;
   const userData = profileData.expand?.user;
 
   setUser(userData ?? null);
@@ -217,13 +313,59 @@ if (list.length > 0) {
   setEmployeeCode(profileData.employee_code || "");
   setProfileStatus(profileData.profile_status || "draft");
   setLateToleranceInput(String(Math.max(0, Math.floor(Number(profileData.late_tolerance ?? 10)))));
-  setShiftStart(profileData.shift_start || "08:00");
-  setShiftEnd(profileData.shift_end || "17:00");
+      setShiftStart(formalizeTimeHmInput(profileData.shift_start || "08:00") || "08:00");
+      setShiftEnd(formalizeTimeHmInput(profileData.shift_end || "17:00") || "17:00");
+      const legWkStart = formalizeTimeHmInput(profileData.shift_start_weekend ?? "") || "";
+      const legWkEnd = formalizeTimeHmInput(profileData.shift_end_weekend ?? "") || "";
+      let satS = formalizeTimeHmInput(profileData.shift_start_saturday ?? "") || "";
+      let satE = formalizeTimeHmInput(profileData.shift_end_saturday ?? "") || "";
+      let sunS = formalizeTimeHmInput(profileData.shift_start_sunday ?? "") || "";
+      let sunE = formalizeTimeHmInput(profileData.shift_end_sunday ?? "") || "";
+      if (!satS && !satE && legWkStart && legWkEnd) {
+        satS = legWkStart;
+        satE = legWkEnd;
+      }
+      if (!sunS && !sunE && legWkStart && legWkEnd) {
+        sunS = legWkStart;
+        sunE = legWkEnd;
+      }
+      setShiftStartSaturday(satS);
+      setShiftEndSaturday(satE);
+      setShiftStartSunday(sunS);
+      setShiftEndSunday(sunE);
+  setRequireCheckinSelfie(
+    profileData.require_checkin_selfie === true ||
+      String(profileData.require_checkin_selfie).toLowerCase() === "true" ||
+      Number(profileData.require_checkin_selfie) === 1
+  );
   setJoinDate(joinDateFromPocketBase(profileData.join_date));
 
-  const parsedQ = parseLeaveBookingsQuotaFromProfile(profileData.leave_bookings_quota);
+  const parsedQ = leaveBookingsQuotaFromProfileRecord(
+    profileData as unknown as Record<string, unknown>
+  );
   setLeaveBookingsQuota(
     parsedQ != null ? String(parsedQ) : String(getMaxBookingsPerMonth())
+  );
+  const ldr = profileData.leave_daily_rate;
+  setLeaveDailyRate(
+    ldr != null && !Number.isNaN(Number(ldr)) ? String(Math.max(0, Math.floor(Number(ldr)))) : ""
+  );
+  const eba = profileData.extra_bonus_amount;
+  setExtraBonusAmount(
+    eba != null && !Number.isNaN(Number(eba)) ? String(Math.max(0, Math.floor(Number(eba)))) : ""
+  );
+  setExtraBonusEnabled(
+    profileData.extra_bonus_enabled === true ||
+      String(profileData.extra_bonus_enabled).toLowerCase() === "true" ||
+      Number(profileData.extra_bonus_enabled) === 1
+  );
+  const ldm = profileData.late_deduction_rupiah_per_minute;
+  setLateDeductionPerMinute(
+    ldm != null && !Number.isNaN(Number(ldm)) ? String(Math.max(0, Math.floor(Number(ldm)))) : ""
+  );
+  const adm = profileData.absence_deduction_rupiah_per_day;
+  setAbsenceDeductionPerDay(
+    adm != null && !Number.isNaN(Number(adm)) ? String(Math.max(0, Math.floor(Number(adm)))) : ""
   );
 
 } else {
@@ -237,10 +379,11 @@ if (list.length > 0) {
   setName(userData.name || "");
   setPosition("");
   setDepartment("");
-        setSalaryDigits("");
-        setOfficeId("");
-        setLeaveBookingsQuota(String(getMaxBookingsPerMonth()));
-      }
+  setSalaryDigits("");
+  setOfficeId("");
+  setLeaveBookingsQuota(String(getMaxBookingsPerMonth()));
+  setRequireCheckinSelfie(false);
+}
 
     } catch {
       // Fallback if profile doesn't exist
@@ -258,6 +401,7 @@ if (list.length > 0) {
         setSalaryDigits("");
         setOfficeId("");
         setLeaveBookingsQuota(String(getMaxBookingsPerMonth()));
+        setRequireCheckinSelfie(false);
 
       } catch (e) {
         console.error("USER ERROR:", e);
@@ -298,7 +442,36 @@ if (list.length > 0) {
 
     setSaving(true);
 
+    let successMessage: string | null = null;
+    let shouldNavigateToList = false;
+
     try {
+      const shiftStartNorm = formalizeTimeHmInput(shiftStart) || shiftStart;
+      const shiftEndNorm = formalizeTimeHmInput(shiftEnd) || shiftEnd;
+
+      const satStart = formalizeTimeHmInput(shiftStartSaturday) || "";
+      const satEnd = formalizeTimeHmInput(shiftEndSaturday) || "";
+      const sunStart = formalizeTimeHmInput(shiftStartSunday) || "";
+      const sunEnd = formalizeTimeHmInput(shiftEndSunday) || "";
+
+      const satPartial = Boolean(satStart || satEnd) && !(satStart && satEnd);
+      const sunPartial = Boolean(sunStart || sunEnd) && !(sunStart && sunEnd);
+      if (satPartial) {
+        alert("Sabtu: isi jam masuk dan jam pulang keduanya, atau kosongkan keduanya (pakai Sen–Jum).");
+        return;
+      }
+      if (sunPartial) {
+        alert("Minggu: isi jam masuk dan jam pulang keduanya, atau kosongkan keduanya (pakai Sen–Jum).");
+        return;
+      }
+
+      const shiftSatSunPayload = {
+        [PROFILE_SHIFT_START_SATURDAY_FIELD]: satStart && satEnd ? satStart : "",
+        [PROFILE_SHIFT_END_SATURDAY_FIELD]: satStart && satEnd ? satEnd : "",
+        [PROFILE_SHIFT_START_SUNDAY_FIELD]: sunStart && sunEnd ? sunStart : "",
+        [PROFILE_SHIFT_END_SUNDAY_FIELD]: sunStart && sunEnd ? sunEnd : "",
+      };
+
       const quotaNum =
         parseLeaveBookingsQuotaFromProfile(leaveBookingsQuota) ?? getMaxBookingsPerMonth();
 
@@ -310,9 +483,10 @@ if (list.length > 0) {
       // Keep users.name aligned with HR profile name.
       await pb.collection("users").update(user.id, { name });
 
+      let savedRecord: Record<string, unknown>;
+
       if (!profile) {
-        // Create profile if doesn't exist
-        await pb.collection("profiles").create({
+        savedRecord = (await pb.collection("profiles").create({
           user: user.id,
           name,
           position,
@@ -326,17 +500,23 @@ if (list.length > 0) {
           npwp,
           employee_code: employeeCode,
           profile_status: profileStatus,
-          shift_start: shiftStart,
-          shift_end: shiftEnd,
+          shift_start: shiftStartNorm,
+          shift_end: shiftEndNorm,
           late_tolerance: lateTol,
           join_date: joinDateToPocketBase(joinDate),
+          require_checkin_selfie: requireCheckinSelfie,
           [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: quotaNum,
-        });
+          leave_daily_rate: parseIntegerInput(leaveDailyRate),
+          extra_bonus_amount: parseIntegerInput(extraBonusAmount),
+          extra_bonus_enabled: extraBonusEnabled,
+          [PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD]: parseIntegerInput(lateDeductionPerMinute),
+          [PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD]: parseIntegerInput(absenceDeductionPerDay),
+          ...shiftSatSunPayload,
+        })) as unknown as Record<string, unknown>;
 
-        alert("Profile berhasil dibuat!");
+        successMessage = "Profile berhasil dibuat!";
       } else {
-        // Update existing profile
-        await pb.collection("profiles").update(profile.id, {
+        savedRecord = (await pb.collection("profiles").update(profile.id, {
           name,
           position,
           department,
@@ -349,18 +529,42 @@ if (list.length > 0) {
           npwp,
           employee_code: employeeCode,
           profile_status: profileStatus,
-          shift_start: shiftStart,
-          shift_end: shiftEnd,
+          shift_start: shiftStartNorm,
+          shift_end: shiftEndNorm,
           late_tolerance: lateTol,
           join_date: joinDateToPocketBase(joinDate),
+          require_checkin_selfie: requireCheckinSelfie,
           [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: quotaNum,
-        });
+          leave_daily_rate: parseIntegerInput(leaveDailyRate),
+          extra_bonus_amount: parseIntegerInput(extraBonusAmount),
+          extra_bonus_enabled: extraBonusEnabled,
+          [PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD]: parseIntegerInput(lateDeductionPerMinute),
+          [PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD]: parseIntegerInput(absenceDeductionPerDay),
+          ...shiftSatSunPayload,
+        })) as unknown as Record<string, unknown>;
 
-        alert("Data berhasil disimpan!");
+        successMessage = "Data berhasil disimpan!";
       }
 
-      router.push("/hr/employees");
+      const weekendErr = weekendShiftRoundTripError(
+        savedRecord,
+        satStart,
+        satEnd,
+        sunStart,
+        sunEnd
+      );
+      if (weekendErr) {
+        successMessage = null;
+        alert(
+          `Jam kerja akhir pekan (${weekendErr}) tidak tersimpan di PocketBase. ` +
+            "Buka Admin → koleksi **profiles** → pastikan ada field teks (opsional): " +
+            "`shift_start_saturday`, `shift_end_saturday`, `shift_start_sunday`, `shift_end_sunday` " +
+            "(lihat `pocketbase_migration.json`, langkah 17). Tanpa field ini, API mengabaikan nilai jam Sabtu/Minggu."
+        );
+        return;
+      }
 
+      shouldNavigateToList = true;
     } catch (err: unknown) {
       const maybeAbort = typeof err === "object" && err !== null && "isAbort" in err && Boolean((err as { isAbort?: unknown }).isAbort);
       if (maybeAbort) return;
@@ -370,6 +574,13 @@ if (list.length > 0) {
       alert("Gagal menyimpan: " + message);
     } finally {
       setSaving(false);
+    }
+
+    if (successMessage) {
+      alert(successMessage);
+    }
+    if (shouldNavigateToList) {
+      router.push("/hr/employees");
     }
   };
 
@@ -487,12 +698,49 @@ if (list.length > 0) {
             optional
           />
           <Input
-            label="Kuota pengajuan cuti per bulan (per akun)"
-            hint={`Hanya untuk pegawai ini. Maks. berapa kali kirim pengajuan cuti (pending + disetujui) dalam satu bulan kalender. Angka 1–52. Kosong/tidak valid → pakai default ${getMaxBookingsPerMonth()}×.`}
+            label="Kuota pengajuan cuti per bulan"
+            hint={`Maks. kali ambil cuti per bulan (mis. 3). Sisa kuota tidak dipakai = kredit gaji (× tarif/hari). Default ${getMaxBookingsPerMonth()}×.`}
             type="number"
             value={leaveBookingsQuota}
             onChange={setLeaveBookingsQuota}
             placeholder={`${getMaxBookingsPerMonth()}`}
+          />
+          <IntegerDigitsInput
+            label="Nominal cuti per hari (Rp)"
+            hint="Contoh ketik 150000 → tampil 150.000. Kredit gaji jika kuota tidak dipakai."
+            digits={leaveDailyRate}
+            onDigitsChange={setLeaveDailyRate}
+            placeholder="150000"
+          />
+          <IntegerDigitsInput
+            label="Bonus extra per bulan (Rp)"
+            hint="Contoh ketik 500000 → tampil 500.000 jika syarat kehadiran terpenuhi."
+            digits={extraBonusAmount}
+            onDigitsChange={setExtraBonusAmount}
+            placeholder="500000"
+          />
+          <label className="col-span-2 flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={extraBonusEnabled}
+              onChange={(e) => setExtraBonusEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+            />
+            Aktifkan bonus extra untuk karyawan ini
+          </label>
+          <IntegerDigitsInput
+            label="Potongan telat (Rp per menit)"
+            hint="Kosongkan atau 0 = otomatis dari gaji pokok (gaji ÷ 30 ÷ 8 ÷ 60). Isi jika tarif khusus untuk orang ini."
+            digits={lateDeductionPerMinute}
+            onDigitsChange={setLateDeductionPerMinute}
+            placeholder="0"
+          />
+          <IntegerDigitsInput
+            label="Potongan tidak masuk / alpha (Rp per hari)"
+            hint="Kosongkan atau 0 = gaji pokok ÷ 30 per hari alpha. Isi jika HR menetapkan nominal khusus."
+            digits={absenceDeductionPerDay}
+            onDigitsChange={setAbsenceDeductionPerDay}
+            placeholder="0"
           />
           <Input label="NIK" value={nik} onChange={setNik} />
           <Input label="NPWP" value={npwp} onChange={setNpwp} />
@@ -515,29 +763,105 @@ if (list.length > 0) {
           <div className="col-span-2 mt-4 min-w-0">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">
               Jam Kerja
-              </h3>
-              
+            </h3>
+
+            <p className="mb-2 text-xs text-slate-500">Senin–Jumat (default)</p>
               <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
                 <div className="min-w-0">
-                  <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">Jam Masuk</label>
+                  <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+                    Jam masuk (HH:mm)
+                  </label>
                   <input
-                  type="time"
-                  value={shiftStart}
-                  onChange={(e) => setShiftStart(e.target.value)}
-                  className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
-                  />
-                  </div>
-                  
-                  <div className="min-w-0">
-                    <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">Jam Pulang</label>
-                    <input
                     type="time"
+                    step={60}
+                    value={shiftStart}
+                    onChange={(e) => setShiftStart(coerceBrowserTimeToHm(e.target.value))}
+                    onBlur={() => setShiftStart((v) => formalizeTimeHmInput(v))}
+                    className={`mt-1 overflow-x-auto font-mono tabular-nums ${FORM_CONTROL}`}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+                    Jam pulang (HH:mm)
+                  </label>
+                  <input
+                    type="time"
+                    step={60}
                     value={shiftEnd}
-                    onChange={(e) => setShiftEnd(e.target.value)}
-                    className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
-                    />
+                    onChange={(e) => setShiftEnd(coerceBrowserTimeToHm(e.target.value))}
+                    onBlur={() => setShiftEnd((v) => formalizeTimeHmInput(v))}
+                    className={`mt-1 overflow-x-auto font-mono tabular-nums ${FORM_CONTROL}`}
+                  />
+                </div>
                     </div>
-                    </div>
+
+            <p className="mt-4 mb-2 text-xs text-slate-500">
+              Sabtu (opsional — beda dari Sen–Jumat). Kosongkan jam masuk &amp; pulang jika sama dengan atas.
+            </p>
+            <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
+              <div className="min-w-0">
+                <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+                  Jam masuk Sabtu
+                </label>
+                <input
+                  type="time"
+                  step={60}
+                  value={shiftStartSaturday}
+                  onChange={(e) => setShiftStartSaturday(coerceBrowserTimeToHm(e.target.value))}
+                  onBlur={() => setShiftStartSaturday((v) => formalizeTimeHmInput(v))}
+                  className={`mt-1 overflow-x-auto font-mono tabular-nums ${FORM_CONTROL}`}
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+                  Jam pulang Sabtu
+                </label>
+                <input
+                  type="time"
+                  step={60}
+                  value={shiftEndSaturday}
+                  onChange={(e) => setShiftEndSaturday(coerceBrowserTimeToHm(e.target.value))}
+                  onBlur={() => setShiftEndSaturday((v) => formalizeTimeHmInput(v))}
+                  className={`mt-1 overflow-x-auto font-mono tabular-nums ${FORM_CONTROL}`}
+                />
+              </div>
+            </div>
+
+            <p className="mt-4 mb-2 text-xs text-slate-500">
+              Minggu (opsional — bisa beda lagi dari Sabtu). Kosongkan keduanya jika ikut jam Sen–Jum.
+            </p>
+            <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
+              <div className="min-w-0">
+                <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+                  Jam masuk Minggu
+                </label>
+                <input
+                  type="time"
+                  step={60}
+                  value={shiftStartSunday}
+                  onChange={(e) => setShiftStartSunday(coerceBrowserTimeToHm(e.target.value))}
+                  onBlur={() => setShiftStartSunday((v) => formalizeTimeHmInput(v))}
+                  className={`mt-1 overflow-x-auto font-mono tabular-nums ${FORM_CONTROL}`}
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+                  Jam pulang Minggu
+                </label>
+                <input
+                  type="time"
+                  step={60}
+                  value={shiftEndSunday}
+                  onChange={(e) => setShiftEndSunday(coerceBrowserTimeToHm(e.target.value))}
+                  onBlur={() => setShiftEndSunday((v) => formalizeTimeHmInput(v))}
+                  className={`mt-1 overflow-x-auto font-mono tabular-nums ${FORM_CONTROL}`}
+                />
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Toleransi telat (field di bawah) berlaku sama untuk semua hari.
+            </p>
                     </div>
                     
                     {/* TOLERANSI — teks + inputMode numeric (type=number sering bermasalah saat diketik) */}
@@ -559,6 +883,24 @@ if (list.length > 0) {
                       }}
                       placeholder="0–999"
                     />
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 md:col-span-2">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              checked={requireCheckinSelfie}
+              onChange={(e) => setRequireCheckinSelfie(e.target.checked)}
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-slate-800">
+                Wajibkan foto selfie saat check-in (audit HR)
+              </span>
+              <span className="mt-1 block text-sm leading-relaxed text-slate-600">
+                Jika diaktifkan, pegawai harus mengunggah selfie di aplikasi mobile sebelum check-in
+                disimpan. HR dapat melihat foto di monitoring absensi.
+              </span>
+            </span>
+          </label>
 
           {/* OFFICE DROPDOWN */}
           <div className="min-w-0 md:col-span-2">
@@ -781,9 +1123,41 @@ function Input({
 
 function formatSalaryIdDisplay(digits: string): string {
   if (!digits) return "";
-  const n = parseInt(digits, 10);
-  if (Number.isNaN(n)) return "";
-  return n.toLocaleString("id-ID");
+  return formatIntegerId(parseIntegerInput(digits));
+}
+
+function IntegerDigitsInput({
+  label,
+  hint,
+  digits,
+  onDigitsChange,
+  placeholder,
+}: {
+  label: string;
+  hint?: string;
+  digits: string;
+  onDigitsChange: (next: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <label className="mb-1 block text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
+        {label}
+      </label>
+      {hint ? (
+        <p className="mb-1 break-words text-xs leading-snug text-slate-500 sm:text-slate-400">{hint}</p>
+      ) : null}
+      <input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        value={digits ? formatIntegerId(parseIntegerInput(digits)) : ""}
+        placeholder={placeholder}
+        onChange={(e) => onDigitsChange(e.target.value.replace(/\D/g, ""))}
+        className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
+      />
+    </div>
+  );
 }
 
 function SalaryInput({

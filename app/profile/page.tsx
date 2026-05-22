@@ -47,7 +47,7 @@ export default function ProfilePage() {
       <StandaloneAppHeader
         subtitle="Profil"
         endSlot={
-          <StandalonePortalActions omitProfile showAttendanceShortcut />
+          <StandalonePortalActions omitProfile />
         }
       />
       <EmployeeSelfProfile />

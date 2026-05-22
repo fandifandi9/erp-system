@@ -1,31 +1,58 @@
 # ERP Staff (Expo)
 
-Aplikasi native untuk staf: login PocketBase, absensi GPS (logika selaras dengan `../lib/attendance.ts` di web), cuti, aktivitas luar kantor, profil, dan dasar push notification.
+Aplikasi **native** untuk staf: login PocketBase, absensi GPS, HR antrean, **inventory (scan zona, cek stok)**, profil, push.
+
+**Jalur rilis mobile resmi:** folder ini + **EAS Build** / `expo run:android`.  
+**Bukan** shell Capacitor di root repo (Capacitor + folder `android/` root telah dihapus agar tidak bentrok).
+
+## Arsitektur (ringkas)
+
+- **PocketBase:** auth + sebagian besar data (`EXPO_PUBLIC_POCKETBASE_URL`).
+- **Next.js (hanya API inventory zona):** `EXPO_PUBLIC_ERP_WEB_URL` — lihat `../docs/MOBILE_ARCHITECTURE.md`.
 
 ## Struktur
 
-- `app/` — Expo Router: `(auth)/login`, tab `(tabs)/` (absensi, cuti, luar kantor, profil).
-- `lib/` — `pocketbase` (AsyncAuthStore + SecureStore), `attendance.ts`, `leave.ts`, `field_activity.ts`, `notifications.ts`, `gps.ts`, `location.ts`, `device.ts`.
-- `context/auth.tsx` — sesi, `signInWithPassword` / `signInWithOtp` (MFA), `signOut`, rotasi `session_nonce`, realtime logout jika sesi diganti perangkat lain.
+- `app/` — Expo Router: `(auth)/login`, `(tabs)/`, `hr/`, `inventory/`.
+- `lib/` — PocketBase (`pocketbase.ts` + SecureStore), domain (`attendance.ts`, …), `network.ts` (retry), `inventory/` (API bridge + stok PB).
+- `context/auth.tsx` — sesi, MFA, `session_nonce`, realtime/polling sesi.
 
 ## Setup
 
-1. Salin `.env.example` ke `.env` dan set `EXPO_PUBLIC_POCKETBASE_URL` ke URL HTTPS PocketBase (tanpa slash akhir).
-2. `npm install` di folder ini.
-3. `npx expo start` — scan QR dengan Expo Go, atau build dev client / production lewat EAS.
+1. Salin `mobile/.env.example` → `.env` (untuk `expo start` di laptop).
+2. Wajib di `.env` (dev) **dan** di `eas.json` → `build.base.env` (APK EAS — `.env` tidak ikut Git):
+   - `EXPO_PUBLIC_POCKETBASE_URL` — HTTPS PocketBase, tanpa slash akhir.
+   - `EXPO_PUBLIC_ERP_WEB_URL` — URL **Next.js** (production HTTPS; dev bisa `http://IP-LAN-PC:3000`).
+3. `npm install` di folder ini.
+4. `npx expo start` — Expo Go atau dev client.
 
-Variabel opsional:
+## Build APK (EAS)
 
-- `EXPO_PUBLIC_EAS_PROJECT_ID` — untuk `getExpoPushTokenAsync` (push penuh perlu project EAS + FCM/APNs).
+Dari folder `mobile/`:
 
-## Keamanan (ringkas)
+```bash
+eas build --platform android --profile preview-apk --clear-cache
+# atau production:
+eas build --platform android --profile production --clear-cache
+```
 
-- Token PocketBase disimpan lewat `AsyncAuthStore` + **expo-secure-store** (bukan password).
-- Logout memanggil `authStore.clear()` sehingga token dihapus dari SecureStore.
-- Sandi tidak disimpan di perangkat.
-- Pakai HTTPS ke PocketBase; pertimbangkan pinning sertifikat untuk threat model tinggi.
-- Pastikan aturan API PocketBase untuk koleksi `users`, `profiles`, `attendance_logs`, `leave_requests`, `field_activity_requests` mengizinkan peran staf sesuai web.
+Variabel `EXPO_PUBLIC_*` untuk cloud build ada di **`eas.json`** (profil `base`). Setelah ganti domain, edit `eas.json` lalu build ulang.
 
-## Catatan selfie
+Di layar login APK, harus tampil **Server: https://…** (bukan peringatan oranye).
 
-Layar absensi mengambil foto opsional; unggah ke rekaman PB dapat ditambahkan setelah ada field file di skema `attendance_logs` atau endpoint kustom.
+Opsional:
+
+- `EXPO_PUBLIC_PB_DISABLE_REALTIME=true` — jika SSE `/api/realtime` sering error di jaringan Anda.
+- `EXPO_PUBLIC_EAS_PROJECT_ID` — push notification (EAS + FCM/APNs).
+
+## Checklist produksi
+
+Lihat **`../docs/MOBILE_PRODUCTION_CHECKLIST.md`**.
+
+## Keamanan
+
+- Token di **expo-secure-store** (AsyncAuthStore).
+- Jangan sertakan `POCKETBASE_ADMIN_*` di app mobile.
+
+## Catatan selfie / kamera
+
+Absensi & inventory scan memakai `expo-camera`; izin sudah di `app.json`.

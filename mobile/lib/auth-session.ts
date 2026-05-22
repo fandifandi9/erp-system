@@ -48,6 +48,28 @@ export async function shouldLogoutMobileSessionMismatch(fresh: {
   const server = String(fresh.session_nonce ?? "").trim();
   if (!server) return false;
   const local = (await getMobileSessionNonce())?.trim() ?? "";
-  if (!local) return true;
+  /** Tanpa nonce lokal jangan langsung logout — bisa race setelah login / SecureStore lambat. */
+  if (!local) return false;
   return server !== local;
+}
+
+/** Setelah login atau buka app: pastikan nonce lokal ada jika server sudah punya nonce. */
+export async function ensureMobileSessionNonceSynced(pb: PocketBase): Promise<void> {
+  const id = pb.authStore.model?.id;
+  if (!id || !pb.authStore.isValid) return;
+  const local = (await getMobileSessionNonce())?.trim() ?? "";
+  if (local) return;
+  try {
+    const fresh = await pb.collection("users").getOne(id, { requestKey: null });
+    const server = String(
+      (fresh as { session_nonce?: unknown }).session_nonce ?? ""
+    ).trim();
+    if (!server) {
+      await registerMobileSessionAfterAuth(pb);
+      return;
+    }
+    await setMobileSessionNonce(server);
+  } catch {
+    /* offline / rule PB */
+  }
 }

@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# Legacy Capacitor shell (mobile resmi = Expo di folder mobile/)
+/android/
+
 # production
 /build
 

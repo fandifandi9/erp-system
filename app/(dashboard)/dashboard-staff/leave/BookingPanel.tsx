@@ -14,13 +14,14 @@ import {
   type MonthlyBookingInfo,
 } from "@/lib/leave";
 import { LeaveBookingCalendar } from "@/components/LeaveBookingCalendar";
+import { StaffBenefitCard } from "@/components/StaffBenefitCard";
 import { checkProfileComplete } from "@/lib/profile";
 import { useRouter } from "next/navigation";
 import { CheckCircle, AlertTriangle, Loader2, AlertCircle as AlertIcon, Info, Users, TrendingUp } from "lucide-react";
 
 export function StaffLeaveBookingPanel({
   omitPageHeader = false,
-  /** Untuk PWA `/attendance/leave` — redirect riwayat tetap di rute yang sama. */
+  /** Riwayat cuti di dashboard staff (rute `/dashboard-staff/leave`). */
   basePath = "/dashboard-staff/leave",
 }: {
   omitPageHeader?: boolean;
@@ -315,6 +316,8 @@ export function StaffLeaveBookingPanel({
           </p>
         </div>
       )}
+
+      {currentUserId ? <StaffBenefitCard userId={currentUserId} /> : null}
 
       {monthlyBooking && (
         <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 p-6">

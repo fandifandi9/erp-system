@@ -1,3 +1,5 @@
+import { canAccessInventory, INVENTORY_WEB_PATHS } from "@/lib/inventory/access";
+
 export type AccountType = "owner" | "user";
 export type UserRoleCode =
   | "hr"
@@ -26,14 +28,8 @@ const DASHBOARD_ROLES: UserRoleCode[] = ["hr", "manager", "staff"];
 export const getDefaultDashboardAccessForRole = (roleCode: UserRoleCode): boolean =>
   DASHBOARD_ROLES.includes(roleCode);
 
-const DEFAULT_USER_ACCESS = [
-  "/entry",
-  "/attendance",
-  "/attendance/history",
-  "/attendance/leave",
-  "/attendance/field-activity",
-  "/profile",
-];
+/** Rute akun di web tanpa modul absensi (absensi hanya app native). */
+const DEFAULT_USER_ACCESS = ["/profile"];
 
 const ROLE_ACCESS_BY_CODE: Record<UserRoleCode, string[]> = {
   hr: [
@@ -44,6 +40,9 @@ const ROLE_ACCESS_BY_CODE: Record<UserRoleCode, string[]> = {
     "/hr/attendance/leave",
     "/hr/leave",
     "/hr/overtime",
+    "/hr/compensation/settings",
+    "/hr/work-calendar",
+    "/hr/leave/settings",
     "/hr/field-activity",
     "/hr/offices",
     "/hr/profile",
@@ -121,12 +120,9 @@ export const getNormalizedUserSchemaFields = (
   };
 };
 
-/**
- * Fallback middleware / redirect: halaman pilih **Absensi (HP)** vs **Dashboard kerja**.
- * Wajib ada di {@link DEFAULT_USER_ACCESS} agar middleware tidak memaksa ke dashboard.
- */
-export const getDefaultRouteForUser = (_user: AuthUserShape | null | undefined): string => {
-  return "/entry";
+/** Beranda setelah login / URL lawas: dashboard kerja jika ada, selain itu profil. */
+export const getDefaultRouteForUser = (user: AuthUserShape | null | undefined): string => {
+  return getOperationalDashboardRoute(user) ?? "/profile";
 };
 
 /**
@@ -147,8 +143,13 @@ export const getOperationalDashboardRoute = (
 export const getAllowedPathsForUser = (user: AuthUserShape | null | undefined): string[] => {
   const auth = normalizeAuthModel(user);
   if (auth.accountType === "owner") return ["*"];
-  if (!auth.roleCode) return [...DEFAULT_USER_ACCESS];
-  return ROLE_ACCESS_BY_CODE[auth.roleCode] || [...DEFAULT_USER_ACCESS];
+  const base = !auth.roleCode
+    ? [...DEFAULT_USER_ACCESS]
+    : ROLE_ACCESS_BY_CODE[auth.roleCode] || [...DEFAULT_USER_ACCESS];
+  if (canAccessInventory(user)) {
+    return [...base, ...INVENTORY_WEB_PATHS];
+  }
+  return base;
 };
 
 export const canAccess = (user: AuthUserShape | null | undefined, pathname: string): boolean => {
@@ -169,21 +170,30 @@ export const KNOWN_ROUTES = [
   "/hr",
   "/hr/employees",
   "/hr/attendance",
+  "/hr/attendance/suspicious",
   "/hr/payroll",
   "/hr/attendance/leave",
   "/hr/leave",
   "/hr/overtime",
+  "/hr/compensation/settings",
+  "/hr/work-calendar",
+  "/hr/leave/settings",
   "/hr/field-activity",
   "/hr/offices",
   "/hr/profile",
-  "/attendance",
-  "/attendance/history",
-  "/attendance/leave",
-  "/attendance/field-activity",
   "/profile",
   "/system",
   "/system/users",
   "/system/register",
   "/login",
-  "/entry",
+  "/erp-locked",
+  "/mobile-bridge",
+  "/inventory",
+  "/inventory/products",
+  "/inventory/warehouses",
+  "/inventory/stock",
+  "/inventory/movements",
+  "/inventory/zones",
+  "/inventory/zones/checkin",
+  "/inventory/activities",
 ];

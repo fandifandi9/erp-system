@@ -1,4 +1,15 @@
 import { pb } from "./pocketbase";
+import { computeLeaveQuotaCreditForMonth } from "./employee-benefits";
+import {
+  buildRangeAttendanceSnapshot,
+  evaluateExtraBonusEligibility,
+  fetchPayrollSettingLite,
+} from "./extra-bonus";
+import {
+  PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD,
+  PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD,
+} from "./profile";
+import { countScheduledWorkDays, fetchHolidayDatesInRange, fetchWorkCalendarMask } from "./work-calendar";
 
 export const PAYROLL_SETTINGS_COLLECTION = "payroll_settings";
 export const PAYROLL_PERIODS_COLLECTION = "payroll_periods";
@@ -50,6 +61,12 @@ export interface PayrollItemView {
   leave_encashment_amount: number;
   leave_encashment_days: number;
   leave_encashment_reason?: string;
+  leave_quota_credit_amount: number;
+  leave_quota_credit_days: number;
+  leave_quota_credit_reason?: string;
+  extra_bonus_amount: number;
+  extra_bonus_eligible: boolean;
+  extra_bonus_reason?: string;
   late_deduction: number;
   absence_deduction: number;
   gross_amount: number;
@@ -98,6 +115,53 @@ function toBool(v: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/** Nama tampilan: profil + relasi user; fetch users bila masih kosong / sama dengan id (expand sering kosong jika View rule ketat). */
+async function resolveEmployeeDisplayNameForPayroll(
+  uid: string,
+  profile: AnyRecord,
+  expandedUser: AnyRecord | undefined
+): Promise<string> {
+  if (!uid) return "-";
+  const fromLocal = firstNonEmptyString(
+    profile.name,
+    profile.full_name,
+    profile.display_name,
+    expandedUser?.name,
+    expandedUser?.email,
+    expandedUser?.username
+  );
+  if (fromLocal && fromLocal !== uid) return fromLocal;
+  try {
+    const u = (await pb.collection("users").getOne(uid, { requestKey: null })) as AnyRecord;
+    const picked = firstNonEmptyString(u.name, u.email, u.username);
+    if (picked) return picked;
+  } catch {
+    // akses ditolak atau user tidak ada
+  }
+  return fromLocal || uid;
+}
+
+/** Saat baca payroll_items: perbaiki baris lama yang menyimpan id user sebagai employee_name. */
+function employeeNameFromPayrollItemRecord(r: AnyRecord): string {
+  const uid = String(r.user ?? "").trim();
+  const stored = String(r.employee_name ?? "").trim();
+  const expUser = (r.expand as AnyRecord | undefined)?.user as AnyRecord | undefined;
+  const expProfile = (r.expand as AnyRecord | undefined)?.profile as AnyRecord | undefined;
+  const fromProfile = firstNonEmptyString(expProfile?.name, expProfile?.full_name, expProfile?.display_name);
+  const fromUser = firstNonEmptyString(expUser?.name, expUser?.email, expUser?.username);
+  if (stored && stored !== uid) return stored;
+  const picked = fromProfile || fromUser;
+  if (picked) return picked;
+  return stored || uid || "-";
+}
+
 function ymd(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -111,17 +175,6 @@ function overlapDays(startA: string, endA: string, startB: string, endB: string)
   if (e.getTime() < s.getTime()) return 0;
   const dayMs = 24 * 60 * 60 * 1000;
   return Math.floor((e.getTime() - s.getTime()) / dayMs) + 1;
-}
-
-function countWeekdaysInRange(startDate: string, endDate: string): number {
-  const s = new Date(startDate);
-  const e = new Date(endDate);
-  let count = 0;
-  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-    const day = d.getDay();
-    if (day !== 0) count += 1;
-  }
-  return count;
 }
 
 function mapSetting(raw: SettingRecord): PayrollSetting {
@@ -279,11 +332,22 @@ async function getAttendanceStats(userId: string, startDate: string, endDate: st
 async function getOvertimeAmount(userId: string, startDate: string, endDate: string, hourlyRate: number): Promise<number> {
   try {
     const rows = await pb.collection("overtime_requests").getFullList({
-      filter: `user="${userId}" && status="hr_approved" && work_date >= "${startDate}" && work_date <= "${endDate}"`,
+      filter: `user="${userId}" && work_date >= "${startDate}" && work_date <= "${endDate}" && (status="staff_accepted" || status="hr_approved")`,
       requestKey: null,
     });
-    const hours = rows.reduce((acc, row) => acc + Math.max(0, toNumber((row as AnyRecord).hours, 0)), 0);
-    return Math.round(hours * hourlyRate * 1.5);
+    let total = 0;
+    for (const row of rows) {
+      const r = row as AnyRecord;
+      const stored = Math.round(toNumber(r.pay_amount, 0));
+      if (stored > 0) {
+        total += stored;
+        continue;
+      }
+      const hours = Math.max(0, toNumber(r.hours, 0));
+      const rate = Math.max(0, toNumber(r.hourly_rate, hourlyRate));
+      total += Math.round(hours * rate);
+    }
+    return total;
   } catch {
     return 0;
   }
@@ -393,6 +457,9 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
     const setting = settingRaw ? mapSetting(settingRaw) : await fetchActivePayrollSetting();
     if (!setting) return { success: false, message: "Payroll setting belum tersedia." };
 
+    const workMask = await fetchWorkCalendarMask();
+    const holidaySet = await fetchHolidayDatesInRange(period.start_date, period.end_date);
+
     const profiles = await pb.collection("profiles").getFullList({
       sort: "name",
       expand: "user",
@@ -422,11 +489,20 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
       const dailyRate = baseSalary / 30;
       const hourlyRate = dailyRate / 8;
       const minuteRate = hourlyRate / 60;
+      const customLatePerMin = Math.max(0, toNumber(p[PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD], 0));
+      const customAbsencePerDay = Math.max(0, toNumber(p[PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD], 0));
+      const effectiveMinuteRate = customLatePerMin > 0 ? customLatePerMin : minuteRate;
+      const effectiveDailyAbsenceRate = customAbsencePerDay > 0 ? customAbsencePerDay : dailyRate;
 
       const attendance = await getAttendanceStats(uid, period.start_date, period.end_date);
       const approvedLeaveDays = await getApprovedLeaveDays(uid, period.start_date, period.end_date);
       const approvedFieldDays = await getApprovedFieldActivityDays(uid, period.start_date, period.end_date);
-      const requiredDays = countWeekdaysInRange(period.start_date, period.end_date);
+      const requiredDays = countScheduledWorkDays(
+        period.start_date,
+        period.end_date,
+        workMask,
+        holidaySet
+      );
       const bonusInfo = attendanceBonusEligible({
         setting,
         requiredDays,
@@ -439,14 +515,50 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
 
       const overtimeAmount = await getOvertimeAmount(uid, period.start_date, period.end_date, hourlyRate);
       const encash = await getLeaveEncashment(uid, period.end_date, setting);
-      const lateDeduction = Math.round(attendance.lateMinutes * minuteRate);
-      const absenceDeduction = Math.round(bonusInfo.unexcusedAbsence * dailyRate);
+
+      const periodEnd = new Date(`${period.end_date}T12:00:00`);
+      const quotaCredit = await computeLeaveQuotaCreditForMonth(
+        uid,
+        periodEnd.getFullYear(),
+        periodEnd.getMonth() + 1
+      );
+
+      const profExtra = Math.max(0, Math.round(toNumber(p.extra_bonus_amount, 0)));
+      const profExtraOn = toBool(p.extra_bonus_enabled, false) && profExtra > 0;
+      const extraSettingLite = await fetchPayrollSettingLite();
+      const extraSnapshot = await buildRangeAttendanceSnapshot(
+        uid,
+        period.start_date,
+        period.end_date
+      );
+      const extraEval = evaluateExtraBonusEligibility({
+        snapshot: extraSnapshot,
+        setting: extraSettingLite,
+        targetAmount: profExtra,
+        enabled: profExtraOn,
+      });
+      const extraBonusInfo = {
+        eligible: extraEval.onTrack && extraEval.enabled,
+        amount: extraEval.estimatedAmount,
+        reason: extraEval.reason,
+      };
+
+      const lateDeduction = Math.round(attendance.lateMinutes * effectiveMinuteRate);
+      const absenceDeduction = Math.round(bonusInfo.unexcusedAbsence * effectiveDailyAbsenceRate);
 
       const gross = Math.round(
-        baseSalary + fixedAllowance + overtimeAmount + bonusInfo.amount + encash.amount
+        baseSalary +
+          fixedAllowance +
+          overtimeAmount +
+          bonusInfo.amount +
+          encash.amount +
+          quotaCredit.amount +
+          extraBonusInfo.amount
       );
       const totalDeduction = Math.max(0, lateDeduction + absenceDeduction);
       const net = Math.max(0, gross - totalDeduction);
+
+      const employee_name = await resolveEmployeeDisplayNameForPayroll(uid, p, expandedUser);
 
       const payload = {
         period: period.id,
@@ -454,7 +566,7 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
         profile: String(p.id ?? ""),
         division: String(p.division ?? p.department ?? ""),
         position: String(p.position ?? ""),
-        employee_name: String(p.name ?? expandedUser?.name ?? expandedUser?.email ?? uid),
+        employee_name,
         base_salary: baseSalary,
         fixed_allowance: fixedAllowance,
         overtime_amount: overtimeAmount,
@@ -467,6 +579,15 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
         leave_encashment_amount: encash.amount,
         leave_encashment_reason:
           encash.days > 0 ? `${encash.days} hari x ${encash.rate.toLocaleString("id-ID")}` : "Tidak ada pencairan",
+        leave_quota_credit_days: quotaCredit.unusedSlots,
+        leave_quota_credit_amount: quotaCredit.amount,
+        leave_quota_credit_reason:
+          quotaCredit.unusedSlots > 0
+            ? `${quotaCredit.unusedSlots} kuota cuti tidak dipakai × ${quotaCredit.dailyRate.toLocaleString("id-ID")}`
+            : "Kuota cuti bulan ini habis terpakai",
+        extra_bonus_eligible: extraBonusInfo.eligible,
+        extra_bonus_amount: extraBonusInfo.amount,
+        extra_bonus_reason: extraBonusInfo.reason,
         late_deduction: lateDeduction,
         absence_deduction: absenceDeduction,
         loan_deduction: 0,
@@ -492,19 +613,21 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
   }
 }
 
+/** Item payroll per periode; urut nama di klien (sort server `employee_name` bisa 400 jika field tidak ada di PB). */
 export async function fetchPayrollItemsByPeriod(periodId: string): Promise<PayrollItemView[]> {
   const rows = await pb.collection(PAYROLL_ITEMS_COLLECTION).getFullList({
     filter: `period="${periodId}"`,
-    sort: "employee_name",
+    sort: "+created",
+    expand: "user,profile",
     requestKey: null,
   });
-  return rows.map((row) => {
+  const out = rows.map((row) => {
     const r = row as unknown as AnyRecord;
     return {
       id: String(r.id ?? ""),
       user: String(r.user ?? ""),
       profile: String(r.profile ?? "") || undefined,
-      employee_name: String(r.employee_name ?? r.user ?? "-"),
+      employee_name: employeeNameFromPayrollItemRecord(r),
       base_salary: Math.round(toNumber(r.base_salary, 0)),
       overtime_amount: Math.round(toNumber(r.overtime_amount, 0)),
       attendance_bonus_amount: Math.round(toNumber(r.attendance_bonus_amount, 0)),
@@ -513,6 +636,12 @@ export async function fetchPayrollItemsByPeriod(periodId: string): Promise<Payro
       leave_encashment_amount: Math.round(toNumber(r.leave_encashment_amount, 0)),
       leave_encashment_days: Math.floor(toNumber(r.leave_encashment_days, 0)),
       leave_encashment_reason: String(r.leave_encashment_reason ?? "").trim() || undefined,
+      leave_quota_credit_amount: Math.round(toNumber(r.leave_quota_credit_amount, 0)),
+      leave_quota_credit_days: Math.floor(toNumber(r.leave_quota_credit_days, 0)),
+      leave_quota_credit_reason: String(r.leave_quota_credit_reason ?? "").trim() || undefined,
+      extra_bonus_amount: Math.round(toNumber(r.extra_bonus_amount, 0)),
+      extra_bonus_eligible: toBool(r.extra_bonus_eligible, false),
+      extra_bonus_reason: String(r.extra_bonus_reason ?? "").trim() || undefined,
       late_deduction: Math.round(toNumber(r.late_deduction, 0)),
       absence_deduction: Math.round(toNumber(r.absence_deduction, 0)),
       gross_amount: Math.round(toNumber(r.gross_amount, 0)),
@@ -521,6 +650,10 @@ export async function fetchPayrollItemsByPeriod(periodId: string): Promise<Payro
       status: String(r.status ?? "calculated"),
     };
   });
+  out.sort((a, b) =>
+    a.employee_name.localeCompare(b.employee_name, "id", { sensitivity: "base" })
+  );
+  return out;
 }
 
 const FINAL_SLIP_STATUSES = new Set(["approved", "paid", "closed"]);
@@ -530,7 +663,7 @@ export async function fetchStaffPayrollSlips(userId: string): Promise<StaffPayro
   const rows = await pb.collection(PAYROLL_ITEMS_COLLECTION).getFullList({
     filter: `user="${userId}"`,
     sort: "-created",
-    expand: "period",
+    expand: "period,user,profile",
     requestKey: null,
   });
   const periodCache = new Map<string, PayrollPeriod>();
@@ -562,7 +695,7 @@ export async function fetchStaffPayrollSlips(userId: string): Promise<StaffPayro
       id: String(r.id ?? ""),
       user: String(r.user ?? ""),
       profile: String(r.profile ?? "") || undefined,
-      employee_name: String(r.employee_name ?? r.user ?? "-"),
+      employee_name: employeeNameFromPayrollItemRecord(r),
       base_salary: Math.round(toNumber(r.base_salary, 0)),
       overtime_amount: Math.round(toNumber(r.overtime_amount, 0)),
       attendance_bonus_amount: Math.round(toNumber(r.attendance_bonus_amount, 0)),
@@ -571,6 +704,12 @@ export async function fetchStaffPayrollSlips(userId: string): Promise<StaffPayro
       leave_encashment_amount: Math.round(toNumber(r.leave_encashment_amount, 0)),
       leave_encashment_days: Math.floor(toNumber(r.leave_encashment_days, 0)),
       leave_encashment_reason: String(r.leave_encashment_reason ?? "").trim() || undefined,
+      leave_quota_credit_amount: Math.round(toNumber(r.leave_quota_credit_amount, 0)),
+      leave_quota_credit_days: Math.floor(toNumber(r.leave_quota_credit_days, 0)),
+      leave_quota_credit_reason: String(r.leave_quota_credit_reason ?? "").trim() || undefined,
+      extra_bonus_amount: Math.round(toNumber(r.extra_bonus_amount, 0)),
+      extra_bonus_eligible: toBool(r.extra_bonus_eligible, false),
+      extra_bonus_reason: String(r.extra_bonus_reason ?? "").trim() || undefined,
       late_deduction: Math.round(toNumber(r.late_deduction, 0)),
       absence_deduction: Math.round(toNumber(r.absence_deduction, 0)),
       gross_amount: Math.round(toNumber(r.gross_amount, 0)),

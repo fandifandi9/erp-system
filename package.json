@@ -13,7 +13,8 @@
     "next": "16.2.3",
     "pocketbase": "^0.26.8",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "serve": "^14.2.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
