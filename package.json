@@ -6,19 +6,28 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "pb:wms-schema": "node scripts/fix-pb-wms-orders-schema.mjs",
+    "pb:bisnis-status": "node scripts/fix-pb-bisnis-status-schema.mjs"
   },
   "dependencies": {
+    "canvg": "^4.0.3",
+    "exceljs": "^4.4.0",
+    "jsbarcode": "^3.12.3",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.8.0",
     "next": "16.2.3",
     "pocketbase": "^0.26.8",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

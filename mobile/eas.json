@@ -23,7 +23,8 @@
     "preview-apk": {
       "extends": "preview",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "resourceClass": "medium"
       }
     },
     "production": {

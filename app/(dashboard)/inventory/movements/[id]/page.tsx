@@ -5,11 +5,17 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
-import { fetchMovementDetail, postMovement } from "@/lib/inventory/client";
-import { canPostInventoryMovement } from "@/lib/inventory/access";
+import {
+  fetchCctvCameras,
+  fetchMovementDetail,
+  postMovementWithCctv,
+  voidMovement,
+} from "@/lib/inventory/client";
+import { canPostInventoryMovement, isInventorySupervisorOrAbove } from "@/lib/inventory/access";
 import { pb } from "@/lib/pocketbase";
 import { getErrorMessage } from "@/lib/errors";
-import type { InvMovement, InvMovementLine } from "@/lib/inventory/types";
+import type { CctvSnapshot, InvMovement, InvMovementLine } from "@/lib/inventory/types";
+import { labelMovementStatus, labelMovementType } from "@/lib/inventory/labels";
 import { formatIntegerId } from "@/lib/format-number";
 import { Loader2 } from "lucide-react";
 
@@ -18,11 +24,16 @@ export default function InventoryMovementDetailPage() {
   const id = String(params.id || "");
   const user = pb.authStore.model;
   const canPost = user && canPostInventoryMovement(user);
+  const canVoid = user && isInventorySupervisorOrAbove(user);
 
   const [movement, setMovement] = useState<InvMovement | null>(null);
   const [lines, setLines] = useState<InvMovementLine[]>([]);
+  const [cameras, setCameras] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [cctvId, setCctvId] = useState("");
+  const [voidNote, setVoidNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
+  const [voiding, setVoiding] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -32,6 +43,10 @@ export default function InventoryMovementDetailPage() {
       const data = await fetchMovementDetail(id);
       setMovement(data.movement);
       setLines(data.lines as unknown as InvMovementLine[]);
+      if (data.movement.warehouse) {
+        const cams = await fetchCctvCameras(data.movement.warehouse);
+        setCameras(cams.map((c) => ({ id: c.id, code: c.code, name: c.name })));
+      }
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -48,7 +63,7 @@ export default function InventoryMovementDetailPage() {
     setError("");
     setMsg("");
     try {
-      const res = await postMovement(id);
+      const res = await postMovementWithCctv(id, cctvId || undefined);
       setMsg(`Berhasil diposting: ${res.movement_no}`);
       await load();
     } catch (err) {
@@ -58,14 +73,36 @@ export default function InventoryMovementDetailPage() {
     }
   };
 
+  const handleVoid = async () => {
+    if (!confirm("Batalkan mutasi ini? Stok akan dibalik via mutasi pembalikan.")) return;
+    setVoiding(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await voidMovement(id, voidNote);
+      setMsg(`Mutasi dibatalkan. Pembalikan: ${res.reversal_id || "—"}`);
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setVoiding(false);
+    }
+  };
+
+  const snapshot = movement?.cctv_snapshot as CctvSnapshot | undefined;
+
   return (
     <InventoryGate>
       <InventoryShell
-        title={movement?.movement_no || "Movement"}
-        subtitle={movement ? `${movement.movement_type} · ${movement.status}` : ""}
+        title={movement?.movement_no || "Mutasi"}
+        subtitle={
+          movement
+            ? `${labelMovementType(movement.movement_type)} · ${labelMovementStatus(movement.status)}`
+            : ""
+        }
       >
         <Link href="/inventory/movements" className="text-sm text-indigo-600 hover:underline">
-          ← Daftar movement
+          ← Daftar mutasi
         </Link>
 
         {loading ? (
@@ -87,7 +124,29 @@ export default function InventoryMovementDetailPage() {
                 </p>
               ) : null}
               {movement.posted_at ? (
-                <p className="mt-1 text-slate-500">Posted: {new Date(movement.posted_at).toLocaleString("id-ID")}</p>
+                <p className="mt-1 text-slate-500">
+                  Diposting: {new Date(movement.posted_at).toLocaleString("id-ID")}
+                </p>
+              ) : null}
+              {snapshot?.camera_code ? (
+                <p className="mt-2 rounded-lg bg-slate-50 p-2 text-xs">
+                  CCTV: {snapshot.camera_code} ch.{snapshot.channel || "—"} ·{" "}
+                  {snapshot.event_at ? new Date(snapshot.event_at).toLocaleString("id-ID") : ""}
+                  {snapshot.playback_hint_url ? (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <a
+                        href={snapshot.playback_hint_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:underline"
+                      >
+                        Playback NVR
+                      </a>
+                    </>
+                  ) : null}
+                </p>
               ) : null}
             </div>
 
@@ -113,14 +172,53 @@ export default function InventoryMovementDetailPage() {
             </div>
 
             {movement.status === "draft" && canPost ? (
-              <button
-                type="button"
-                onClick={() => void handlePost()}
-                disabled={posting}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {posting ? "Mem posting…" : "Post movement (update stok)"}
-              </button>
+              <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+                {cameras.length > 0 ? (
+                  <label className="block text-sm">
+                    Referensi CCTV (opsional)
+                    <select
+                      className="mt-1 w-full max-w-md rounded-lg border px-3 py-2"
+                      value={cctvId}
+                      onChange={(e) => setCctvId(e.target.value)}
+                    >
+                      <option value="">Tanpa snapshot CCTV</option>
+                      {cameras.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handlePost()}
+                  disabled={posting}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {posting ? "Mem posting…" : "Posting mutasi (perbarui stok)"}
+                </button>
+              </div>
+            ) : null}
+
+            {movement.status === "posted" && canVoid ? (
+              <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                <p className="text-sm text-amber-900">Batalkan posting dan kembalikan stok.</p>
+                <input
+                  className="w-full max-w-md rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Alasan pembatalan (opsional)"
+                  value={voidNote}
+                  onChange={(e) => setVoidNote(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleVoid()}
+                  disabled={voiding}
+                  className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {voiding ? "Memproses…" : "Batalkan mutasi"}
+                </button>
+              </div>
             ) : null}
           </>
         )}

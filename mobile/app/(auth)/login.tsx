@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,20 +15,25 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useAuth } from "@/context/auth";
 import { getPocketBaseUrl } from "@/lib/env";
 import { getErrorMessage, pocketBaseUnreachableMessage } from "@/lib/errors";
+import { consumePendingLoginMessage } from "@/lib/auth-lifecycle";
+import { getNativeHomeHref } from "@/lib/work-dashboard-menu";
+import {
+  APP_DISPLAY_NAME,
+  SYSTEM_LOGO_WIDE,
+  SYSTEM_LOGO_WIDE_ASPECT,
+} from "@/lib/branding";
 import { getAppVersionDisplay } from "@/lib/app-version";
 import { PWA } from "@/constants/pwaTheme";
-
-const BRAND_LOGO = require("@/assets/brandLogo.png");
 
 type Step = "password" | "otp";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signInWithPassword, signInWithOtp } = useAuth();
+  const { hydrated, user, signInWithPassword, signInWithOtp } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -40,6 +45,26 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const baseUrl = getPocketBaseUrl();
   const showConfigWarn = !baseUrl;
+
+  useEffect(() => {
+    const pending = consumePendingLoginMessage();
+    if (pending) setErr(pending);
+  }, []);
+
+  if (!hydrated) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.bootCenter}>
+          <ActivityIndicator color={PWA.indigo} size="large" />
+          <Text style={styles.bootHint}>Memuat sesi…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (user) {
+    return <Redirect href={getNativeHomeHref(user)} />;
+  }
 
   async function onPasswordSubmit() {
     Keyboard.dismiss();
@@ -101,11 +126,14 @@ export default function LoginScreen() {
             bounces={false}
           >
             <View style={styles.hero}>
-              <View style={styles.logoRing}>
-                <Image source={BRAND_LOGO} style={styles.logo} resizeMode="contain" />
-              </View>
-              <Text style={styles.brandTitle}>SERBA ERP</Text>
-              <Text style={styles.brandSub}>Aplikasi operasional staf</Text>
+              <Image
+                source={SYSTEM_LOGO_WIDE}
+                style={styles.logoWide}
+                resizeMode="contain"
+                accessibilityLabel="SDI"
+              />
+              <Text style={styles.brandTitle}>{APP_DISPLAY_NAME}</Text>
+              <Text style={styles.brandSub}>Operasional perusahaan</Text>
               <Text style={styles.version}>{getAppVersionDisplay()}</Text>
             </View>
 
@@ -238,6 +266,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: PWA.screenBgTint,
   },
+  bootCenter: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  bootHint: { color: PWA.textMuted, fontSize: 14 },
   flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
@@ -249,23 +284,10 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     paddingBottom: 20,
   },
-  logoRing: {
-    width: 112,
-    height: 112,
-    borderRadius: 28,
-    backgroundColor: "#0f172a",
-    alignItems: "center",
-    justifyContent: "center",
+  logoWide: {
+    width: 220,
+    height: Math.round(220 / SYSTEM_LOGO_WIDE_ASPECT),
     marginBottom: 16,
-    shadowColor: "#4f46e5",
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  logo: {
-    width: 80,
-    height: 80,
   },
   brandTitle: {
     fontSize: 26,

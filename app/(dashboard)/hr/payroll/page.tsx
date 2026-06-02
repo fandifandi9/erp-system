@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  buildPayrollCsvForPeriod,
+  downloadPayrollXlsxForPeriod,
   createPayrollPeriod,
   defaultMonthPeriod,
   fetchActivePayrollSetting,
@@ -123,20 +123,13 @@ export default function PayrollPage() {
     if (out.success) await loadItems();
   };
 
-  const exportCsv = async () => {
+  const exportExcel = async () => {
     if (!selectedPeriod) return;
     setWorking(true);
     try {
-      const { filename, csv } = await buildPayrollCsvForPeriod(selectedPeriod);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadPayrollXlsxForPeriod(selectedPeriod);
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Gagal export CSV");
+      alert(e instanceof Error ? e.message : "Gagal export Excel");
     } finally {
       setWorking(false);
     }
@@ -269,12 +262,12 @@ export default function PayrollPage() {
             </button>
             <button
               type="button"
-              onClick={() => void exportCsv()}
+              onClick={() => void exportExcel()}
               disabled={!selectedPeriod || working || items.length === 0}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              Export CSV
+              Export Excel
             </button>
             <button
               type="button"
@@ -336,7 +329,7 @@ export default function PayrollPage() {
         </div>
         {periodLocked && (
           <p className="mt-2 text-xs text-amber-800">
-            Periode terkunci untuk generate ulang. Export CSV tetap bisa; untuk koreksi besar buat periode baru atau ubah
+            Periode terkunci untuk generate ulang. Export Excel tetap bisa; untuk koreksi besar buat periode baru atau ubah
             status di PocketBase Admin.
           </p>
         )}

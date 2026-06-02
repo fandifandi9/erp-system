@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import type { RecordModel } from "pocketbase";
 import { ClientResponseError } from "pocketbase";
 import { pb } from "@/lib/pocketbase";
+import { downloadAttendanceXlsx } from "@/lib/export/attendance-xlsx";
 import { 
   Users, 
   Clock, 
@@ -176,31 +177,25 @@ export default function HRAttendancePage() {
       : "0",
   };
 
-  // =========================
-  // EXPORT TO CSV
-  // =========================
-  const handleExport = () => {
-    const csvContent = [
-      ["Nama", "Tanggal", "Check In", "Selfie", "Check Out", "Status", "Terlambat (menit)", "Jam Kerja", "Jarak (m)", "Mencurigakan"],
-      ...data.map(item => [
-        item.expand?.user?.name || "-",
-        new Date(item.check_in || item.date).toLocaleDateString("id-ID"),
-        item.check_in ? new Date(item.check_in).toLocaleTimeString("id-ID") : "-",
-        item.check_in_selfie ? "Ya" : "-",
-        item.check_out ? new Date(item.check_out).toLocaleTimeString("id-ID") : "-",
-        item.status,
-        item.late_minutes || 0,
-        item.work_hours || 0,
-        item.distance_meter || "-",
-        item.is_suspicious ? "Ya" : "Tidak",
-      ])
-    ].map(row => row.join(",")).join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+  const handleExport = async () => {
+    try {
+      await downloadAttendanceXlsx(
+        data.map((item) => ({
+          user_name: item.expand?.user?.name || "-",
+          date: item.check_in || item.date,
+          check_in: item.check_in ?? null,
+          has_selfie: item.check_in_selfie ? "Ya" : "Tidak",
+          check_out: item.check_out ?? null,
+          status: item.status,
+          late_minutes: item.late_minutes || 0,
+          work_hours: item.work_hours || 0,
+          distance_meter: item.distance_meter ?? "-",
+          is_suspicious: item.is_suspicious ? "Ya" : "Tidak",
+        }))
+      );
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Gagal export Excel");
+    }
   };
 
   // =========================
@@ -293,7 +288,7 @@ export default function HRAttendancePage() {
             className="flex items-center gap-2 px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 text-sm font-medium"
           >
             <Download className="w-4 h-4" />
-            Export CSV
+            Export Excel
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-# ERP Staff (Expo)
+# SERBA System (Expo mobile)
 
 Aplikasi **native** untuk staf: login PocketBase, absensi GPS, HR antrean, **inventory (scan zona, cek stok)**, profil, push.
 

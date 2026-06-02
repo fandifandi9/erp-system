@@ -9,6 +9,7 @@ import { KeyboardDismissOnNavigation } from "@/components/KeyboardDismissOnNavig
 import { AuthProvider } from "@/context/auth";
 import { OfflineQueueProvider } from "@/context/offline-queue";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { useAllowScreenSleep } from "@/lib/screen-behavior";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +23,8 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  useAllowScreenSleep();
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

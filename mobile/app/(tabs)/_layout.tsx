@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
+import { ActivityIndicator, View, Text, StyleSheet, Platform } from "react-native";
 import { Redirect, Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useAuth } from "@/context/auth";
@@ -15,14 +16,22 @@ type IonName = ComponentProps<typeof Ionicons>["name"];
 
 function tabBarIconPair(outline: IonName, solid: IonName) {
   return ({ color, focused }: { color: string; focused: boolean }) => (
-    <Ionicons name={focused ? solid : outline} color={color} size={TAB_ICON_SIZE} />
+    <View style={styles.tabIconWrap}>
+      <Ionicons name={focused ? solid : outline} color={color} size={TAB_ICON_SIZE} />
+    </View>
   );
 }
 
+const TAB_BAR_BASE_HEIGHT = 56;
+
 export default function TabsLayout() {
   const { hydrated, user } = useAuth();
+  const insets = useSafeAreaInsets();
   usePushRegistration(!!user);
   const showMejaKerjaTab = useMemo(() => shouldShowMejaKerjaTab(user), [user]);
+
+  const tabBarBottom = Math.max(insets.bottom, Platform.OS === "android" ? 10 : 8);
+  const tabBarHeight = TAB_BAR_BASE_HEIGHT + tabBarBottom;
 
   if (!hydrated) {
     return (
@@ -56,12 +65,23 @@ export default function TabsLayout() {
           borderTopColor: PWA.border,
           borderTopWidth: StyleSheet.hairlineWidth,
           elevation: 12,
+          height: tabBarHeight,
+          paddingBottom: tabBarBottom,
+          paddingTop: 6,
         },
         tabBarActiveTintColor: PWA.indigo,
         tabBarInactiveTintColor: PWA.textMuted,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: "600", marginBottom: 2 },
-        tabBarIconStyle: { marginTop: 4 },
-        tabBarItemStyle: { paddingVertical: 4 },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "600",
+          marginBottom: 0,
+          marginTop: 2,
+        },
+        tabBarIconStyle: { marginTop: 0 },
+        tabBarItemStyle: {
+          paddingTop: 4,
+          paddingBottom: 2,
+        },
         tabBarShowLabel: true,
       }}
     >
@@ -137,5 +157,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.6,
     color: PWA.textMuted,
+  },
+  tabIconWrap: {
+    height: 28,
+    width: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

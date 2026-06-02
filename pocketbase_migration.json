@@ -373,6 +373,109 @@
           "note": "LEGACY — berpasangan shift_start_weekend"
         }
       ]
+    },
+    {
+      "step": 13,
+      "action": "MANUAL_CREATE_COLLECTION_biz_purchase_bills",
+      "note": "Wajib untuk modul Pembelian (tab Tagihan). Satu transaksi = PO + tagihan + stok masuk gudang default toko.",
+      "biz_purchase_bills_fields": [
+        { "name": "bill_no", "type": "text", "required": true, "unique": true },
+        { "name": "purchase_order", "type": "relation", "required": false, "collection": "biz_purchase_orders", "maxSelect": 1 },
+        { "name": "supplier", "type": "relation", "required": true, "collection": "biz_suppliers", "maxSelect": 1 },
+        { "name": "status", "type": "select", "required": true, "values": ["draft", "unpaid", "received", "paid", "overdue", "cancelled"] },
+        { "name": "bill_date", "type": "date", "required": true },
+        { "name": "due_date", "type": "date", "required": true },
+        { "name": "subtotal", "type": "number", "required": true },
+        { "name": "discount_amount", "type": "number", "required": false },
+        { "name": "tax_amount", "type": "number", "required": true },
+        { "name": "materai_amount", "type": "number", "required": false },
+        { "name": "total", "type": "number", "required": true },
+        { "name": "paid_amount", "type": "number", "required": true },
+        { "name": "remaining", "type": "number", "required": true },
+        { "name": "is_cash", "type": "bool", "required": false },
+        { "name": "cancel_reason", "type": "text", "required": false },
+        { "name": "notes", "type": "text", "required": false },
+        { "name": "created_by", "type": "relation", "required": false, "collection": "users", "maxSelect": 1 }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\"",
+        "viewRule": "@request.auth.id != \"\"",
+        "createRule": "@request.auth.id != \"\"",
+        "updateRule": "@request.auth.id != \"\"",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\")"
+      },
+      "note_end": "Pastikan field status memuat unpaid (sama seperti biz_invoices). PO disimpan di biz_purchase_orders dengan warehouse = gudang default toko."
+    },
+    {
+      "step": 14,
+      "action": "MANUAL_ADD_FIELDS_biz_purchase_orders_warehouse_process",
+      "note": "Alur pembelian → penerimaan gudang → tagihan. Tambahkan field berikut ke collection biz_purchase_orders di PocketBase Admin.",
+      "biz_purchase_orders_warehouse_fields": [
+        {
+          "name": "send_to_warehouse_at",
+          "type": "text",
+          "required": false,
+          "note": "ISO datetime — saat admin klik Kirim ke Gudang"
+        },
+        {
+          "name": "warehouse_process_status",
+          "type": "select",
+          "required": false,
+          "values": ["pending", "checking", "hold", "processing", "complete"]
+        },
+        { "name": "warehouse_received_at", "type": "text", "required": false, "note": "ISO datetime" },
+        {
+          "name": "warehouse_processed_by",
+          "type": "relation",
+          "required": false,
+          "collection": "users",
+          "maxSelect": 1
+        },
+        { "name": "warehouse_processed_at", "type": "text", "required": false, "note": "ISO datetime — jam proses team gudang" },
+        {
+          "name": "warehouse_process_mode",
+          "type": "select",
+          "required": false,
+          "values": ["direct", "hold"]
+        },
+        { "name": "warehouse_hold_note", "type": "text", "required": false },
+        {
+          "name": "receiving_warehouse",
+          "type": "relation",
+          "required": false,
+          "collection": "inv_warehouses",
+          "maxSelect": 1
+        },
+        { "name": "surat_jalan_no", "type": "text", "required": false },
+        { "name": "surat_jalan_verified", "type": "bool", "required": false },
+        {
+          "name": "receiving_workflow_json",
+          "type": "text",
+          "required": false,
+          "note": "JSON progres QC, cetak label, putaway per baris PO (modul penerimaan gudang)"
+        }
+      ]
+    },
+    {
+      "step": 15,
+      "action": "MANUAL_ADD_FIELDS_inv_locations_placement",
+      "note": "Wajib agar kolom Gang/Tingkat/Bin di Lokasi Rak tersimpan. Tambah ke inv_locations di PocketBase Admin.",
+      "inv_locations_placement_fields": [
+        { "name": "aisle", "type": "text", "required": false, "note": "Gang / ruangan" },
+        { "name": "level", "type": "text", "required": false, "note": "Tingkat / baris / susunan" },
+        { "name": "bin", "type": "text", "required": false, "note": "Bin / slot" }
+      ]
+    },
+    {
+      "action": "MANUAL_ADD_FIELD_inv_locations_assigned_product",
+      "note": "Produk khusus per slot rak (per gudang). Tanpa field ini, ID produk disimpan di suffix nama slot.",
+      "field": {
+        "name": "assigned_product",
+        "type": "relation",
+        "collection": "inv_products",
+        "required": false,
+        "maxSelect": 1
+      }
     }
   ],
   "default_data": [

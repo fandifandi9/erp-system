@@ -73,11 +73,6 @@ export function isPayrollPeriodLockedForRegenerate(status: string): boolean {
   return s === "approved" || s === "paid" || s === "closed";
 }
 
-function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
-}
-
 function toNumber(v: unknown, fallback = 0): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -642,56 +637,6 @@ export async function fetchStaffPayrollSlips(userId: string): Promise<StaffPayro
     });
   }
   return out;
-}
-
-export async function buildPayrollCsvForPeriod(periodId: string): Promise<{ filename: string; csv: string }> {
-  const periodRaw = (await pb.collection(PAYROLL_PERIODS_COLLECTION).getOne(periodId, {
-    requestKey: null,
-  })) as unknown as AnyRecord;
-  const period = mapPeriod(periodRaw);
-  const items = await fetchPayrollItemsByPeriod(periodId);
-  const header = [
-    "period_key",
-    "period_status",
-    "employee_name",
-    "base_salary",
-    "overtime_amount",
-    "attendance_bonus_eligible",
-    "attendance_bonus_amount",
-    "attendance_bonus_reason",
-    "leave_encashment_days",
-    "leave_encashment_amount",
-    "leave_encashment_reason",
-    "late_deduction",
-    "absence_deduction",
-    "gross_amount",
-    "total_deduction",
-    "net_amount",
-  ];
-  const lines = [header.join(",")];
-  for (const x of items) {
-    lines.push(
-      [
-        csvEscape(period.period_key),
-        csvEscape(period.status),
-        csvEscape(x.employee_name),
-        String(x.base_salary),
-        String(x.overtime_amount),
-        x.attendance_bonus_eligible ? "1" : "0",
-        String(x.attendance_bonus_amount),
-        csvEscape(x.attendance_bonus_reason ?? ""),
-        String(x.leave_encashment_days),
-        String(x.leave_encashment_amount),
-        csvEscape(x.leave_encashment_reason ?? ""),
-        String(x.late_deduction),
-        String(x.absence_deduction),
-        String(x.gross_amount),
-        String(x.total_deduction),
-        String(x.net_amount),
-      ].join(",")
-    );
-  }
-  return { filename: `payroll-${period.period_key || periodId}.csv`, csv: lines.join("\r\n") };
 }
 
 export async function updatePayrollPeriodStatus(

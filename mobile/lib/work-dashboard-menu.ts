@@ -74,7 +74,7 @@ function getInventoryNativeTiles(user: AuthUser): WorkDashboardTile[] {
     nativeTile(
       "inv-zone-scan",
       "Scan zona",
-      "Check-in QR di gudang",
+      "Masuk zona QR di gudang",
       "qr-code",
       "#d1fae5",
       "#047857",
@@ -89,6 +89,36 @@ function getInventoryNativeTiles(user: AuthUser): WorkDashboardTile[] {
       "#e0e7ff",
       "#4338ca",
       "/inventory/product-scan",
+      "/inventory"
+    ),
+    nativeTile(
+      "inv-packing",
+      "Kemasan",
+      "Checklist order gudang",
+      "cube",
+      "#fce7f3",
+      "#be185d",
+      "/inventory/packing",
+      "/inventory"
+    ),
+    nativeTile(
+      "inv-opname",
+      "Opname stok",
+      "Hitung fisik stok",
+      "clipboard",
+      "#fef3c7",
+      "#b45309",
+      "/inventory/opname",
+      "/inventory"
+    ),
+    nativeTile(
+      "inv-movement",
+      "Mutasi",
+      "Draf masuk/keluar",
+      "swap-horizontal",
+      "#ede9fe",
+      "#6d28d9",
+      "/inventory/movement-new",
       "/inventory"
     ),
   ];

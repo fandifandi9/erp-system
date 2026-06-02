@@ -3,7 +3,24 @@ import type { NextConfig } from "next";
 const pocketBaseUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || "http://72.62.194.224:8091";
 const parsedPocketBaseUrl = new URL(pocketBaseUrl);
 
+const GUDANG_TO_WMS_REDIRECTS = [
+  "picking",
+  "validasi",
+  "packing",
+  "pickup",
+  "penerimaan",
+  "qc",
+  "putaway",
+] as const;
+
 const nextConfig: NextConfig = {
+  async redirects() {
+    return GUDANG_TO_WMS_REDIRECTS.map((segment) => ({
+      source: `/gudang/${segment}`,
+      destination: `/wms/${segment === "penerimaan" ? "receiving" : segment}`,
+      permanent: false,
+    }));
+  },
   images: {
     remotePatterns: [
       {

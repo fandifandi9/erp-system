@@ -139,7 +139,7 @@ export default function ProductScanScreen() {
               </View>
             ))
           : product ? (
-          <Text style={styles.muted}>Belum ada stok tercatat (movement belum dipost).</Text>
+          <Text style={styles.muted}>Belum ada stok tercatat (mutasi belum diposting).</Text>
         ) : null}
       </ScrollView>
     </View>

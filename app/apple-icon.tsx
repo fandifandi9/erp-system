@@ -4,6 +4,6 @@ import { serbaIconImageResponse } from "@/lib/serba-pwa-icon";
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-export default function AppleIcon() {
+export default async function AppleIcon() {
   return serbaIconImageResponse({ size: 180 });
 }

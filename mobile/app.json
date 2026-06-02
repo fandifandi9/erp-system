@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "ERP Staff",
+    "name": "SERBA System",
     "slug": "erp-staff-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "erpstaff",
-    "icon": "./assets/icon.png",
+    "scheme": "serbasystem",
+    "icon": "./assets/systemLogo.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/systemLogo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
@@ -27,8 +27,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0f172a"
+        "foregroundImage": "./assets/systemLogo.png",
+        "backgroundColor": "#ffffff"
       },
       "package": "com.erp.staff",
       "permissions": [
@@ -42,7 +42,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/systemLogo.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -73,8 +73,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
-          "color": "#0f172a",
+          "icon": "./assets/notificationIcon.png",
+          "color": "#111827",
           "sounds": [],
           "mode": "production"
         }
@@ -84,10 +84,9 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": true
-          },
-          "ios": {
-            "newArchEnabled": true
+            "gradleProperties": {
+              "org.gradle.jvmargs": "-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+            }
           }
         }
       ]

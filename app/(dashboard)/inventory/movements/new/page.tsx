@@ -14,8 +14,8 @@ import {
 import { canPostInventoryMovement } from "@/lib/inventory/access";
 import { pb } from "@/lib/pocketbase";
 import { getErrorMessage } from "@/lib/errors";
-import type { InvProduct, InvWarehouse, MovementType } from "@/lib/inventory/types";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import type { InvProduct, InvWarehouse } from "@/lib/inventory/types";
+import { Loader2, Plus, Trash2, ArrowRightLeft } from "lucide-react";
 
 type LineForm = { product: string; qty: string };
 
@@ -27,7 +27,7 @@ export default function NewMovementPage() {
   const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [products, setProducts] = useState<InvProduct[]>([]);
   const [warehouse, setWarehouse] = useState("");
-  const [movementType, setMovementType] = useState<MovementType>("IN");
+  const [toWarehouse, setToWarehouse] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineForm[]>([{ product: "", qty: "1" }]);
   const [alsoPost, setAlsoPost] = useState(false);
@@ -48,7 +48,15 @@ export default function NewMovementPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!warehouse) {
-      setError("Pilih gudang.");
+      setError("Pilih gudang asal.");
+      return;
+    }
+    if (!toWarehouse) {
+      setError("Pilih gudang tujuan.");
+      return;
+    }
+    if (warehouse === toWarehouse) {
+      setError("Gudang asal dan tujuan tidak boleh sama.");
       return;
     }
     const parsed = lines
@@ -62,8 +70,10 @@ export default function NewMovementPage() {
     setError("");
     try {
       const created = await createMovementDraft({
-        movement_type: movementType,
+        movement_type: "TRANSFER",
         warehouse,
+        from_warehouse: warehouse,
+        to_warehouse: toWarehouse,
         notes,
         lines: parsed,
         post: Boolean(alsoPost && canPostNow),
@@ -78,45 +88,58 @@ export default function NewMovementPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Movement baru" subtitle="Buat draft lalu posting untuk mengubah stok.">
+      <InventoryShell title="Mutasi Stok Antar Gudang" subtitle="Transfer produk dari satu gudang ke gudang lainnya. Stok masuk/keluar otomatis melalui penjualan & pembelian.">
         <Link href="/inventory/movements" className="text-sm text-indigo-600 hover:underline">
           ← Kembali
         </Link>
 
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <strong>Info:</strong> Stok masuk otomatis saat pembelian, stok keluar otomatis saat penjualan. Halaman ini khusus untuk <strong>mutasi/transfer antar gudang</strong>.
+        </div>
+
         <form onSubmit={submit} className="max-w-2xl space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-          <label className="block text-sm">
-            Gudang
-            <select
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-              value={warehouse}
-              onChange={(e) => setWarehouse(e.target.value)}
-              required
-            >
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.code} — {w.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">Gudang Asal</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                value={warehouse}
+                onChange={(e) => setWarehouse(e.target.value)}
+                required
+              >
+                <option value="">Pilih gudang asal</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.code} — {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="block text-sm">
-            Tipe
-            <select
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-              value={movementType}
-              onChange={(e) => setMovementType(e.target.value as MovementType)}
-            >
-              <option value="IN">IN (masuk)</option>
-              <option value="OUT">OUT (keluar)</option>
-              <option value="ADJUSTMENT">ADJUSTMENT (koreksi ±)</option>
-              <option value="TRANSFER">TRANSFER</option>
-              <option value="RETURN">RETURN</option>
-              <option value="DAMAGE">DAMAGE</option>
-            </select>
-          </label>
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">Gudang Tujuan</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                value={toWarehouse}
+                onChange={(e) => setToWarehouse(e.target.value)}
+                required
+              >
+                <option value="">Pilih gudang tujuan</option>
+                {warehouses.filter((w) => w.id !== warehouse).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.code} — {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
+            <span>Tipe: <strong>Transfer antar gudang</strong></span>
+          </div>
 
           <label className="block text-sm">
             Catatan
@@ -181,10 +204,10 @@ export default function NewMovementPage() {
           {canPostNow ? (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={alsoPost} onChange={(e) => setAlsoPost(e.target.checked)} />
-              Langsung post setelah simpan
+              Langsung posting setelah simpan
             </label>
           ) : (
-            <p className="text-xs text-slate-500">Draft disimpan; supervisor/admin yang mem-posting.</p>
+            <p className="text-xs text-slate-500">Draf disimpan; supervisor/admin yang mem-posting.</p>
           )}
 
           <button
@@ -192,7 +215,7 @@ export default function NewMovementPage() {
             disabled={saving}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
-            {saving ? "Menyimpan…" : "Simpan movement"}
+            {saving ? "Menyimpan…" : "Simpan mutasi"}
           </button>
         </form>
       </InventoryShell>

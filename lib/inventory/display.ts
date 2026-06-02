@@ -1,4 +1,5 @@
 import type { InvStaffActivity, InvWarehouse, InvZone } from "@/lib/inventory/types";
+import { labelZoneType } from "@/lib/inventory/labels";
 
 type UserExpand = { id?: string; name?: string; email?: string };
 
@@ -33,8 +34,9 @@ export function formatZoneLabel(
   const code = (z.code || "").trim();
   const name = (z.name || "").trim();
   const type = (z.zone_type || "").trim();
+  const typeLabel = type ? labelZoneType(type) : "";
   if (name && code) {
-    return type ? `${name} (${code}) · ${type}` : `${name} (${code})`;
+    return typeLabel ? `${name} (${code}) · ${typeLabel}` : `${name} (${code})`;
   }
   return code || name || "—";
 }

@@ -59,7 +59,7 @@ export default function InventoryWarehousesPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Gudang" subtitle="Master lokasi gudang untuk stok dan zona kerja.">
+      <InventoryShell title="Gudang" subtitle="Data lokasi gudang untuk stok dan zona kerja.">
         {canEdit ? (
           <button
             type="button"

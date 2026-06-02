@@ -7,8 +7,10 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { AppState, type AppStateStatus } from "react-native";
+import { router } from "expo-router";
 import type { RecordModel, UnsubscribeFunc } from "pocketbase";
-import { pb } from "@/lib/pocketbase";
+import { pb, waitForAuthStoreReady } from "@/lib/pocketbase";
 import { extractMfaId } from "../lib/auth-mfa";
 import {
   clearMobileSessionNonce,
@@ -21,8 +23,15 @@ import {
   pocketBaseRealtimeDisabled,
   pocketBaseSessionPollIntervalMs,
 } from "@/lib/pocketbase-realtime-config";
-import { clearOfflineQueue } from "@/lib/offline-queue/storage";
-import { notifyOfflineQueueChanged } from "@/lib/offline-queue/enqueue";
+import {
+  clearAuthSession,
+  logAuthRestoreState,
+  refreshAuthToken,
+  registerSessionExpiredHandler,
+  setupGlobal401Handler,
+  triggerSessionExpired,
+} from "@/lib/auth-lifecycle";
+import { authLog } from "@/lib/auth-log";
 
 type AuthModel = RecordModel & {
   id: string;
@@ -53,25 +62,86 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+async function logoutSessionNonceMismatch(): Promise<void> {
+  authLog.autoLogout("session_nonce_mismatch");
+  await clearAuthSession();
+  router.replace("/(auth)/login");
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [, bump] = useState(0);
   const unsubRef = useRef<UnsubscribeFunc | undefined>(undefined);
+  const refreshLock = useRef(false);
+
+  useEffect(() => {
+    setupGlobal401Handler(pb);
+    registerSessionExpiredHandler(() => {
+      router.replace("/(auth)/login");
+    });
+
+    return () => {
+      registerSessionExpiredHandler(null);
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = pb.authStore.onChange(() => {
       bump((n) => n + 1);
-    }, true);
+    }, false);
 
-    const raf = requestAnimationFrame(() => setHydrated(true));
-    const fallback = setTimeout(() => setHydrated(true), 800);
+    let cancelled = false;
+
+    void (async () => {
+      await waitForAuthStoreReady();
+      if (cancelled) return;
+
+      logAuthRestoreState(pb);
+
+      if (pb.authStore.isValid) {
+        const result = await refreshAuthToken(pb);
+        if (result === "expired") {
+          await triggerSessionExpired("token_expired_on_startup");
+        }
+      }
+
+      if (!cancelled) {
+        setHydrated(true);
+      }
+    })();
 
     return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(fallback);
+      cancelled = true;
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const runRefresh = async (source: "foreground") => {
+      if (refreshLock.current) return;
+      if (!pb.authStore.isValid) return;
+      refreshLock.current = true;
+      try {
+        const result = await refreshAuthToken(pb);
+        if (result === "expired") {
+          await triggerSessionExpired(`token_expired_on_${source}`);
+        }
+      } finally {
+        refreshLock.current = false;
+      }
+    };
+
+    const onAppStateChange = (state: AppStateStatus) => {
+      if (state === "active") {
+        void runRefresh("foreground");
+      }
+    };
+
+    const sub = AppState.addEventListener("change", onAppStateChange);
+    return () => sub.remove();
+  }, [hydrated]);
 
   const user = (pb.authStore.record as AuthModel | null) ?? null;
   const token = pb.authStore.token;
@@ -133,14 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    await clearMobileSessionNonce();
-    pb.authStore.clear();
-    try {
-      await clearOfflineQueue();
-      notifyOfflineQueueChanged();
-    } catch {
-      /* ignore */
-    }
+    await clearAuthSession();
   }, []);
 
   useEffect(() => {
@@ -162,11 +225,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             fresh as { session_nonce?: unknown }
           )
         ) {
-          await clearMobileSessionNonce();
-          pb.authStore.clear();
+          await logoutSessionNonceMismatch();
         }
       } catch {
-        /* ignore */
+        /* offline / sementara — jangan logout */
       }
     };
 
@@ -191,8 +253,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const server = String(e.record.session_nonce ?? "").trim();
             const local = (await getMobileSessionNonce())?.trim() ?? "";
             if (server && local && server !== local) {
-              await clearMobileSessionNonce();
-              pb.authStore.clear();
+              await logoutSessionNonceMismatch();
             }
           } catch {
             /* jangan biarkan callback realtime mem-crash app */

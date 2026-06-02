@@ -16,9 +16,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "SERBA ERP", template: "%s · SERBA ERP" },
-  description: "Sistem ERP — absensi, HR, cuti, lembur, aktivitas luar, payroll.",
-  applicationName: "SERBA ERP",
+  title: { default: "SERBA System", template: "%s · SERBA System" },
+  description: "SERBA System — absensi, HR, cuti, lembur, aktivitas luar, payroll.",
+  applicationName: "SERBA System",
   formatDetection: { telephone: false },
   icons: {
     icon: [{ url: "/icon", sizes: "32x32", type: "image/png" }],

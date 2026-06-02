@@ -57,7 +57,7 @@ export default function ZoneCheckInPage() {
     setMessage("");
     try {
       await zoneCheckIn(input);
-      setMessage("Check-in berhasil.");
+      setMessage("Masuk zona berhasil.");
       setQrInput("");
       await refresh();
     } catch (err) {
@@ -73,7 +73,7 @@ export default function ZoneCheckInPage() {
     setMessage("");
     try {
       await zoneCheckOut();
-      setMessage("Check-out berhasil.");
+      setMessage("Keluar zona berhasil.");
       await refresh();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -89,7 +89,7 @@ export default function ZoneCheckInPage() {
   return (
     <InventoryGate>
       <InventoryShell
-        title="Check-in zona"
+        title="Masuk zona"
         subtitle="Scan QR di gudang atau pilih zona manual. Satu sesi aktif per gudang."
       >
         <Link href="/inventory/zones" className="text-sm text-indigo-600 hover:underline">
@@ -116,12 +116,12 @@ export default function ZoneCheckInPage() {
                   className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white"
                 >
                   <LogOut className="h-4 w-4" />
-                  {busy ? "Memproses…" : "Check-out"}
+                  {busy ? "Memproses…" : "Keluar zona"}
                 </button>
               </div>
             ) : (
               <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">
-                Belum ada sesi aktif. Check-in ke zona kerja Anda.
+                Belum ada sesi aktif. Masuk ke zona kerja Anda.
               </p>
             )}
 
@@ -152,7 +152,7 @@ export default function ZoneCheckInPage() {
                 className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 <LogIn className="h-4 w-4" />
-                Check-in dari QR
+                Masuk dari QR
               </button>
             </div>
 

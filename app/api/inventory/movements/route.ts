@@ -25,6 +25,7 @@ type CreateBody = {
   notes?: string;
   lines: { product: string; qty: number }[];
   post?: boolean;
+  device_platform?: string;
 };
 
 const VALID_TYPES: MovementType[] = [
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
         reference_id: body.reference_id,
         notes: body.notes || "",
         created_by: auth.userId,
-        device_platform: "web",
+        device_platform: body.device_platform || "web",
       })
     );
 

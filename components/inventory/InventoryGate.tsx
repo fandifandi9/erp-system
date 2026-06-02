@@ -1,28 +1,62 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { pb } from "@/lib/pocketbase";
-import { canAccessInventory } from "@/lib/inventory/access";
+import {
+  canAccessInventory,
+  getDefaultInventoryRoute,
+  isWarehouseStaffOnly,
+} from "@/lib/inventory/access";
+import { ERP_INVENTORY_CORE_PATHS } from "@/lib/inventory/access";
 import { getDefaultRouteForUser } from "@/lib/rbac";
 import { Loader2 } from "lucide-react";
 
-export function InventoryGate({ children }: { children: React.ReactNode }) {
+function isErpCoreOnlyPath(pathname: string): boolean {
+  if (pathname === "/inventory" || pathname === "/inventory/") return true;
+  return ERP_INVENTORY_CORE_PATHS.some(
+    (p) => p !== "/inventory" && (pathname === p || pathname.startsWith(p + "/"))
+  );
+}
+
+export function InventoryGate({
+  children,
+  requireErpCore,
+}: {
+  children: React.ReactNode;
+  requireErpCore?: boolean;
+}) {
   const router = useRouter();
+  const pathname = usePathname();
   const [ok, setOk] = useState(false);
 
   useEffect(() => {
-    const user = pb.authStore.model;
-    if (!pb.authStore.isValid || !user) {
-      router.replace("/login");
-      return;
-    }
-    if (!canAccessInventory(user)) {
-      router.replace(getDefaultRouteForUser(user));
-      return;
-    }
-    setOk(true);
-  }, [router]);
+    let cancelled = false;
+
+    const run = () => {
+      const user = pb.authStore.model;
+      if (!pb.authStore.isValid || !user) {
+        router.replace("/login");
+        return;
+      }
+      if (!canAccessInventory(user)) {
+        router.replace(getDefaultRouteForUser(user));
+        return;
+      }
+      const blockStaffFromErp =
+        (requireErpCore || isErpCoreOnlyPath(pathname)) && isWarehouseStaffOnly(user);
+      if (blockStaffFromErp) {
+        router.replace(getDefaultInventoryRoute(user));
+        return;
+      }
+      if (!cancelled) setOk(true);
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, pathname, requireErpCore]);
 
   if (!ok) {
     return (

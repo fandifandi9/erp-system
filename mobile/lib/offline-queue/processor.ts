@@ -1,6 +1,6 @@
 import { ClientResponseError } from "pocketbase";
 import { pb } from "@/lib/pocketbase";
-import { zoneCheckIn, zoneCheckOut } from "@/lib/inventory/api";
+import { zoneCheckIn, zoneCheckOut, scanPackingMobile, submitOpnameLineMobile } from "@/lib/inventory/api";
 import {
   syncOperationalAccessAfterCheckIn,
   syncOperationalAccessAfterCheckOut,
@@ -100,6 +100,23 @@ async function processStaffActivityStub(item: OfflineQueueItem): Promise<void> {
   }
 }
 
+async function processPackingScan(item: OfflineQueueItem): Promise<void> {
+  const sessionId = String(item.payload.session_id ?? "");
+  const barcode = String(item.payload.barcode ?? "");
+  if (!sessionId || !barcode) throw new Error("Payload packing_scan tidak lengkap");
+  await scanPackingMobile(sessionId, barcode);
+}
+
+async function processOpnameLine(item: OfflineQueueItem): Promise<void> {
+  const sessionId = String(item.payload.session_id ?? "");
+  const lineId = String(item.payload.line_id ?? "");
+  const counted = Number(item.payload.counted_qty ?? NaN);
+  if (!sessionId || !lineId || !Number.isFinite(counted)) {
+    throw new Error("Payload opname_line tidak lengkap");
+  }
+  await submitOpnameLineMobile(sessionId, lineId, counted);
+}
+
 export async function processOneItem(item: OfflineQueueItem): Promise<void> {
   switch (item.type) {
     case "attendance_checkin":
@@ -114,8 +131,12 @@ export async function processOneItem(item: OfflineQueueItem): Promise<void> {
     case "inventory_zone_checkout":
       await processZoneCheckOut(item);
       break;
-    case "opname_line":
     case "packing_scan":
+      await processPackingScan(item);
+      break;
+    case "opname_line":
+      await processOpnameLine(item);
+      break;
     case "activity_metadata":
       await processStaffActivityStub(item);
       break;

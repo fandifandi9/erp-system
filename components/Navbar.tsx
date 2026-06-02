@@ -6,7 +6,8 @@ import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from "
 import { useRouter } from "next/navigation";
 import { getDefaultRouteForUser, canAccess } from "@/lib/rbac";
 
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { AppBrand } from "@/components/AppBrand";
 
 /** Samakan dengan Sidebar: drawer + hamburger sampai &lt; lg (1024px), hindari sidebar “desktop” di HP landscape / tablet. */
 function subscribeMaxLg(cb: () => void) {
@@ -33,11 +34,13 @@ type NavProfile = {
 
 type NavbarProps = {
   onOpenMobileNav?: () => void;
+  onCloseMobileNav?: () => void;
   mobileNavOpen?: boolean;
 };
 
 export default function Navbar({
   onOpenMobileNav,
+  onCloseMobileNav,
   mobileNavOpen = false,
 }: NavbarProps) {
   const narrow = useSyncExternalStore(subscribeMaxLg, getMaxLg, () => false);
@@ -144,16 +147,23 @@ export default function Navbar({
               (showHamburger ? "inline-flex" : "hidden") +
               " shrink-0 items-center justify-center rounded-lg p-2 text-slate-700 hover:bg-slate-100"
             }
-            aria-label="Buka menu"
+            aria-label={mobileNavOpen ? "Tutup menu" : "Buka menu"}
             aria-controls="app-sidebar"
             aria-expanded={mobileNavOpen}
-            onClick={() => onOpenMobileNav?.()}
+            onClick={() =>
+              mobileNavOpen ? onCloseMobileNav?.() : onOpenMobileNav?.()
+            }
           >
-            <Menu className="h-6 w-6" strokeWidth={2} />
+            {mobileNavOpen ? (
+              <X className="h-6 w-6" strokeWidth={2} />
+            ) : (
+              <Menu className="h-6 w-6" strokeWidth={2} />
+            )}
           </button>
-          <div className="truncate text-sm font-semibold tracking-tight text-slate-800 sm:text-base">
-            SERBA ERP
-          </div>
+          <AppBrand
+            height={28}
+            nameClassName="text-sm text-slate-800 sm:text-base"
+          />
         </div>
 
         {/* RIGHT */}

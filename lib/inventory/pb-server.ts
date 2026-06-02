@@ -81,6 +81,7 @@ async function authAdminLegacy(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ identity: email, password }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   let data: LegacyAdminAuthResponse & { message?: string } = {};

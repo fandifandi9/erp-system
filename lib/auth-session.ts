@@ -52,12 +52,24 @@ export async function registerWebSessionAfterAuth(pb: PocketBase): Promise<void>
 /**
  * `fresh` dari getOne users. Jika server sudah punya nonce dan tidak cocok dengan lokal → sesi lain menang.
  */
+/**
+ * Sesi diganti perangkat lain (nonce server ≠ lokal).
+ * Jika lokal kosong, jangan langsung logout — guard bisa sync dari server setelah getOne.
+ */
 export function shouldLogoutForSessionMismatch(fresh: {
   session_nonce?: unknown;
 }): boolean {
   const server = String(fresh.session_nonce ?? "").trim();
   if (!server) return false;
   const local = getWebSessionNonce()?.trim() ?? "";
-  if (!local) return true;
+  if (!local) return false;
   return server !== local;
+}
+
+/** Set nonce lokal dari data user terbaru bila belum ada di localStorage. */
+export function syncWebSessionNonceFromUser(fresh: { session_nonce?: unknown }): void {
+  const server = String(fresh.session_nonce ?? "").trim();
+  if (!server) return;
+  if (getWebSessionNonce()?.trim()) return;
+  setWebSessionNonce(server);
 }

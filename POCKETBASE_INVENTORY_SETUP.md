@@ -512,7 +512,8 @@ Di PocketBase, gunakan di awal rule (mental model):
 
 **Indexes:** unique composite (`warehouse` + `code`)
 
-**API Rules:** read semua inventory role; CUD admin/owner.
+**API Rules:** read semua inventory role; CUD admin/owner.  
+*(Aplikasi web juga menyimpan lewat `/api/inventory/locations` dengan kredensial admin server jika `POCKETBASE_ADMIN_*` ada di `.env.local`.)*
 
 ---
 

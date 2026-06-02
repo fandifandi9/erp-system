@@ -54,10 +54,10 @@ export default function InventoryHubScreen() {
       setSession(null);
       await load();
       if (r.queued) {
-        setNotice("Check-out disimpan — akan disinkron otomatis.");
+        setNotice("Keluar zona disimpan — akan disinkron otomatis.");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Check-out gagal.");
+      setError(e instanceof Error ? e.message : "Keluar zona gagal.");
     } finally {
       setBusy(false);
     }
@@ -105,11 +105,11 @@ export default function InventoryHubScreen() {
               disabled={busy}
               onPress={() => void checkout()}
             >
-              <Text style={styles.btnDangerTxt}>{busy ? "Memproses…" : "Check-out zona"}</Text>
+              <Text style={styles.btnDangerTxt}>{busy ? "Memproses…" : "Keluar zona"}</Text>
             </Pressable>
           </>
         ) : (
-          <Text style={styles.muted}>Belum check-in ke zona kerja.</Text>
+          <Text style={styles.muted}>Belum masuk ke zona kerja.</Text>
         )}
       </View>
 
@@ -120,7 +120,7 @@ export default function InventoryHubScreen() {
           </View>
           <View style={styles.tileText}>
             <Text style={styles.tileTitle}>Scan QR zona</Text>
-            <Text style={styles.tileSub}>Check-in / ganti zona di gudang</Text>
+            <Text style={styles.tileSub}>Masuk / ganti zona di gudang</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={PWA.textMuted} />
         </Pressable>
@@ -134,6 +134,45 @@ export default function InventoryHubScreen() {
           <View style={styles.tileText}>
             <Text style={styles.tileTitle}>Scan produk</Text>
             <Text style={styles.tileSub}>Cek stok per gudang dari barcode/SKU</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={PWA.textMuted} />
+        </Pressable>
+      </Link>
+
+      <Link href="/inventory/packing" asChild>
+        <Pressable style={styles.tile}>
+          <View style={[styles.iconBox, { backgroundColor: "#fce7f3" }]}>
+            <Ionicons name="cube-outline" size={26} color="#be185d" />
+          </View>
+          <View style={styles.tileText}>
+            <Text style={styles.tileTitle}>Kemasan</Text>
+            <Text style={styles.tileSub}>Checklist order di zona kemasan</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={PWA.textMuted} />
+        </Pressable>
+      </Link>
+
+      <Link href="/inventory/opname" asChild>
+        <Pressable style={styles.tile}>
+          <View style={[styles.iconBox, { backgroundColor: "#fef3c7" }]}>
+            <Ionicons name="clipboard-outline" size={26} color="#b45309" />
+          </View>
+          <View style={styles.tileText}>
+            <Text style={styles.tileTitle}>Opname stok</Text>
+            <Text style={styles.tileSub}>Hitung fisik stok gudang</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={PWA.textMuted} />
+        </Pressable>
+      </Link>
+
+      <Link href="/inventory/movement-new" asChild>
+        <Pressable style={styles.tile}>
+          <View style={[styles.iconBox, { backgroundColor: "#ede9fe" }]}>
+            <Ionicons name="swap-horizontal-outline" size={26} color="#6d28d9" />
+          </View>
+          <View style={styles.tileText}>
+            <Text style={styles.tileTitle}>Draf mutasi</Text>
+            <Text style={styles.tileSub}>Buat draf masuk/keluar barang</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={PWA.textMuted} />
         </Pressable>

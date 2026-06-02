@@ -75,7 +75,7 @@ export default function InventoryZonesPage() {
     try {
       const code = form.code.trim().toUpperCase();
       const qr_payload = buildZoneQrPayload(whCode, code);
-      await pb.collection(INV_COLLECTIONS.zones).create({
+      const createdZone = await pb.collection(INV_COLLECTIONS.zones).create({
         warehouse: warehouseId,
         code,
         name: form.name.trim() || code,
@@ -86,6 +86,16 @@ export default function InventoryZonesPage() {
         sort_order: 0,
         is_active: true,
       });
+      if (form.zone_type === "packing") {
+        await pb.collection(INV_COLLECTIONS.packingStations).create({
+          zone: createdZone.id,
+          warehouse: warehouseId,
+          code: "PACK-01",
+          name: "Meja kemasan 1",
+          qr_payload: `serba:pack:${whCode}:${code}:PACK-01`,
+          is_active: true,
+        });
+      }
       setModal(false);
       setForm({ code: "", name: "", zone_type: "receiving" });
       await load(warehouseId);
@@ -100,7 +110,7 @@ export default function InventoryZonesPage() {
     <InventoryGate>
       <InventoryShell
         title="Zona kerja"
-        subtitle="Master zona + QR untuk check-in staff. Scan di halaman Check-in zona."
+        subtitle="Data zona + QR untuk masuk zona staff. Scan di halaman Masuk zona."
       >
         {error && !modal ? (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -111,7 +121,7 @@ export default function InventoryZonesPage() {
             href="/inventory/zones/checkin"
             className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white"
           >
-            <QrCode className="h-4 w-4" /> Check-in zona
+            <QrCode className="h-4 w-4" /> Masuk zona
           </Link>
           {canEdit ? (
             <button
@@ -156,7 +166,7 @@ export default function InventoryZonesPage() {
               ) : zones.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                    Belum ada zona. Buat zona receiving/packing untuk mulai.
+                    Belum ada zona. Buat zona penerimaan/kemasan untuk mulai.
                   </td>
                 </tr>
               ) : (

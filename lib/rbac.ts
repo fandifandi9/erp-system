@@ -1,32 +1,16 @@
-import { canAccessInventory, INVENTORY_WEB_PATHS } from "@/lib/inventory/access";
+import { canAccessInventory, INVENTORY_WEB_PATHS, WMS_WEB_PATHS, STAFF_WEB_PATHS } from "@/lib/inventory/access";
+import {
+  normalizeAuthModel,
+  getDefaultDashboardAccessForRole,
+  type AccountType,
+  type UserRoleCode,
+  type Role,
+  type AuthUserShape,
+  type AuthModel,
+} from "@/lib/auth-model";
 
-export type AccountType = "owner" | "user";
-export type UserRoleCode =
-  | "hr"
-  | "manager"
-  | "staff"
-  | "staff-basic"
-  | "security"
-  | "ob";
-export type Role = "owner" | UserRoleCode;
-
-type AuthUserShape = {
-  [key: string]: unknown;
-  role?: string;
-  role_code?: string;
-  account_type?: string;
-  dashboard_access?: boolean;
-};
-
-type AuthModel = {
-  accountType: AccountType;
-  roleCode: UserRoleCode | null;
-  dashboardAccess: boolean;
-};
-
-const DASHBOARD_ROLES: UserRoleCode[] = ["hr", "manager", "staff"];
-export const getDefaultDashboardAccessForRole = (roleCode: UserRoleCode): boolean =>
-  DASHBOARD_ROLES.includes(roleCode);
+export type { AccountType, UserRoleCode, Role, AuthUserShape, AuthModel };
+export { normalizeAuthModel, getDefaultDashboardAccessForRole };
 
 /** Rute akun di web tanpa modul absensi (absensi hanya app native). */
 const DEFAULT_USER_ACCESS = ["/profile"];
@@ -46,6 +30,7 @@ const ROLE_ACCESS_BY_CODE: Record<UserRoleCode, string[]> = {
     "/hr/field-activity",
     "/hr/offices",
     "/hr/profile",
+    ...STAFF_WEB_PATHS,
     ...DEFAULT_USER_ACCESS,
   ],
   manager: ["/dashboard-staff", ...DEFAULT_USER_ACCESS],
@@ -53,42 +38,6 @@ const ROLE_ACCESS_BY_CODE: Record<UserRoleCode, string[]> = {
   "staff-basic": ["/dashboard-staff", ...DEFAULT_USER_ACCESS],
   security: [...DEFAULT_USER_ACCESS],
   ob: [...DEFAULT_USER_ACCESS],
-};
-
-const VALID_ROLE_CODES: UserRoleCode[] = ["hr", "manager", "staff", "staff-basic", "security", "ob"];
-
-const normalizeRoleCode = (value: unknown): UserRoleCode | null => {
-  const normalized = (value || "").toString().toLowerCase().trim();
-  return VALID_ROLE_CODES.includes(normalized as UserRoleCode)
-    ? (normalized as UserRoleCode)
-    : null;
-};
-
-export const normalizeAuthModel = (user: AuthUserShape | null | undefined): AuthModel => {
-  const rawRole = (user?.role || user?.role_code || "").toString().toLowerCase().trim();
-  const accountType = ((user?.account_type || (rawRole === "owner" ? "owner" : "user")) as string)
-    .toLowerCase()
-    .trim() as AccountType;
-
-  if (accountType === "owner") {
-    return {
-      accountType: "owner",
-      roleCode: null,
-      dashboardAccess: true,
-    };
-  }
-
-  const roleCode = normalizeRoleCode(user?.role_code) || normalizeRoleCode(rawRole) || "staff-basic";
-  const dashboardAccess =
-    typeof user?.dashboard_access === "boolean"
-      ? user.dashboard_access
-      : getDefaultDashboardAccessForRole(roleCode);
-
-  return {
-    accountType: "user",
-    roleCode,
-    dashboardAccess,
-  };
 };
 
 type UserSchemaFields = {
@@ -196,4 +145,58 @@ export const KNOWN_ROUTES = [
   "/inventory/zones",
   "/inventory/zones/checkin",
   "/inventory/activities",
+  "/wms",
+  "/wms/receiving",
+  "/wms/qc",
+  "/wms/putaway",
+  "/wms/picking",
+  "/wms/packing",
+  "/wms/requests",
+  "/wms/opname",
+  "/wms/audit",
+  "/wms/activity",
+  "/wms/checkin",
+  // Manajemen Gudang (alias /wms)
+  "/gudang",
+  "/gudang/penerimaan",
+  "/gudang/qc",
+  "/gudang/putaway",
+  "/gudang/picking",
+  "/gudang/packing",
+  "/gudang/permintaan",
+  "/gudang/opname",
+  "/gudang/audit",
+  "/gudang/aktivitas",
+  "/gudang/zona",
+  "/gudang/lokasi",
+  // Manajemen Bisnis
+  "/bisnis",
+  "/bisnis/penjualan",
+  "/bisnis/purchase-order",
+  "/bisnis/pembelian",
+  "/bisnis/customer",
+  "/bisnis/supplier",
+  "/bisnis/produk",
+  "/bisnis/kategori",
+  "/bisnis/brand",
+  "/bisnis/kalkulasi-harga-jual",
+  "/bisnis/stok",
+  "/bisnis/mutasi",
+  "/bisnis/invoice",
+  "/bisnis/retur",
+  "/bisnis/biaya",
+  "/bisnis/laba-rugi",
+  "/bisnis/laporan-penjualan",
+  "/bisnis/laporan-pembelian",
+  // Manajemen Staff (alias /hr)
+  "/staff",
+  "/staff/karyawan",
+  "/staff/absensi",
+  "/staff/mencurigakan",
+  "/staff/cuti",
+  "/staff/lembur",
+  "/staff/jadwal",
+  "/staff/lapangan",
+  "/staff/gps",
+  "/staff/payroll",
 ];

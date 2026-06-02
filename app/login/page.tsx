@@ -3,8 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
-import { ClientResponseError } from "pocketbase";
 import { pb } from "@/lib/pocketbase";
+import { isPocketBaseUnreachable } from "@/lib/errors";
 import { ensureAndSyncProfile } from "@/lib/profile";
 import { AppVersionWatermark } from "@/components/AppVersionWatermark";
 import { extractMfaId } from "@/lib/auth-mfa";
@@ -12,12 +12,12 @@ import { registerWebSessionAfterAuth } from "@/lib/auth-session";
 import { blurActiveElement } from "@/lib/blur-active-input";
 import { getDefaultRouteForUser } from "@/lib/rbac";
 import { syncPbAuthCookie } from "@/lib/pb-auth-cookie";
-
-function isPocketBaseUnreachable(err: unknown): boolean {
-  if (err instanceof ClientResponseError && err.status === 0) return true;
-  if (err instanceof TypeError && String(err.message).includes("fetch")) return true;
-  return false;
-}
+import Image from "next/image";
+import {
+  APP_DISPLAY_NAME,
+  SYSTEM_LOGO_WIDE_ASPECT,
+  SYSTEM_LOGO_WIDE_PATH,
+} from "@/lib/branding";
 
 type LoginStep = "password" | "otp";
 
@@ -203,8 +203,16 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4 pb-24 pt-6">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-slate-800">Serba ERP System</h1>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Image
+            src={SYSTEM_LOGO_WIDE_PATH}
+            alt="SDI"
+            width={220}
+            height={Math.round(220 / SYSTEM_LOGO_WIDE_ASPECT)}
+            className="mb-4 object-contain"
+            priority
+          />
+          <h1 className="text-2xl font-bold text-slate-800">{APP_DISPLAY_NAME}</h1>
           <p className="mt-1 text-sm text-slate-700">
             {step === "otp"
               ? "Masukkan kode OTP dari email (verifikasi kedua MFA)."

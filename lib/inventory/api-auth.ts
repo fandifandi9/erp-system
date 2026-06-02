@@ -78,6 +78,15 @@ export async function requireInventoryPostAccess(req?: Request): Promise<ApiAuth
   return ctx;
 }
 
+export async function requireInventorySupervisorAccess(req?: Request): Promise<ApiAuthContext> {
+  const ctx = await requireInventoryAccess(req);
+  const { isInventorySupervisorOrAbove } = await import("@/lib/inventory/access");
+  if (!isInventorySupervisorOrAbove(ctx.user)) {
+    throw new InventoryApiError("Hanya supervisor/admin.", 403);
+  }
+  return ctx;
+}
+
 export class InventoryApiError extends Error {
   status: number;
   constructor(message: string, status = 400) {

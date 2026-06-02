@@ -32,7 +32,7 @@ export default function AttendanceScreen() {
         {hub === "overtime" ? <OvertimeStaffPanel embedded /> : null}
         {hub === "field" ? <FieldStaffPanel embedded /> : null}
       </View>
-    </View>
+      </View>
   );
 }
 

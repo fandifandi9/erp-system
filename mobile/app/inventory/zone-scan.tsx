@@ -26,13 +26,13 @@ export default function ZoneScanScreen() {
       try {
         const r = await zoneCheckInOrQueue({ qr_payload: trimmed });
         if (r.queued) {
-          setMessage(`Check-in disimpan — akan disinkron saat jaringan pulih.`);
+          setMessage(`Masuk zona disimpan — akan disinkron saat jaringan pulih.`);
         } else {
-          setMessage(`Check-in berhasil: ${trimmed}`);
+          setMessage(`Masuk zona berhasil: ${trimmed}`);
         }
         setTimeout(() => router.back(), 1200);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Check-in gagal.");
+        setError(e instanceof Error ? e.message : "Masuk zona gagal.");
       } finally {
         setBusy(false);
       }
@@ -46,7 +46,7 @@ export default function ZoneScanScreen() {
       if (now - cooldownRef.current < 2500) return;
       if (data === lastScanRef.current) return;
       if (!isZoneQrPayload(data)) {
-        setError("Bukan QR zona SERBA (serba:zone:...).");
+        setError("Bukan QR zona inventori (serba:zone:...).");
         return;
       }
       lastScanRef.current = data;
@@ -105,7 +105,7 @@ export default function ZoneScanScreen() {
           disabled={!manual.trim() || busy}
           onPress={() => void doCheckIn(manual)}
         >
-          <Text style={styles.btnTxt}>Check-in manual</Text>
+          <Text style={styles.btnTxt}>Masuk manual</Text>
         </Pressable>
       </View>
     </View>

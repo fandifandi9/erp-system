@@ -1,6 +1,7 @@
 import type PocketBase from "pocketbase";
-import type { MovementType } from "@/lib/inventory/types";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
+import type { MovementType } from "@/lib/inventory/types";
+import { cleanMovementPayload } from "@/lib/inventory/pb-server";
 
 type BalanceRow = {
   id: string;
@@ -225,4 +226,106 @@ export async function postStockMovement(
   }
 
   return { movement_no: movement.movement_no };
+}
+
+function voidReversalType(type: MovementType): MovementType {
+  switch (type) {
+    case "IN":
+      return "OUT";
+    case "OUT":
+      return "IN";
+    case "RETURN":
+      return "OUT";
+    case "DAMAGE":
+      return "IN";
+    case "TRANSFER":
+      return "TRANSFER";
+    case "ADJUSTMENT":
+      return "ADJUSTMENT";
+    default:
+      return "ADJUSTMENT";
+  }
+}
+
+/** Batalkan movement posted — buat reversal, post, tandai void. */
+export async function voidStockMovement(
+  pb: PocketBase,
+  movementId: string,
+  userId: string,
+  note?: string
+): Promise<{ reversal_id: string; movement_no: string }> {
+  const movement = (await pb
+    .collection(INV_COLLECTIONS.movements)
+    .getOne(movementId)) as unknown as MovementRow & { status: string; movement_no: string };
+
+  if (movement.status === "void") {
+    return { reversal_id: "", movement_no: movement.movement_no };
+  }
+  if (movement.status !== "posted") {
+    throw new Error("Hanya movement posted yang bisa di-void.");
+  }
+
+  const lines = await pb.collection(INV_COLLECTIONS.movementLines).getFullList({
+    filter: `movement = "${movementId}"`,
+  });
+  if (lines.length === 0) throw new Error("Movement tidak memiliki baris.");
+
+  const revType = voidReversalType(movement.movement_type);
+  const isTransfer = movement.movement_type === "TRANSFER";
+
+  const reversal = await pb.collection(INV_COLLECTIONS.movements).create(
+    cleanMovementPayload({
+      movement_no: generateMovementNo(),
+      movement_type: revType,
+      status: "draft",
+      warehouse: movement.warehouse,
+      from_warehouse: isTransfer ? movement.to_warehouse : movement.from_warehouse,
+      to_warehouse: isTransfer ? movement.from_warehouse : movement.to_warehouse,
+      from_location: isTransfer ? movement.to_location : movement.from_location,
+      to_location: isTransfer ? movement.from_location : movement.to_location,
+      reference_type: "VOID",
+      reference_id: movementId,
+      parent_movement: movementId,
+      notes: note?.trim() || `Void ${movement.movement_no}`,
+      created_by: userId,
+      device_platform: "web",
+    })
+  );
+
+  for (const line of lines) {
+    const row = line as unknown as LineRow;
+    const qty = Number(row.qty);
+    const revQty =
+      movement.movement_type === "ADJUSTMENT" ? -qty : Math.abs(qty);
+    await pb.collection(INV_COLLECTIONS.movementLines).create({
+      movement: reversal.id,
+      product: row.product,
+      qty: revQty,
+    });
+  }
+
+  await postStockMovement(pb, reversal.id, userId);
+
+  const now = new Date().toISOString();
+  await pb.collection(INV_COLLECTIONS.movements).update(movementId, {
+    status: "void",
+    cancelled_at: now,
+    cancelled_by: userId,
+  });
+
+  try {
+    await pb.collection(INV_COLLECTIONS.auditLog).create({
+      action: "movement.void",
+      entity_type: "inv_stock_movements",
+      entity_id: movementId,
+      user: userId,
+      warehouse: movement.warehouse,
+      after: { reversal_id: reversal.id, movement_no: movement.movement_no },
+      occurred_at: now,
+    });
+  } catch {
+    /* optional */
+  }
+
+  return { reversal_id: reversal.id, movement_no: movement.movement_no };
 }

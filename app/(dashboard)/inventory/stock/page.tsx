@@ -1,27 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
 import Link from "next/link";
 import { fetchBalances, fetchMovements, fetchWarehouses } from "@/lib/inventory/client";
 import type { InvStockBalance, InvWarehouse } from "@/lib/inventory/types";
 import { formatIntegerId } from "@/lib/format-number";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { downloadInventoryStockXlsx } from "@/lib/export/inventory-xlsx";
+import { AlertTriangle, Download, Loader2 } from "lucide-react";
+import { WmsCard, WmsBadge } from "@/components/wms/ui";
 
 export default function InventoryStockPage() {
+  const searchParams = useSearchParams();
+  const warehouseFromUrl = searchParams.get("warehouse")?.trim() || "";
+
   const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [rows, setRows] = useState<InvStockBalance[]>([]);
   const [draftCount, setDraftCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     void fetchWarehouses().then((w) => {
       setWarehouses(w);
-      if (w[0]) setWarehouseId(w[0].id);
+      if (warehouseFromUrl && w.some((x) => x.id === warehouseFromUrl)) {
+        setWarehouseId(warehouseFromUrl);
+      } else if (w[0]) {
+        setWarehouseId(w[0].id);
+      }
     });
-  }, []);
+  }, [warehouseFromUrl]);
 
   useEffect(() => {
     if (!warehouseId) return;
@@ -36,23 +47,55 @@ export default function InventoryStockPage() {
     });
   }, [warehouseId]);
 
+  const whCode = warehouses.find((w) => w.id === warehouseId)?.code ?? "gudang";
+
+  const handleExportExcel = async () => {
+    if (rows.length === 0) return;
+    setExporting(true);
+    try {
+      await downloadInventoryStockXlsx(
+        rows.map((r) => {
+          const p = r.expand?.product;
+          return {
+            sku: p?.sku || "—",
+            product_name: p?.name || r.product,
+            warehouse_code: whCode,
+            qty_on_hand: r.qty_on_hand ?? 0,
+            qty_reserved: r.qty_reserved ?? 0,
+            qty_available: r.qty_available ?? 0,
+          };
+        }),
+        `stok-inventory-${whCode}-${new Date().toISOString().split("T")[0]}.xlsx`
+      );
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Gagal export Excel");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <InventoryGate>
-      <InventoryShell title="Stok realtime" subtitle="Qty on hand per gudang — di-update saat movement diposting.">
+      <InventoryShell
+        title="Stok Global"
+        subtitle="Satu sumber data inv_stock_balances. Penjualan & pembelian memakai saldo gudang toko yang dipilih."
+      >
         {!loading && rows.length === 0 && draftCount > 0 ? (
-          <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <WmsCard className="!border-amber-200 !bg-amber-50/90">
+          <div className="flex gap-3 text-sm text-amber-950">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
             <div>
-              <p className="font-semibold">Ada {draftCount} movement masih draft</p>
+              <p className="font-semibold">Ada {draftCount} mutasi masih draf</p>
               <p className="mt-1">
-                Stok belum berubah. Buka <strong>Movement</strong> → <strong>Detail</strong> →{" "}
-                <strong>Post movement</strong>.
+                Stok belum berubah. Buka <strong>Mutasi stok</strong> → <strong>Detail</strong> →{" "}
+                <strong>Posting mutasi</strong>.
               </p>
               <Link href="/inventory/movements" className="mt-2 inline-block font-medium text-indigo-700 hover:underline">
-                Ke daftar movement →
+                Ke daftar mutasi →
               </Link>
             </div>
           </div>
+          </WmsCard>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
@@ -70,9 +113,23 @@ export default function InventoryStockPage() {
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            onClick={() => void handleExportExcel()}
+            disabled={exporting || loading || rows.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            Export Excel
+          </button>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <WmsCard padding="p-0" className="overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
@@ -80,20 +137,21 @@ export default function InventoryStockPage() {
                 <th className="px-4 py-3">Produk</th>
                 <th className="px-4 py-3">On hand</th>
                 <th className="px-4 py-3">Reserved</th>
-                <th className="px-4 py-3">Available</th>
+                <th className="px-4 py-3">Tersedia</th>
+                <th className="px-4 py-3">Status</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center">
+                  <td colSpan={6} className="px-4 py-8 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-indigo-600" />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                    Belum ada saldo. Buat movement IN lalu <strong>post</strong> (bukan hanya simpan draft).
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                    Belum ada saldo di gudang ini. Pilih gudang yang sama dengan toko (mis. COSTA) atau buat pembelian agar stok masuk.
                   </td>
                 </tr>
               ) : (
@@ -110,6 +168,9 @@ export default function InventoryStockPage() {
                       <td className="px-4 py-3 font-semibold">{formatIntegerId(r.qty_on_hand)}</td>
                       <td className="px-4 py-3">{formatIntegerId(r.qty_reserved)}</td>
                       <td className="px-4 py-3">{formatIntegerId(r.qty_available)}</td>
+                      <td className="px-4 py-3">
+                        {low ? <WmsBadge tone="amber">Rendah</WmsBadge> : <WmsBadge tone="emerald">OK</WmsBadge>}
+                      </td>
                     </tr>
                   );
                 })
@@ -117,6 +178,7 @@ export default function InventoryStockPage() {
             </tbody>
           </table>
         </div>
+        </WmsCard>
       </InventoryShell>
     </InventoryGate>
   );

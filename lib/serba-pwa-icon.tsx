@@ -1,17 +1,21 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { ImageResponse } from "next/og";
 
 type Props = { size: number };
 
-/**
- * Satu sumber visual untuk favicon dan Apple Touch Icon.
- * Full bleed (isi penuh kotak), latar opaque — menghindari padding putih di iOS / launcher.
- *
- * Untuk mengganti merek: ubah gradien / huruf di bawah.
- * agar memakai file statis di `public/icons/` (PNG buatan desain).
- */
-export function serbaIconImageResponse({ size }: Props) {
-  const fontSize = Math.max(12, Math.round(size * 0.48));
+let cachedB64: string | null = null;
 
+async function logoDataUrl(): Promise<string> {
+  if (cachedB64) return cachedB64;
+  const buf = await readFile(path.join(process.cwd(), "public/systemLogo.png"));
+  cachedB64 = `data:image/png;base64,${buf.toString("base64")}`;
+  return cachedB64;
+}
+
+/** Favicon / PWA / Apple Touch — dari `public/systemLogo.png` (sama dengan app mobile). */
+export async function serbaIconImageResponse({ size }: Props) {
+  const src = await logoDataUrl();
   return new ImageResponse(
     (
       <div
@@ -21,22 +25,11 @@ export function serbaIconImageResponse({ size }: Props) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(145deg, #1e1b4b 0%, #4338ca 42%, #6366f1 100%)",
+          background: "#ffffff",
         }}
       >
-        <span
-          style={{
-            fontSize,
-            fontWeight: 800,
-            color: "white",
-            fontFamily:
-              'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-            lineHeight: 1,
-            letterSpacing: "-0.04em",
-          }}
-        >
-          S
-        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} width={size} height={size} style={{ objectFit: "contain" }} alt="" />
       </div>
     ),
     { width: size, height: size }

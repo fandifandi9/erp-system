@@ -37,6 +37,9 @@ export default function InventoryLayout() {
       <Stack.Screen name="index" options={{ title: "Gudang" }} />
       <Stack.Screen name="zone-scan" options={{ title: "Scan zona" }} />
       <Stack.Screen name="product-scan" options={{ title: "Cek stok" }} />
+      <Stack.Screen name="packing" options={{ title: "Kemasan" }} />
+      <Stack.Screen name="opname" options={{ title: "Opname stok" }} />
+      <Stack.Screen name="movement-new" options={{ title: "Draf mutasi" }} />
     </Stack>
   );
 }

@@ -13,16 +13,8 @@ import {
 import { canViewAllStaffActivities } from "@/lib/inventory/access";
 import { getErrorMessage } from "@/lib/errors";
 import type { InvStaffActivity, InvWarehouse } from "@/lib/inventory/types";
+import { ACTIVITY_TYPE_LABELS } from "@/lib/inventory/labels";
 import { Loader2 } from "lucide-react";
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  zone_checkin: "Check-in zona",
-  zone_checkout: "Check-out zona",
-  scan_zone_qr: "Scan QR zona",
-  scan_product: "Scan produk",
-  movement_create_draft: "Buat movement draft",
-  movement_post_request: "Request post movement",
-};
 
 export default function InventoryActivitiesPage() {
   const user = pb.authStore.model as Record<string, unknown> | null;
@@ -67,7 +59,7 @@ export default function InventoryActivitiesPage() {
         title="Aktivitas staff"
         subtitle={
           viewAll
-            ? "Log check-in zona dan aktivitas gudang (supervisor+)."
+            ? "Log masuk zona dan aktivitas gudang (supervisor+)."
             : "Riwayat aktivitas Anda di gudang."
         }
       >
@@ -131,7 +123,7 @@ export default function InventoryActivitiesPage() {
                       </td>
                     ) : null}
                     <td className="px-4 py-3">
-                      {ACTIVITY_LABELS[a.activity_type] || a.activity_type}
+                      {ACTIVITY_TYPE_LABELS[a.activity_type] || a.activity_type}
                     </td>
                     <td className="px-4 py-3 text-slate-800">
                       {formatZoneLabel(a.expand?.zone, a.zone)}

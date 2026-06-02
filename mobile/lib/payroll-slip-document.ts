@@ -133,7 +133,7 @@ export function buildSerbaPayrollSlipHtml(
     `<tr class="subtotal"><td class="lbl">Total potongan</td><td class="amt">Rp ${money(slip.total_deduction)}</td></tr>`,
     "</table></section>",
     `<motion class="thp"><span class="lbl">Take Home Pay (THP)</span><span class="val">Rp ${money(slip.net_amount)}</span></div>`,
-    `<footer class="footer">Dokumen ini diterbitkan secara elektronik oleh SERBA ERP · ${esc(generatedAt)}<br/>`,
+    `<footer class="footer">Dokumen ini diterbitkan secara elektronik oleh SERBA System · ${esc(generatedAt)}<br/>`,
     "Slip ini sah tanpa tanda tangan basah apabila status periode telah disetujui/dibayar oleh HR.</footer>",
     "</div></body></html>",
   ];
