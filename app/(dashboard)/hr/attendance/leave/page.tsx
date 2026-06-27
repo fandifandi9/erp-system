@@ -9,8 +9,10 @@ import {
   countDivisionLeaveOnDate,
   isUserAlreadyBooked,
 } from "@/lib/leaves";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function LeavePage() {
+  const { t } = useLocale();
   const [dates, setDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -26,10 +28,10 @@ export default function LeavePage() {
 
   const submit = async () => {
     const user = pb.authStore.model;
-    if (!user) return alert("Harus login");
+    if (!user) return alert(t("hr.attendance.leaveBooking.mustLogin"));
 
     if (dates.length === 0) {
-      return alert("Pilih minimal 1 tanggal");
+      return alert(t("hr.attendance.leaveBooking.pickDate"));
     }
 
     setLoading(true);
@@ -39,7 +41,7 @@ export default function LeavePage() {
       const profile = await getProfile(user.id);
 
       const division = profile.division;
-      const month = dates[0].slice(0, 7); // YYYY-MM
+      const month = dates[0].slice(0, 7);
 
       const used = await countUserLeaveInMonth(user.id, month);
 
@@ -47,33 +49,28 @@ export default function LeavePage() {
       const failed: string[] = [];
 
       for (const date of dates) {
-        // ❗ cek limit bulanan
         if (used + success.length >= settings.max_leave_per_month) {
-          failed.push(`${date} (limit bulanan habis)`);
+          failed.push(`${date} ${t("hr.attendance.leaveBooking.failMonthly")}`);
           continue;
         }
 
-        // ❗ cek double
         const already = await isUserAlreadyBooked(user.id, date);
         if (already) {
-          failed.push(`${date} (sudah pernah booking)`);
+          failed.push(`${date} ${t("hr.attendance.leaveBooking.failDuplicate")}`);
           continue;
         }
 
-        // ❗ cek kuota divisi
         const total = await countDivisionLeaveOnDate(division, date);
         if (total >= settings.max_people_per_day) {
-          failed.push(`${date} (kuota penuh)`);
+          failed.push(`${date} ${t("hr.attendance.leaveBooking.failQuota")}`);
           continue;
         }
 
-        // Samakan dengan lib/leave.ts (start/end per hari, bukan field `date` saja)
         const divisionVal =
           (profile as { division?: string }).division ||
           (profile as { devision?: string }).devision ||
           "-";
-        const positionVal =
-          (profile as { position?: string }).position || "-";
+        const positionVal = (profile as { position?: string }).position || "-";
 
         await pb.collection("leave_requests").create({
           user: user.id,
@@ -90,53 +87,50 @@ export default function LeavePage() {
       }
 
       alert(
-        `Berhasil: ${success.length}\nGagal: ${failed.length}\n\n${failed.join(
-          "\n"
-        )}`
+        t("hr.attendance.leaveBooking.result", {
+          success: success.length,
+          failed: failed.length,
+          details: failed.join("\n"),
+        }),
       );
 
       setDates([]);
-
     } catch (err) {
       console.error(err);
-      alert("Error submit");
+      alert(t("hr.attendance.leaveBooking.submitError"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-6 max-w-lg">
-      <h1 className="text-xl font-semibold mb-4">
-        Booking Cuti (Multi Tanggal)
-      </h1>
+    <div className="max-w-lg p-6">
+      <h1 className="mb-4 text-xl font-semibold">{t("hr.attendance.leaveBooking.title")}</h1>
 
-      {/* INPUT TANGGAL */}
       <input
         type="date"
         onChange={(e) => addDate(e.target.value)}
-        className="border p-2 mb-3 w-full"
+        className="mb-3 w-full border p-2"
       />
 
-      {/* LIST */}
       <div className="mb-4">
         {dates.map((d) => (
-          <div
-            key={d}
-            className="flex justify-between bg-slate-100 p-2 mb-1"
-          >
+          <div key={d} className="mb-1 flex justify-between bg-slate-100 p-2">
             <span>{d}</span>
-            <button onClick={() => removeDate(d)}>❌</button>
+            <button type="button" onClick={() => removeDate(d)}>
+              ❌
+            </button>
           </div>
         ))}
       </div>
 
       <button
+        type="button"
         onClick={submit}
         disabled={loading}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
+        className="rounded bg-blue-600 px-4 py-2 text-white"
       >
-        {loading ? "Proses..." : "Submit"}
+        {loading ? t("hr.attendance.leaveBooking.processing") : t("hr.attendance.leaveBooking.submit")}
       </button>
     </div>
   );

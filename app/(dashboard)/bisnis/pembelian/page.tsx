@@ -1,26 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import {
-  Search, Loader2, ChevronLeft, ChevronRight, AlertCircle, Plus, Eye, Pencil, Ban, MoreHorizontal,
+  Search, Loader2, ChevronLeft, ChevronRight, Eye, Pencil, Ban, CreditCard,
 } from "lucide-react";
 import {
-  fetchPurchaseOrders,
+  ActionMenuDropdown,
+  ActionMenuCloseContext,
+} from "@/components/bisnis/ActionMenuDropdown";
+import {
   fetchPurchaseBills,
+  fetchPurchaseOrders,
   cancelPurchaseBill,
-  getPurchaseOrderDocStatus,
-  canEditPurchaseOrderDoc,
-  ORDER_DOC_STATUS_UI,
-  purchaseOrderFilterToPb,
-  ORDER_DOC_STATUS_FILTER,
   WMS_ROUTE_FILTER,
-  wmsOrderFilterToPb,
   purchaseBillWmsFilterToPb,
   isWmsSchemaFilterError,
   matchesWmsRouteFilter,
 } from "@/lib/bisnis/client";
 import { WmsRouteBadge } from "@/components/bisnis/WmsRouteBadge";
-import type { PurchaseOrder, PurchaseBill } from "@/lib/bisnis/types";
+import type { PurchaseBill } from "@/lib/bisnis/types";
 import {
   PURCHASE_STATUS_FILTER,
   PURCHASE_STATUS_UI,
@@ -31,8 +29,44 @@ import {
   canCancelPurchaseBill,
 } from "@/lib/bisnis/purchase-status";
 import { CancelPurchaseModal } from "@/components/bisnis/CancelPurchaseModal";
+import { useWorkContext } from "@/components/WorkContextProvider";
 import { getErrorMessage } from "@/lib/errors";
 import Link from "next/link";
+import {
+  buildDocSearchFilter,
+  PURCHASE_BILL_SEARCH_FIELDS,
+} from "@/lib/bisnis/doc-search";
+import {
+  PURCHASE_BILL_EXPAND,
+  resolvePurchaseCompanyName,
+} from "@/lib/bisnis/purchase-company-display";
+import { useLocale } from "@/components/LocaleProvider";
+import { SummaryCard } from "@/components/bisnis/SummaryCard";
+import { PURCHASE_MODULE } from "@/lib/bisnis/module-routes";
+
+const PURCHASE_FILTER_KEY: Record<string, string> = {
+  all: "purchase.filter.allStatus",
+  unpaid: "purchase.filter.unpaid",
+  overdue: "purchase.filter.overdue",
+  paid: "purchase.filter.paid",
+  cancelled: "purchase.filter.cancelled",
+};
+
+const WMS_FILTER_KEY: Record<string, string> = {
+  all: "purchase.filter.allWms",
+  bypass: "purchase.filter.wmsBypass",
+  active: "purchase.filter.wmsActive",
+  wms_pending: "purchase.filter.wmsPending",
+  wms_progress: "purchase.filter.wmsProgress",
+  wms_complete: "purchase.filter.wmsComplete",
+};
+
+const PURCHASE_STATUS_KEY: Record<string, string> = {
+  unpaid: "purchase.filter.unpaid",
+  overdue: "purchase.filter.overdue",
+  paid: "purchase.filter.paid",
+  cancelled: "purchase.filter.cancelled",
+};
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(v);
@@ -40,11 +74,12 @@ const fmt = (v: number) =>
 const fmtDate = (d?: string) =>
   d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
-type Tab = "tagihan" | "pesanan";
 const PER_PAGE = 20;
 
 export default function PembelianPage() {
-  const [tab, setTab] = useState<Tab>("tagihan");
+  const { t } = useLocale();
+  const { context: workCtx } = useWorkContext();
+  const companyId = workCtx?.companyId;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [wmsFilter, setWmsFilter] = useState("all");
@@ -55,10 +90,14 @@ export default function PembelianPage() {
 
   const [bills, setBills] = useState<PurchaseBill[]>([]);
   const [billTotal, setBillTotal] = useState(0);
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [ordTotal, setOrdTotal] = useState(0);
-
-  const [billStats, setBillStats] = useState({ belumBayar: 0, belumBayarAmt: 0, jatuhTempo: 0, jatuhTempoAmt: 0, lunas30: 0, lunas30Amt: 0 });
+  const [billStats, setBillStats] = useState({
+    belumBayar: 0,
+    belumBayarAmt: 0,
+    jatuhTempo: 0,
+    jatuhTempoAmt: 0,
+    lunas30: 0,
+    lunas30Amt: 0,
+  });
   const [poOnlyCount, setPoOnlyCount] = useState(0);
 
   const loadData = useCallback(async () => {
@@ -66,176 +105,114 @@ export default function PembelianPage() {
     setError(null);
     setCollectionHint(null);
     try {
-      if (tab === "tagihan") {
-        const filters: string[] = [];
-        if (search) filters.push(`(bill_no ~ "${search}" || supplier.name ~ "${search}")`);
-        const statusPb = purchaseFilterToPb(statusFilter);
-        if (statusPb) filters.push(statusPb);
-        const wmsPb = purchaseBillWmsFilterToPb(wmsFilter);
-        if (wmsPb) filters.push(wmsPb);
-        const filterStr = filters.join(" && ") || undefined;
+      const filters: string[] = [];
+      const billSearch = buildDocSearchFilter(search, PURCHASE_BILL_SEARCH_FIELDS);
+      if (billSearch) filters.push(billSearch);
+      const statusPb = purchaseFilterToPb(statusFilter);
+      if (statusPb) filters.push(statusPb);
+      const wmsPb = purchaseBillWmsFilterToPb(wmsFilter);
+      if (wmsPb) filters.push(wmsPb);
+      const filterStr = filters.join(" && ") || undefined;
 
-        try {
-          let res;
-          let clientWmsFilter = false;
-          try {
-            res = await fetchPurchaseBills({
-              page,
-              perPage: PER_PAGE,
-              sort: "-created",
-              filter: filterStr,
-              expand: "supplier,purchase_order.warehouse",
-            });
-          } catch (e) {
-            if (wmsFilter !== "all" && isWmsSchemaFilterError(e)) {
-              const filtersNoWms = filters.filter((f) => f !== wmsPb);
-              res = await fetchPurchaseBills({
-                page: 1,
-                perPage: 200,
-                sort: "-created",
-                filter: filtersNoWms.join(" && ") || undefined,
-                expand: "supplier,purchase_order.warehouse",
-              });
-              clientWmsFilter = true;
-            } else {
-              throw e;
-            }
-          }
-          let billItems = res.items;
-          if (clientWmsFilter && wmsFilter !== "all") {
-            billItems = billItems.filter((b) =>
-              matchesWmsRouteFilter(b.expand?.purchase_order, wmsFilter, "purchase"),
-            );
-          }
-          const billCount = clientWmsFilter && wmsFilter !== "all" ? billItems.length : res.totalItems;
-          if (clientWmsFilter && wmsFilter !== "all") {
-            const start = (page - 1) * PER_PAGE;
-            billItems = billItems.slice(start, start + PER_PAGE);
-          }
-          setBills(billItems);
-          setBillTotal(billCount);
-
-          const all = await fetchPurchaseBills({ page: 1, perPage: 200, sort: "-created", expand: "supplier" });
-          const now = new Date();
-          const d30 = new Date(now.getTime() - 30 * 86400000);
-          let bb = 0, bbA = 0, jt = 0, jtA = 0, l30 = 0, l30A = 0;
-          all.items.forEach((bill) => {
-            const disp = getPurchaseDisplayStatus(bill);
-            if (disp === "cancelled") return;
-            if (disp === "unpaid") { bb++; bbA += bill.remaining ?? 0; }
-            if (disp === "overdue") { jt++; jtA += bill.remaining ?? 0; }
-            if (disp === "paid" && bill.updated && new Date(bill.updated) >= d30) {
-              l30++;
-              l30A += bill.total ?? 0;
-            }
-          });
-          setBillStats({ belumBayar: bb, belumBayarAmt: bbA, jatuhTempo: jt, jatuhTempoAmt: jtA, lunas30: l30, lunas30Amt: l30A });
-          if (billCount === 0) {
-            try {
-              const poRes = await fetchPurchaseOrders({ page: 1, perPage: 1 });
-              setPoOnlyCount(poRes.totalItems);
-            } catch {
-              setPoOnlyCount(0);
-            }
-          } else {
-            setPoOnlyCount(0);
-          }
-        } catch (billErr) {
-          setBills([]);
-          setBillTotal(0);
-          const msg = billErr instanceof Error ? billErr.message : "Gagal memuat tagihan";
-          setCollectionHint(
-            "Collection biz_purchase_bills belum ada atau API rule ditolak. Buat collection di PocketBase, atau cek tab Pesanan Pembelian untuk data PO lama.",
-          );
-          setError(msg);
-        }
-      } else {
-        const filters: string[] = [];
-        if (search) filters.push(`(po_no ~ "${search}" || supplier.name ~ "${search}")`);
-        const statusPb = purchaseOrderFilterToPb(statusFilter);
-        if (statusPb) filters.push(statusPb);
-        const wmsPb = wmsOrderFilterToPb(wmsFilter);
-        if (wmsPb) filters.push(wmsPb);
-        const filterStr = filters.join(" && ") || undefined;
+      try {
         let res;
         let clientWmsFilter = false;
         try {
-          res = await fetchPurchaseOrders({
+          res = await fetchPurchaseBills({
             page,
             perPage: PER_PAGE,
             sort: "-created",
             filter: filterStr,
-            expand: "supplier,warehouse",
+            expand: PURCHASE_BILL_EXPAND,
+            companyId,
           });
         } catch (e) {
           if (wmsFilter !== "all" && isWmsSchemaFilterError(e)) {
             const filtersNoWms = filters.filter((f) => f !== wmsPb);
-            res = await fetchPurchaseOrders({
+            res = await fetchPurchaseBills({
               page: 1,
               perPage: 200,
               sort: "-created",
               filter: filtersNoWms.join(" && ") || undefined,
-              expand: "supplier,warehouse",
+              expand: PURCHASE_BILL_EXPAND,
+              companyId,
             });
             clientWmsFilter = true;
           } else {
             throw e;
           }
         }
-        let ordItems = res.items;
+        let billItems = res.items;
         if (clientWmsFilter && wmsFilter !== "all") {
-          ordItems = ordItems.filter((po) => matchesWmsRouteFilter(po, wmsFilter, "purchase"));
+          billItems = billItems.filter((b) =>
+            matchesWmsRouteFilter(b.expand?.purchase_order, wmsFilter, "purchase"),
+          );
         }
-        const ordCount = clientWmsFilter && wmsFilter !== "all" ? ordItems.length : res.totalItems;
+        const billCount = clientWmsFilter && wmsFilter !== "all" ? billItems.length : res.totalItems;
         if (clientWmsFilter && wmsFilter !== "all") {
           const start = (page - 1) * PER_PAGE;
-          ordItems = ordItems.slice(start, start + PER_PAGE);
+          billItems = billItems.slice(start, start + PER_PAGE);
         }
-        setOrders(ordItems);
-        setOrdTotal(ordCount);
+        setBills(billItems);
+        setBillTotal(billCount);
+
+        const all = await fetchPurchaseBills({ page: 1, perPage: 200, sort: "-created", expand: "supplier", companyId });
+        const now = new Date();
+        const d30 = new Date(now.getTime() - 30 * 86400000);
+        let bb = 0, bbA = 0, jt = 0, jtA = 0, l30 = 0, l30A = 0;
+        all.items.forEach((bill) => {
+          const disp = getPurchaseDisplayStatus(bill);
+          if (disp === "cancelled") return;
+          if (disp === "unpaid") { bb++; bbA += bill.remaining ?? 0; }
+          if (disp === "overdue") { jt++; jtA += bill.remaining ?? 0; }
+          if (disp === "paid" && bill.updated && new Date(bill.updated) >= d30) {
+            l30++;
+            l30A += bill.total ?? 0;
+          }
+        });
+        setBillStats({ belumBayar: bb, belumBayarAmt: bbA, jatuhTempo: jt, jatuhTempoAmt: jtA, lunas30: l30, lunas30Amt: l30A });
+
+        if (billCount === 0) {
+          try {
+            const poRes = await fetchPurchaseOrders({ page: 1, perPage: 1, companyId });
+            setPoOnlyCount(poRes.totalItems);
+          } catch {
+            setPoOnlyCount(0);
+          }
+        } else {
+          setPoOnlyCount(0);
+        }
+      } catch (billErr) {
+        setBills([]);
+        setBillTotal(0);
+        const msg = billErr instanceof Error ? billErr.message : t("purchase.list.errLoadBills");
+        setCollectionHint(t("purchase.list.collectionHint"));
+        setError(msg);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Gagal memuat data");
+      setError(e instanceof Error ? e.message : t("purchase.list.errLoad"));
     } finally {
       setLoading(false);
     }
-  }, [tab, page, search, statusFilter, wmsFilter]);
+  }, [page, search, statusFilter, wmsFilter, t, companyId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => {
-    setPage(1);
-    setStatusFilter("all");
-    setWmsFilter("all");
-    setSearch("");
-  }, [tab]);
+    loadData();
+  }, [loadData]);
+
   useEffect(() => {
     setPage(1);
   }, [search, statusFilter, wmsFilter]);
 
-  const totalItems = tab === "tagihan" ? billTotal : ordTotal;
-  const totalPages = Math.ceil(totalItems / PER_PAGE);
+  const totalPages = Math.ceil(billTotal / PER_PAGE);
 
   return (
-    <div className="min-h-screen">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Pembelian</h1>
-          <p className="mt-1 text-sm text-slate-500">Multi-toko: stok masuk ke gudang default toko</p>
-        </div>
-        <Link href="/bisnis/pembelian/buat"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
-          <Plus className="h-4 w-4" />
-          Buat pembelian baru
-        </Link>
+    <>
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <SummaryCard label={t("purchase.list.summaryUnpaid")} count={billStats.belumBayar} amount={billStats.belumBayarAmt} color="orange" />
+        <SummaryCard label={t("purchase.list.summaryOverdue")} count={billStats.jatuhTempo} amount={billStats.jatuhTempoAmt} color="red" />
+        <SummaryCard label={t("purchase.list.summaryPaid30")} count={billStats.lunas30} amount={billStats.lunas30Amt} color="green" />
       </div>
-
-      {tab === "tagihan" && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-3">
-          <SummaryCard label="Tagihan belum dibayar" count={billStats.belumBayar} amount={billStats.belumBayarAmt} color="orange" />
-          <SummaryCard label="Tagihan jatuh tempo" count={billStats.jatuhTempo} amount={billStats.jatuhTempoAmt} color="red" />
-          <SummaryCard label="Pembayaran 30 hari terakhir" count={billStats.lunas30} amount={billStats.lunas30Amt} color="green" />
-        </div>
-      )}
 
       {collectionHint && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -243,13 +220,13 @@ export default function PembelianPage() {
         </div>
       )}
 
-      {tab === "tagihan" && !loading && !error && billTotal === 0 && poOnlyCount > 0 && (
+      {!loading && !error && billTotal === 0 && poOnlyCount > 0 && (
         <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          Ada {poOnlyCount} pesanan PO di sistem, tetapi belum ada tagihan pembelian.
-          Data lama hanya PO — buat pembelian baru lewat tombol di atas, atau buka tab{" "}
-          <button type="button" onClick={() => setTab("pesanan")} className="font-semibold underline">
-            Pesanan (PO)
-          </button>
+          {t("purchase.list.poOnlyHint", { count: poOnlyCount })}{" "}
+          {t("purchase.list.poOnlyHint2")}{" "}
+          <Link href={PURCHASE_MODULE.pesanan} className="font-semibold underline">
+            {t("purchase.list.poOnlyTab")}
+          </Link>
           .
         </div>
       )}
@@ -259,21 +236,15 @@ export default function PembelianPage() {
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200">
-          <div className="flex">
-            <TabBtn active={tab === "tagihan"} onClick={() => setTab("tagihan")}>Tagihan</TabBtn>
-            <TabBtn active={tab === "pesanan"} onClick={() => setTab("pesanan")}>Pesanan (PO)</TabBtn>
-          </div>
-        </div>
-
         <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:px-6">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700">
-            {tab === "tagihan"
-              ? PURCHASE_STATUS_FILTER.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)
-              : ORDER_DOC_STATUS_FILTER.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
+          >
+            {PURCHASE_STATUS_FILTER.map((f) => (
+              <option key={f.value} value={f.value}>{t(PURCHASE_FILTER_KEY[f.value] ?? f.value)}</option>
+            ))}
           </select>
           <select
             value={wmsFilter}
@@ -282,31 +253,34 @@ export default function PembelianPage() {
           >
             {WMS_ROUTE_FILTER.map((f) => (
               <option key={f.value} value={f.value}>
-                {f.label}
+                {t(WMS_FILTER_KEY[f.value] ?? f.value)}
               </option>
             ))}
           </select>
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input type="text" placeholder="Pencarian…" value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
+            <input
+              type="text"
+              placeholder={t("purchase.list.searchPlaceholder")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"
+            />
           </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
-            <span className="ml-2 text-sm text-slate-500">Memuat…</span>
+            <span className="ml-2 text-sm text-slate-500">{t("common.loading")}</span>
           </div>
-        ) : tab === "tagihan" ? (
-          <BillTable data={bills} onCancelled={loadData} />
         ) : (
-          <POTable data={orders} />
+          <BillTable data={bills} onCancelled={loadData} />
         )}
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 sm:px-6">
-            <p className="text-xs text-slate-500">Halaman {page} dari {totalPages} ({totalItems} data)</p>
+            <p className="text-xs text-slate-500">{t("purchase.list.pageOf", { page, total: totalPages, count: billTotal })}</p>
             <div className="flex gap-1">
               <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-md p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
               <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded-md p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
@@ -314,70 +288,123 @@ export default function PembelianPage() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
 function BillTable({ data, onCancelled }: { data: PurchaseBill[]; onCancelled: () => void }) {
+  const { t } = useLocale();
   if (data.length === 0) {
     return (
       <div className="px-6 py-16 text-center text-sm text-slate-400">
-        <p>Tidak ada tagihan ditemukan.</p>
-        <p className="mt-2 text-xs">Buat pembelian baru — sistem otomatis buat PO, tagihan, dan stok masuk gudang toko.</p>
+        <p>{t("purchase.list.emptyBill")}</p>
+        <p className="mt-2 text-xs">{t("purchase.billList.emptyHint")}</p>
       </div>
     );
   }
   return (
-    <div className="overflow-x-auto overflow-y-visible">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-100 text-left">
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 sm:px-6">Tanggal</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">No.</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Gudang masuk</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Jatuh tempo</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Proses gudang</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Sisa</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 sm:px-6">Tindakan</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-50">
-          {data.map((bill) => {
-            const disp = getPurchaseDisplayStatus(bill);
-            const st = PURCHASE_STATUS_UI[disp];
-            const cash = isCashPurchase(bill);
-            const wh = bill.expand?.purchase_order?.expand?.warehouse;
-            return (
-              <tr key={bill.id} className={`hover:bg-slate-50 ${disp === "cancelled" ? "opacity-60" : ""}`}>
-                <td className="whitespace-nowrap px-4 py-3 text-slate-600 sm:px-6">{fmtDate(bill.bill_date)}</td>
-                <td className="whitespace-nowrap px-4 py-3">
-                  <Link href={`/bisnis/pembelian/${bill.id}`} className="font-medium text-indigo-600 hover:underline">{bill.bill_no}</Link>
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-slate-700">{bill.expand?.supplier?.name ?? "—"}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{wh?.name ?? "—"}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                  {cash ? <span className="text-xs font-medium text-emerald-600">Cash / Lunas</span> : fmtDate(bill.due_date)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3">
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>{st.label}</span>
-                </td>
-                <td className="whitespace-nowrap px-4 py-3">
-                  <WmsRouteBadge order={bill.expand?.purchase_order} kind="purchase" />
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">{fmt(bill.remaining ?? 0)}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-900">{fmt(bill.total ?? 0)}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
-                  <PurchaseBillActionMenu bill={bill} onCancelled={onCancelled} />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <table className="w-full table-fixed text-sm">
+      <colgroup>
+        <col className="w-[5.25rem]" />
+        <col className="w-[32%]" />
+        <col className="w-[14%]" />
+        <col className="w-[12%]" />
+        <col className="w-[12%]" />
+        <col className="w-[13%]" />
+        <col className="w-[2.25rem]" />
+      </colgroup>
+      <thead>
+        <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs">
+          <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500 sm:pl-4">
+            {t("purchase.list.colDate")}
+          </th>
+          <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
+            {t("purchase.list.colDocument")}
+          </th>
+          <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
+            {t("purchase.list.colSupplier")}
+          </th>
+          <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
+            {t("purchase.list.colCompany")}
+          </th>
+          <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
+            {t("purchase.list.colStatus")}
+          </th>
+          <th className="px-3 py-2.5 text-right font-semibold uppercase tracking-wide text-slate-500">
+            {t("purchase.list.colBilling")}
+          </th>
+          <th className="px-1 py-2.5 sm:pr-3" aria-hidden />
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-100">
+        {data.map((bill) => {
+          const disp = getPurchaseDisplayStatus(bill);
+          const st = PURCHASE_STATUS_UI[disp];
+          const cash = isCashPurchase(bill);
+          const cancelled = disp === "cancelled";
+          const paid = disp === "paid";
+          const po = bill.expand?.purchase_order;
+          const companyName = resolvePurchaseCompanyName(bill);
+          return (
+            <tr key={bill.id} className={`align-middle hover:bg-slate-50/70 ${cancelled ? "opacity-55" : ""}`}>
+              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 sm:pl-4">
+                {fmtDate(bill.bill_date)}
+              </td>
+              <td className="px-3 py-2.5">
+                <Link
+                  href={`/bisnis/pembelian/buat?edit=${bill.id}`}
+                  className="block truncate font-semibold text-indigo-600 hover:underline"
+                  title={bill.bill_no}
+                >
+                  {bill.bill_no}
+                </Link>
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  {po?.po_no ? (
+                    <Link
+                      href={`/bisnis/pembelian/buat?po=${po.id}`}
+                      className="truncate font-mono text-sm text-slate-600 hover:text-indigo-600 hover:underline"
+                      title={po.po_no}
+                    >
+                      {po.po_no}
+                    </Link>
+                  ) : null}
+                  <WmsRouteBadge order={po} kind="purchase" />
+                </div>
+              </td>
+              <td className="truncate px-3 py-2.5 text-slate-800" title={bill.expand?.supplier?.name ?? "—"}>
+                {bill.expand?.supplier?.name ?? "—"}
+              </td>
+              <td className="truncate px-3 py-2.5 text-slate-600" title={companyName}>
+                {companyName}
+              </td>
+              <td className="px-3 py-2.5">
+                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>
+                  {t(PURCHASE_STATUS_KEY[disp] ?? st.label)}
+                </span>
+                {!paid && !cancelled ? (
+                  <p className="mt-1 truncate text-sm tabular-nums text-slate-500">
+                    {cash ? t("purchase.list.cashPaid") : fmtDate(bill.due_date)}
+                  </p>
+                ) : null}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums">
+                <p className={`font-semibold ${cancelled ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                  {cancelled ? "—" : fmt(bill.total ?? 0)}
+                </p>
+                {!cancelled && (bill.remaining ?? 0) > 0 ? (
+                  <p className="mt-0.5 truncate text-sm font-medium text-amber-700" title={fmt(bill.remaining ?? 0)}>
+                    Sisa {fmt(bill.remaining ?? 0)}
+                  </p>
+                ) : null}
+              </td>
+              <td className="px-1 py-2.5 text-center sm:pr-3">
+                <PurchaseBillActionMenu bill={bill} onCancelled={onCancelled} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -388,19 +415,18 @@ function PurchaseBillActionMenu({
   bill: PurchaseBill;
   onCancelled: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const { t } = useLocale();
 
   const handleCancel = async (reason: string) => {
     setCancelling(true);
     try {
       await cancelPurchaseBill(bill, reason);
       setShowCancel(false);
-      setOpen(false);
       onCancelled();
     } catch (e: unknown) {
-      alert(getErrorMessage(e, "Gagal membatalkan"));
+      alert(getErrorMessage(e, t("purchase.list.errCancel")));
     } finally {
       setCancelling(false);
     }
@@ -408,51 +434,9 @@ function PurchaseBillActionMenu({
 
   return (
     <>
-      <div className="relative inline-block text-left">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-        >
-          Tindakan <MoreHorizontal className="ml-1 inline h-3.5 w-3.5" />
-        </button>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <div className="absolute right-0 z-50 mt-1 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-              <Link
-                href={`/bisnis/pembelian/${bill.id}`}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                onClick={() => setOpen(false)}
-              >
-                <Eye className="h-3.5 w-3.5" /> Lihat Detail
-              </Link>
-              {canEditPurchaseBill(bill) && (
-                <Link
-                  href={`/bisnis/pembelian/buat?edit=${bill.id}`}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  onClick={() => setOpen(false)}
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Link>
-              )}
-              {canCancelPurchaseBill(bill) && (
-                <button
-                  type="button"
-                  disabled={cancelling}
-                  onClick={() => {
-                    setOpen(false);
-                    setShowCancel(true);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-                >
-                  <Ban className="h-3.5 w-3.5" /> Batalkan
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      <ActionMenuDropdown iconOnly>
+        <PurchaseBillMenuItems bill={bill} cancelling={cancelling} onCancel={() => setShowCancel(true)} />
+      </ActionMenuDropdown>
       <CancelPurchaseModal
         billNo={bill.bill_no}
         open={showCancel}
@@ -463,94 +447,49 @@ function PurchaseBillActionMenu({
   );
 }
 
-function POTable({ data }: { data: PurchaseOrder[] }) {
-  if (data.length === 0) return <div className="px-6 py-16 text-center text-sm text-slate-400">Tidak ada pesanan PO.</div>;
-  return (
-    <div className="overflow-x-auto overflow-y-visible">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-100 text-left">
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 sm:px-6">Tanggal</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">No. PO</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Gudang masuk</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500">Proses gudang</th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 sm:px-6">Tindakan</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-50">
-          {data.map((po) => {
-            const doc = getPurchaseOrderDocStatus(po);
-            const st = ORDER_DOC_STATUS_UI[doc];
-            const editable = canEditPurchaseOrderDoc(po);
-            return (
-            <tr key={po.id} className={`hover:bg-slate-50 ${doc === "cancelled" ? "opacity-60" : ""}`}>
-              <td className="px-4 py-3 sm:px-6">{fmtDate(po.order_date)}</td>
-              <td className="px-4 py-3">
-                <Link href={`/bisnis/pembelian/${po.id}`} className="font-mono font-medium text-indigo-600 hover:underline">
-                  {po.po_no}
-                </Link>
-              </td>
-              <td className="px-4 py-3">{po.expand?.supplier?.name ?? "—"}</td>
-              <td className="px-4 py-3 text-slate-500">{po.expand?.warehouse?.name ?? "—"}</td>
-              <td className="px-4 py-3 text-right font-medium">{fmt(po.total ?? 0)}</td>
-              <td className="px-4 py-3">
-                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>{st.label}</span>
-              </td>
-              <td className="px-4 py-3">
-                <WmsRouteBadge order={po} kind="purchase" />
-              </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
-                <Link href={`/bisnis/pembelian/${po.id}`} className="text-xs text-indigo-600 hover:underline">
-                  {editable ? "Detail" : "Preview"}
-                </Link>
-                {editable ? (
-                  <>
-                    <span className="mx-2 text-slate-300">|</span>
-                    <Link href={`/bisnis/pembelian/buat?po=${po.id}`} className="text-xs text-indigo-600 hover:underline">
-                      Edit
-                    </Link>
-                  </>
-                ) : doc !== "cancelled" ? (
-                  <>
-                    <span className="mx-2 text-slate-300">|</span>
-                    <Link href={`/bisnis/pembelian/${po.id}`} className="text-xs text-indigo-600 hover:underline">
-                      Cetak
-                    </Link>
-                  </>
-                ) : null}
-              </td>
-            </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+function PurchaseBillMenuItems({
+  bill,
+  cancelling,
+  onCancel,
+}: {
+  bill: PurchaseBill;
+  cancelling: boolean;
+  onCancel: () => void;
+}) {
+  const { t } = useLocale();
+  const close = useContext(ActionMenuCloseContext);
+  const disp = getPurchaseDisplayStatus(bill);
+  const canPay =
+    disp !== "paid" &&
+    disp !== "cancelled" &&
+    !isCashPurchase(bill) &&
+    (bill.remaining ?? 0) > 0;
 
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick}
-      className={`relative px-5 py-3 text-sm font-medium ${active ? "text-indigo-600" : "text-slate-500"}`}>
-      {children}
-      {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600" />}
-    </button>
-  );
-}
-
-function SummaryCard({ label, count, amount, color }: { label: string; count: number; amount: number; color: "orange" | "red" | "green" }) {
-  const styles = { orange: "border-l-orange-400 bg-orange-50", red: "border-l-red-400 bg-red-50", green: "border-l-emerald-400 bg-emerald-50" };
-  const countBg = { orange: "bg-orange-400", red: "bg-red-400", green: "bg-emerald-400" };
-  return (
-    <div className={`rounded-lg border border-slate-200 border-l-4 p-4 ${styles[color]}`}>
-      <div className="mb-1 flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-        <span className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${countBg[color]}`}>{count}</span>
-      </div>
-      <div className="text-lg font-bold text-slate-900">{fmt(amount)}</div>
-    </div>
+    <>
+      <Link href={`/bisnis/pembelian/${bill.id}`} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={close}>
+        <Eye className="h-3.5 w-3.5" /> {t("purchase.list.viewDetail")}
+      </Link>
+      {canPay && (
+        <Link href={`/bisnis/pembelian/${bill.id}?pay=1`} className="flex items-center gap-2 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50" onClick={close}>
+          <CreditCard className="h-3.5 w-3.5" /> {t("purchase.list.payBill")}
+        </Link>
+      )}
+      {canEditPurchaseBill(bill) && (
+        <Link href={`/bisnis/pembelian/buat?edit=${bill.id}`} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={close}>
+          <Pencil className="h-3.5 w-3.5" /> {t("purchase.list.edit")}
+        </Link>
+      )}
+      {canCancelPurchaseBill(bill) && (
+        <button
+          type="button"
+          disabled={cancelling}
+          onClick={() => { close(); onCancel(); }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+        >
+          <Ban className="h-3.5 w-3.5" /> {t("purchase.list.cancel")}
+        </button>
+      )}
+    </>
   );
 }

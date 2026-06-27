@@ -2,11 +2,12 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Mail, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import { isPocketBaseUnreachable } from "@/lib/errors";
 import { ensureAndSyncProfile } from "@/lib/profile";
 import { AppVersionWatermark } from "@/components/AppVersionWatermark";
+import { ShareFeedbackToast, type ShareToastState } from "@/components/bisnis/ShareFeedbackToast";
 import { extractMfaId } from "@/lib/auth-mfa";
 import { registerWebSessionAfterAuth } from "@/lib/auth-session";
 import { blurActiveElement } from "@/lib/blur-active-input";
@@ -19,7 +20,9 @@ import {
   SYSTEM_LOGO_WIDE_PATH,
 } from "@/lib/branding";
 
-type LoginStep = "password" | "otp";
+type LoginStep = "password" | "otp" | "forgot" | "forgot-sent";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,6 +35,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [step, setStep] = useState<LoginStep>("password");
   const [otpId, setOtpId] = useState<string | null>(null);
+  const [shareToast, setShareToast] = useState<ShareToastState>(null);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [sentResetEmail, setSentResetEmail] = useState("");
   const mfaIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -184,19 +192,71 @@ export default function LoginPage() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      setError("Masukkan email terlebih dahulu");
+  const openForgotPassword = () => {
+    setForgotEmail(email.trim());
+    setForgotError("");
+    setStep("forgot");
+    setError("");
+  };
+
+  const backToLogin = () => {
+    setStep("password");
+    setForgotError("");
+    setForgotLoading(false);
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = forgotEmail.trim();
+    if (!trimmed) {
+      setForgotError("Email wajib diisi.");
+      return;
+    }
+    if (!EMAIL_RE.test(trimmed)) {
+      setForgotError("Format email tidak valid. Contoh: nama@gmail.com");
       return;
     }
 
+    setForgotLoading(true);
+    setForgotError("");
+
     try {
-      await pb.collection("users").requestPasswordReset(email);
-      alert("Link reset dikirim ke email");
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const data = (await res.json()) as { error?: string; message?: string; hint?: string };
+
+      if (!res.ok) {
+        setForgotError(
+          data.hint
+            ? `${data.error ?? "Gagal mengirim"}. ${data.hint}`
+            : (data.error ?? "Gagal mengirim email reset. Coba lagi."),
+        );
+        return;
+      }
+
+      setSentResetEmail(trimmed);
+      setStep("forgot-sent");
     } catch {
-      setError("Gagal kirim email reset");
+      setForgotError("Tidak terhubung ke server. Periksa koneksi internet Anda.");
     } finally {
+      setForgotLoading(false);
       blurActiveElement();
+    }
+  };
+
+  const stepSubtitle = (): string => {
+    switch (step) {
+      case "otp":
+        return "Masukkan kode OTP dari email (verifikasi kedua MFA).";
+      case "forgot":
+        return "Kami akan mengirim link reset kata sandi ke email Anda.";
+      case "forgot-sent":
+        return "Periksa kotak masuk email Anda.";
+      default:
+        return "Masuk ke dashboard ERP Anda";
     }
   };
 
@@ -211,18 +271,109 @@ export default function LoginPage() {
             height={Math.round(220 / SYSTEM_LOGO_WIDE_ASPECT)}
             className="mb-4 object-contain"
             priority
+            unoptimized
           />
-          <h1 className="text-2xl font-bold text-slate-800">{APP_DISPLAY_NAME}</h1>
-          <p className="mt-1 text-sm text-slate-700">
-            {step === "otp"
-              ? "Masukkan kode OTP dari email (verifikasi kedua MFA)."
-              : "Masuk ke dashboard ERP Anda"}
-          </p>
+          {/* Nama app tidak diulang — sudah ada di dalam logo. */}
+          {step === "forgot" || step === "forgot-sent" ? (
+            <h1 className="text-2xl font-bold text-slate-800">Reset kata sandi</h1>
+          ) : null}
+          <p className="mt-1 text-sm text-slate-700">{stepSubtitle()}</p>
         </div>
 
-        {error && (
+        {error && step === "password" && (
           <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
             {error}
+          </div>
+        )}
+
+        {step === "forgot" && (
+          <form onSubmit={handleForgotSubmit} className="space-y-4">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-900">
+              Masukkan <strong>email akun ERP</strong> yang terdaftar di sistem (sama
+              seperti saat login).
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-800">Email</label>
+              <input
+                type="email"
+                autoFocus
+                placeholder="nama@perusahaan.com"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-indigo-500"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                disabled={forgotLoading}
+                autoComplete="email"
+              />
+            </div>
+            {forgotError && (
+              <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+                {forgotError}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={forgotLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {forgotLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Mengirim…
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4" />
+                  Kirim link reset
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={backToLogin}
+              disabled={forgotLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Kembali ke login
+            </button>
+          </form>
+        )}
+
+        {step === "forgot-sent" && (
+          <div className="space-y-5 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+              <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Cek email Anda</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                Jika <strong className="text-slate-800">{sentResetEmail}</strong> terdaftar
+                di SERBA ERP, kami telah mengirim link untuk mengatur kata sandi baru.
+              </p>
+            </div>
+            <ul className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-600">
+              <li className="py-1">• Buka inbox dan folder <strong>spam</strong></li>
+              <li className="py-1">• Klik tombol <strong>Atur kata sandi baru</strong> di email</li>
+              <li className="py-1">• Link berlaku <strong>1 jam</strong></li>
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                setForgotEmail(sentResetEmail);
+                setStep("forgot");
+                setForgotError("");
+              }}
+              className="w-full rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Kirim ulang ke email yang sama
+            </button>
+            <button
+              type="button"
+              onClick={backToLogin}
+              className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-medium text-white hover:bg-indigo-700"
+            >
+              Kembali ke login
+            </button>
           </div>
         )}
 
@@ -266,8 +417,9 @@ export default function LoginPage() {
             <div className="text-right">
               <button
                 type="button"
-                onClick={handleForgotPassword}
-                className="text-sm text-indigo-600 hover:underline"
+                disabled={loading}
+                onClick={openForgotPassword}
+                className="text-sm text-indigo-600 hover:underline disabled:opacity-60"
               >
                 Lupa password?
               </button>
@@ -280,7 +432,7 @@ export default function LoginPage() {
               {loading ? "Memproses..." : "Masuk"}
             </button>
           </form>
-        ) : (
+        ) : step === "otp" ? (
           <form onSubmit={handleOtpSubmit} className="space-y-4">
             <p className="text-sm text-slate-600">
               Kode sekali pakai telah dikirim ke <strong>{email}</strong>. Buka kotak
@@ -322,9 +474,10 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-        )}
+        ) : null}
       </div>
 
+      <ShareFeedbackToast toast={shareToast} onDismiss={() => setShareToast(null)} />
       <AppVersionWatermark variant="login" />
     </div>
   );

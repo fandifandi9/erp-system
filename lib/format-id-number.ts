@@ -1,45 +1,48 @@
-/** Parse angka desimal format Indonesia: 4,5 · 10,2 · 4.5 */
-export function parseIdDecimal(input: string): number {
-  const s = input.trim().replace(/\s/g, "").replace(/^Rp\.?\s*/i, "");
-  if (!s) return NaN;
-
-  if (s.includes(",")) {
-    return parseFloat(s.replace(/\./g, "").replace(",", "."));
-  }
-
-  if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
-    return parseFloat(s.replace(/\./g, ""));
-  }
-
-  return parseFloat(s);
+/** Format angka bulat Indonesia: 1000000 → "1.000.000" */
+export function fmtIdNumber(v: number): string {
+  if (!v || Number.isNaN(v)) return "";
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(v);
 }
 
-/** Parse nominal Rp: 4000 · 4.000 · 40.000 · Rp 1.250 */
-export function parseIdInteger(input: string): number {
-  const s = input.trim().replace(/\s/g, "").replace(/^Rp\.?\s*/i, "");
-  if (!s) return NaN;
+export const formatIdInteger = fmtIdNumber;
 
-  if (s.includes(",")) {
-    const whole = s.split(",")[0] ?? "";
-    return parseInt(whole.replace(/\./g, ""), 10);
-  }
-
-  if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
-    return parseInt(s.replace(/\./g, ""), 10);
-  }
-
-  return parseInt(s.replace(/\./g, ""), 10);
+/** Parse input kasir: "1.000.000" / "1000000" → 1000000 */
+export function parseIdNumber(s: string): number {
+  const cleaned = s.replace(/\s/g, "").replace(/\./g, "").replace(/,/g, "");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
-export function formatIdInteger(n: number): string {
-  if (!Number.isFinite(n)) return "";
-  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
-}
+export const parseIdInteger = parseIdNumber;
 
-export function formatIdDecimal(n: number, maxDecimals = 2): string {
-  if (!Number.isFinite(n)) return "";
+/** Format desimal Indonesia (koma desimal): 4.5 → "4,5" */
+export function formatIdDecimal(v: number, maxDecimals = 2): string {
+  if (!Number.isFinite(v)) return "";
   return new Intl.NumberFormat("id-ID", {
     minimumFractionDigits: 0,
     maximumFractionDigits: maxDecimals,
-  }).format(n);
+  }).format(v);
+}
+
+/** Parse "4,5" / "4.5" / "1.234,56" */
+export function parseIdDecimal(s: string): number {
+  const trimmed = s.replace(/\s/g, "");
+  if (!trimmed) return 0;
+  const lastComma = trimmed.lastIndexOf(",");
+  const lastDot = trimmed.lastIndexOf(".");
+  let normalized = trimmed;
+  if (lastComma > lastDot) {
+    normalized = trimmed.replace(/\./g, "").replace(",", ".");
+  } else if (lastDot > lastComma) {
+    const parts = trimmed.split(".");
+    if (parts.length > 2) {
+      normalized = parts.slice(0, -1).join("").replace(/,/g, "") + "." + parts[parts.length - 1];
+    } else {
+      normalized = trimmed.replace(/,/g, "");
+    }
+  } else {
+    normalized = trimmed.replace(/\./g, "").replace(/,/g, "");
+  }
+  const n = Number(normalized);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
 }

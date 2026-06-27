@@ -2,7 +2,7 @@
 
 
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
@@ -13,6 +13,8 @@ import {
   ArrowLeft,
 
   CheckCircle2,
+
+  ImagePlus,
 
   Loader2,
 
@@ -52,6 +54,8 @@ import {
 
   updateWarehouseProcess,
 
+  updatePurchaseOrderWithFiles,
+
   WAREHOUSE_PROCESS_STATUS_UI,
 
   fmtWarehouseProcessedAt,
@@ -61,7 +65,8 @@ import {
 import {
 
   countWorkflowProgress,
-
+  isReceivingWorkflowReady,
+  serializeReceivingWorkflow,
   validateReceivingWorkflowComplete,
 
   type ReceivingWorkflow,
@@ -110,6 +115,12 @@ export default function GudangPenerimaanDetailPage() {
 
   const [receivingWarehouse, setReceivingWarehouse] = useState("");
 
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+
+  const [entityName, setEntityName] = useState("");
+
 
 
   const load = useCallback(async () => {
@@ -132,6 +143,32 @@ export default function GudangPenerimaanDetailPage() {
 
       setPo(poData);
 
+      let ent = poData.expand?.company?.company_name ?? "";
+
+      if (!ent && poData.company) {
+
+        try {
+
+          const c = await pb.collection("biz_company_profile").getOne<{ company_name: string }>(
+
+            poData.company,
+
+            { fields: "company_name", requestKey: null },
+
+          );
+
+          ent = c.company_name ?? "";
+
+        } catch {
+
+          /* ignore */
+
+        }
+
+      }
+
+      setEntityName(ent);
+
       setLines(poLines);
 
       setWarehouses(wh);
@@ -142,7 +179,17 @@ export default function GudangPenerimaanDetailPage() {
 
       setHoldNote(poData.warehouse_hold_note ?? "");
 
-      setReceivingWarehouse(poData.receiving_warehouse ?? "");
+      const transitOptions = wh.filter(
+        (w) =>
+          (w as InvWarehouse & { warehouse_role?: string; company?: string }).warehouse_role ===
+            "transit" &&
+          (!poData.company ||
+            (w as InvWarehouse & { company?: string }).company === poData.company),
+      );
+
+      setReceivingWarehouse(
+        poData.receiving_warehouse ?? transitOptions[0]?.id ?? "",
+      );
 
     } catch (e: unknown) {
 
@@ -224,6 +271,10 @@ export default function GudangPenerimaanDetailPage() {
 
         process_mode: extra?.process_mode,
 
+        ...(action === "complete"
+          ? { receiving_workflow_json: serializeReceivingWorkflow(workflow) }
+          : {}),
+
       });
 
       await load();
@@ -290,6 +341,8 @@ export default function GudangPenerimaanDetailPage() {
 
   const orderer = po.expand?.created_by?.name || po.expand?.created_by?.email || "—";
 
+  const entityNameDisplay = entityName || po.expand?.company?.company_name || "—";
+
   const processor =
 
     po.expand?.warehouse_processed_by?.name || po.expand?.warehouse_processed_by?.email;
@@ -310,13 +363,10 @@ export default function GudangPenerimaanDetailPage() {
 
   );
 
-  const workflowReady =
-
-    progress.total > 0 &&
-
-    progress.qc === progress.total &&
-
-    progress.putaway === progress.total;
+  const workflowReady = isReceivingWorkflowReady(
+    lines.map((l) => l.id),
+    workflow,
+  );
 
 
 
@@ -414,9 +464,15 @@ export default function GudangPenerimaanDetailPage() {
 
                 <div>
 
-                  <dt className="text-slate-500">Pemesan (admin bisnis)</dt>
+                  <dt className="text-slate-500">Entitas (pemesan)</dt>
 
-                  <dd className="font-medium">{orderer}</dd>
+                  <dd>
+
+                    <p className="font-semibold text-slate-900">{entityNameDisplay}</p>
+
+                    <p className="text-xs text-slate-500">Dibuat oleh: {orderer}</p>
+
+                  </dd>
 
                 </div>
 
@@ -562,6 +618,172 @@ export default function GudangPenerimaanDetailPage() {
 
                   </label>
 
+
+
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
+
+                    <p className="text-sm font-medium text-slate-700">
+
+                      Foto dokumen penerimaan <span className="font-normal text-slate-400">(opsional)</span>
+
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-slate-500">
+
+                      Surat jalan, kondisi barang, atau bukti fisik lainnya.
+
+                    </p>
+
+                    {po.receiving_photos ? (
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+
+                        {(Array.isArray(po.receiving_photos)
+
+                          ? po.receiving_photos
+
+                          : [po.receiving_photos]
+
+                        ).map((fname) => (
+
+                          <a
+
+                            key={fname}
+
+                            href={pb.files.getURL(
+
+                              po as unknown as { id: string; collectionId: string; collectionName: string },
+
+                              fname,
+
+                            )}
+
+                            target="_blank"
+
+                            rel="noreferrer"
+
+                            className="block h-20 w-20 overflow-hidden rounded-lg border border-slate-200 bg-white"
+
+                          >
+
+                            <img
+
+                              src={pb.files.getURL(
+
+                                po as unknown as { id: string; collectionId: string; collectionName: string },
+
+                                fname,
+
+                                { thumb: "100x100" },
+
+                              )}
+
+                              alt="Foto penerimaan"
+
+                              className="h-full w-full object-cover"
+
+                            />
+
+                          </a>
+
+                        ))}
+
+                      </div>
+
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+
+                        <ImagePlus className="h-4 w-4" />
+
+                        Pilih foto
+
+                        <input
+
+                          type="file"
+
+                          accept="image/*"
+
+                          multiple
+
+                          className="hidden"
+
+                          onChange={(e) => {
+
+                            const files = Array.from(e.target.files ?? []);
+
+                            if (files.length) setPhotoFiles((prev) => [...prev, ...files]);
+
+                            e.target.value = "";
+
+                          }}
+
+                        />
+
+                      </label>
+
+                      {photoFiles.length > 0 ? (
+
+                        <button
+
+                          type="button"
+
+                          disabled={uploadingPhotos}
+
+                          onClick={async () => {
+
+                            setUploadingPhotos(true);
+
+                            try {
+
+                              const fd = new FormData();
+
+                              for (const f of photoFiles) fd.append("receiving_photos+", f);
+
+                              await updatePurchaseOrderWithFiles(po.id, fd);
+
+                              setPhotoFiles([]);
+
+                              await load();
+
+                            } catch (e: unknown) {
+
+                              alert(getErrorMessage(e, "Gagal mengunggah foto"));
+
+                            } finally {
+
+                              setUploadingPhotos(false);
+
+                            }
+
+                          }}
+
+                          className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+
+                        >
+
+                          {uploadingPhotos ? "Mengunggah…" : `Unggah ${photoFiles.length} foto`}
+
+                        </button>
+
+                      ) : null}
+
+                    </div>
+
+                    {photoFiles.length > 0 ? (
+
+                      <p className="mt-2 text-xs text-slate-500">
+
+                        {photoFiles.map((f) => f.name).join(", ")}
+
+                      </p>
+
+                    ) : null}
+
+                  </div>
+
                 </div>
 
               </WmsCard>
@@ -582,7 +804,7 @@ export default function GudangPenerimaanDetailPage() {
 
                 <p className="mt-2 text-xs text-slate-500">
 
-                  Tandai PO sedang dicek team gudang, lalu lakukan QC / label / putaway di bawah.
+                  Tandai PO sedang dicek team gudang, lalu lakukan QC di bawah.
 
                 </p>
 
@@ -624,13 +846,7 @@ export default function GudangPenerimaanDetailPage() {
 
                   <li>
 
-                    Label: {progress.label}/{progress.total} item (cetak stiker)
-
-                  </li>
-
-                  <li>
-
-                    Putaway: {progress.putaway}/{progress.total} item
+                    Label: {progress.label}/{progress.total} item (opsional)
 
                   </li>
 
@@ -656,7 +872,7 @@ export default function GudangPenerimaanDetailPage() {
 
                     <p className="mt-2 text-xs text-amber-800">
 
-                      Lengkapi centang QC dan putaway semua item terlebih dahulu.
+                      Lengkapi centang QC semua item terlebih dahulu.
 
                     </p>
 
@@ -692,7 +908,15 @@ export default function GudangPenerimaanDetailPage() {
 
                     <option value="">— Pilih —</option>
 
-                    {warehouses.map((w) => (
+                    {warehouses
+                      .filter(
+                        (w) =>
+                          (w as InvWarehouse & { warehouse_role?: string; company?: string })
+                            .warehouse_role === "transit" &&
+                          (!po?.company ||
+                            (w as InvWarehouse & { company?: string }).company === po.company),
+                      )
+                      .map((w) => (
 
                       <option key={w.id} value={w.id}>
 
@@ -758,7 +982,7 @@ export default function GudangPenerimaanDetailPage() {
 
               <WmsCard className="border-indigo-200 bg-indigo-50/50">
 
-                <WmsSectionTitle title="Lanjutkan dari Hold" subtitle="Selesaikan QC / label / putaway lalu Komplit" />
+                <WmsSectionTitle title="Lanjutkan dari Hold" subtitle="Selesaikan QC lalu Komplit" />
 
                 {po.warehouse_hold_note && (
 

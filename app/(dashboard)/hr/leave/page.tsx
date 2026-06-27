@@ -26,6 +26,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { canAccess } from "@/lib/rbac";
+import { useLocale } from "@/components/LocaleProvider";
 import {
   formatIdr,
   fetchApprovedLeavesOnDate,
@@ -41,7 +42,9 @@ type HrLeaveRow = LeaveRequestRow & {
 };
 
 export default function LeaveMonitoringPage() {
+  const { t, locale } = useLocale();
   const router = useRouter();
+  const dateLocale = locale === "en" ? "en-US" : "id-ID";
   const [leaves, setLeaves] = useState<HrLeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<
@@ -116,7 +119,7 @@ export default function LeaveMonitoringPage() {
     } catch (err) {
       console.error("Fetch leaves error:", err);
       const msg =
-        err instanceof Error ? err.message : "Gagal memuat data cuti dari server.";
+        err instanceof Error ? err.message : t("hr.leave.fetchError");
       setFetchError(msg);
       setLeaves([]);
       setDivisions([]);
@@ -195,7 +198,7 @@ export default function LeaveMonitoringPage() {
     return (
       <div className="p-6">
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
-          ❌ Akses ditolak. Halaman ini hanya untuk HR dan Owner.
+          {t("hr.common.accessDeniedHrOwner")}
         </div>
       </div>
     );
@@ -204,7 +207,7 @@ export default function LeaveMonitoringPage() {
   const formatDate = (dateStr: string) => {
     const y = coerceLeaveYmd(dateStr);
     if (!y) return "—";
-    return new Date(`${y}T12:00:00`).toLocaleDateString("id-ID", {
+    return new Date(`${y}T12:00:00`).toLocaleDateString(dateLocale, {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -243,17 +246,17 @@ export default function LeaveMonitoringPage() {
       pending: {
         bg: "bg-amber-100",
         text: "text-amber-900",
-        label: "Menunggu",
+        label: t("hr.leave.statusPending"),
         icon: Clock,
       },
-      approved: { bg: "bg-green-100", text: "text-green-700", label: "Disetujui", icon: CheckCircle },
+      approved: { bg: "bg-green-100", text: "text-green-700", label: t("hr.leave.statusApproved"), icon: CheckCircle },
       rejected: {
         bg: "bg-red-50",
         text: "text-red-700",
-        label: "Ditolak",
+        label: t("hr.leave.statusRejected"),
         icon: XCircle,
       },
-      cancelled: { bg: "bg-gray-100", text: "text-gray-700", label: "✗ Batal", icon: XCircle },
+      cancelled: { bg: "bg-gray-100", text: "text-gray-700", label: t("hr.leave.statusCancelled"), icon: XCircle },
     };
 
     const badge = badges[status as keyof typeof badges] || badges.pending;
@@ -284,20 +287,10 @@ export default function LeaveMonitoringPage() {
 
   const yearChoices = Array.from({ length: 7 }, (_, i) => now.getFullYear() - 2 + i);
 
-  const monthLabels = [
-    { v: 1, label: "Januari" },
-    { v: 2, label: "Februari" },
-    { v: 3, label: "Maret" },
-    { v: 4, label: "April" },
-    { v: 5, label: "Mei" },
-    { v: 6, label: "Juni" },
-    { v: 7, label: "Juli" },
-    { v: 8, label: "Agustus" },
-    { v: 9, label: "September" },
-    { v: 10, label: "Oktober" },
-    { v: 11, label: "November" },
-    { v: 12, label: "Desember" },
-  ];
+  const monthLabels = Array.from({ length: 12 }, (_, i) => ({
+    v: i + 1,
+    label: t(`hr.leave.months.${i + 1}`),
+  }));
 
   const leavesForStatusTab = leavesInPeriod.filter((leave) =>
     filter === "all" ? true : leave.status === filter
@@ -329,30 +322,23 @@ export default function LeaveMonitoringPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {fetchError && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-medium">Tidak bisa memuat daftar cuti</p>
+          <p className="font-medium">{t("hr.leave.fetchFailed")}</p>
           <p className="mt-1 opacity-90">{fetchError}</p>
-          <p className="mt-2 text-xs text-amber-800">
-            Pastikan koleksi <code className="rounded bg-amber-100 px-1">leave_requests</code> punya field{" "}
-            <code className="rounded bg-amber-100 px-1">status</code>,{" "}
-            <code className="rounded bg-amber-100 px-1">user</code> (relasi), dan rule list untuk HR/Owner.
-          </p>
+          <p className="mt-2 text-xs text-amber-800">{t("hr.leave.fetchHint")}</p>
         </div>
       )}
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">📊 Pengajuan &amp; Cuti</h1>
-          <p className="text-slate-500 mt-1">
-            ACC pengajuan (pending → disetujui / ditolak). Kuota divisi dicek saat Anda menyetujui. Filter bulan/tahun
-            menggunakan <strong>tanggal cuti</strong>, bukan tanggal pengajuan.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-800">{t("hr.leave.title")}</h1>
+          <p className="text-slate-500 mt-1">{t("hr.leave.subtitleLong")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
             href="/hr/compensation/settings"
             className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition flex items-center gap-2 font-medium text-sm"
           >
-            Pengaturan nominal cuti
+            {t("hr.leave.compensationSettings")}
           </Link>
           <button
             type="button"
@@ -360,7 +346,7 @@ export default function LeaveMonitoringPage() {
             className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition flex items-center gap-2 font-medium text-sm"
           >
             <Settings className="w-4 h-4" />
-            Kuota divisi
+            {t("hr.leave.divisionQuota")}
           </button>
         </div>
       </div>
@@ -370,13 +356,8 @@ export default function LeaveMonitoringPage() {
         <div className="flex items-start gap-3">
           <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-semibold text-blue-900 mb-1">Alur persetujuan HR</p>
-            <p className="text-sm text-blue-700">
-              Staff mengirim pengajuan sebagai <strong>pending</strong> dari kalender aplikasi (<strong>satu tanggal =
-              satu pengajuan</strong>, 1 hari per tiket). Anda menyetujui jika tidak bentrok dengan cuti lain karyawan tersebut dan
-              kuota divisi masih ada; atau tolak pengajuan. Kuota sistem: maks. <strong>3×</strong> pengajuan (pending + disetujui)
-              per karyawan per bulan kalender menurut tanggal dibuat.
-            </p>
+            <p className="font-semibold text-blue-900 mb-1">{t("hr.leave.flowTitle")}</p>
+            <p className="text-sm text-blue-700">{t("hr.leave.flowDesc")}</p>
           </div>
         </div>
       </div>
@@ -384,26 +365,26 @@ export default function LeaveMonitoringPage() {
       {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
-          <p className="text-sm text-amber-800 mb-1">Menunggu ACC</p>
+          <p className="text-sm text-amber-800 mb-1">{t("hr.leave.statPending")}</p>
           <p className="text-3xl font-bold text-amber-900">{stats.pending}</p>
         </div>
         <div className="bg-green-50 rounded-xl border border-green-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-green-600 mb-1">Disetujui</p>
+              <p className="text-sm text-green-600 mb-1">{t("hr.leave.statApproved")}</p>
               <p className="text-3xl font-bold text-green-700">{stats.approved}</p>
             </div>
             <CheckCircle className="w-10 h-10 text-green-300" />
           </div>
         </div>
         <div className="bg-red-50 rounded-xl border border-red-100 p-4">
-          <p className="text-sm text-red-700 mb-1">Ditolak</p>
+          <p className="text-sm text-red-700 mb-1">{t("hr.leave.statRejected")}</p>
           <p className="text-3xl font-bold text-red-800">{stats.rejected}</p>
         </div>
         <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Batal</p>
+              <p className="text-sm text-gray-600 mb-1">{t("hr.leave.statCancelled")}</p>
               <p className="text-3xl font-bold text-gray-700">{stats.cancelled}</p>
             </div>
             <XCircle className="w-10 h-10 text-gray-300" />
@@ -412,7 +393,7 @@ export default function LeaveMonitoringPage() {
         <div className="bg-indigo-50 rounded-xl border border-indigo-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-indigo-600 mb-1">Total</p>
+              <p className="text-sm text-indigo-600 mb-1">{t("hr.leave.statTotal")}</p>
               <p className="text-3xl font-bold text-indigo-700">{stats.total}</p>
             </div>
             <Calendar className="w-10 h-10 text-indigo-300" />
@@ -433,7 +414,7 @@ export default function LeaveMonitoringPage() {
             }`}
           >
             <Clock className="w-4 h-4" />
-            Menunggu ({stats.pending})
+            {t("hr.leave.filterPending")} ({stats.pending})
           </button>
           <button
             type="button"
@@ -445,7 +426,7 @@ export default function LeaveMonitoringPage() {
             }`}
           >
             <CheckCircle className="w-4 h-4" />
-            Disetujui ({stats.approved})
+            {t("hr.leave.filterApproved")} ({stats.approved})
           </button>
           <button
             type="button"
@@ -457,7 +438,7 @@ export default function LeaveMonitoringPage() {
             }`}
           >
             <XCircle className="w-4 h-4" />
-            Ditolak ({stats.rejected})
+            {t("hr.leave.filterRejected")} ({stats.rejected})
           </button>
           <button
             type="button"
@@ -469,7 +450,7 @@ export default function LeaveMonitoringPage() {
             }`}
           >
             <XCircle className="w-4 h-4" />
-            Batal ({stats.cancelled})
+            {t("hr.leave.filterCancelled")} ({stats.cancelled})
           </button>
           <button
             type="button"
@@ -481,20 +462,20 @@ export default function LeaveMonitoringPage() {
             }`}
           >
             <Filter className="w-4 h-4" />
-            Semua
+            {t("hr.common.all")}
           </button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-stretch sm:items-end">
           <div className="flex flex-wrap gap-2 items-center rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-            <span className="text-xs font-semibold text-slate-600 shrink-0">Periode cuti</span>
+            <span className="text-xs font-semibold text-slate-600 shrink-0">{t("hr.leave.periodLeave")}</span>
             <select
               value={periodMode}
               onChange={(e) => setPeriodMode(e.target.value as "all" | "month")}
               className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="all">Semua periode</option>
-              <option value="month">Bulan &amp; tahun</option>
+              <option value="all">{t("hr.leave.periodAll")}</option>
+              <option value="month">{t("hr.leave.periodMonthYear")}</option>
             </select>
             {periodMode === "month" && (
               <>
@@ -529,7 +510,7 @@ export default function LeaveMonitoringPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari nama atau email karyawan..."
+                placeholder={t("hr.leave.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
@@ -541,7 +522,7 @@ export default function LeaveMonitoringPage() {
             onChange={(e) => setDivisionFilter(e.target.value)}
             className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm min-w-[10rem]"
           >
-            <option value="all">Semua Division</option>
+            <option value="all">{t("hr.leave.divisionAll")}</option>
             {divisions.map((div) => (
               <option key={div} value={div}>
                 {div}
@@ -555,7 +536,7 @@ export default function LeaveMonitoringPage() {
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               className="text-sm text-slate-700 focus:outline-none"
-              title="Filter cuti yang jatuh pada tanggal ini"
+              title={t("hr.leave.dateFilter")}
             />
             {dateFilter ? (
               <button
@@ -563,7 +544,7 @@ export default function LeaveMonitoringPage() {
                 onClick={() => setDateFilter("")}
                 className="text-xs font-medium text-indigo-600 hover:underline"
               >
-                Reset
+                {t("hr.leave.reset")}
               </button>
             ) : null}
           </div>
@@ -573,14 +554,14 @@ export default function LeaveMonitoringPage() {
       {dateFilter ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4">
           <p className="text-sm font-semibold text-emerald-900">
-            Cuti disetujui pada tanggal {formatDate(dateFilter)}
+            {t("hr.leave.onDateTitle", { date: formatDate(dateFilter) })}
           </p>
           {onDateLoading ? (
             <div className="mt-3 flex justify-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-emerald-700" />
             </div>
           ) : onDateLeaves.length === 0 ? (
-            <p className="mt-2 text-sm text-emerald-800">Tidak ada cuti disetujui pada tanggal ini.</p>
+            <p className="mt-2 text-sm text-emerald-800">{t("hr.leave.onDateEmpty")}</p>
           ) : (
             <ul className="mt-3 space-y-2">
               {onDateLeaves.map((row) => (
@@ -592,10 +573,10 @@ export default function LeaveMonitoringPage() {
                     {row.userName} · {row.division}
                   </span>
                   <span className="text-emerald-800">
-                    {formatIdr(row.daily_rate)}/hari
+                    {formatIdr(row.daily_rate)}{t("hr.leave.perDay")}
                     {row.compensation_amount > 0 ? (
                       <span className="ml-2 text-slate-600">
-                        (total rentang: {formatIdr(row.compensation_amount)})
+                        {t("hr.leave.rangeTotal", { amount: formatIdr(row.compensation_amount) })}
                       </span>
                     ) : null}
                   </span>
@@ -614,11 +595,11 @@ export default function LeaveMonitoringPage() {
       ) : filteredLeaves.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <Calendar className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-          <p className="text-lg font-medium text-slate-800">Tidak ada data</p>
+          <p className="text-lg font-medium text-slate-800">{t("common.noData")}</p>
           <p className="text-sm text-slate-500 mt-1">
             {searchQuery || divisionFilter !== "all" || dateFilter
-              ? "Tidak ditemukan hasil untuk filter ini"
-              : "Belum ada booking cuti"}
+              ? t("hr.leave.emptyFilter")
+              : t("hr.leave.emptyNoBookings")}
           </p>
           {!searchQuery && divisionFilter === "all" && (
             <div className="mt-6 max-w-2xl mx-auto text-left text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
@@ -696,7 +677,7 @@ export default function LeaveMonitoringPage() {
                       </div>
                       <div className="flex items-center gap-2 text-slate-600">
                         <Clock className="w-4 h-4" />
-                        <span>{calculateDays(leave.start_date, leave.end_date)} hari</span>
+                        <span>{t("hr.leave.days", { count: calculateDays(leave.start_date, leave.end_date) })}</span>
                       </div>
                       <div className="flex items-center gap-2 text-orange-600 font-medium">
                         <Building2 className="w-4 h-4" />
@@ -705,17 +686,17 @@ export default function LeaveMonitoringPage() {
                     </div>
 
                     <div className="bg-slate-50 rounded-lg p-3 mb-2">
-                      <p className="text-xs text-slate-500 mb-1">Alasan:</p>
+                      <p className="text-xs text-slate-500 mb-1">{t("hr.leave.reason")}</p>
                       <p className="text-sm text-slate-700">{leave.reason}</p>
                     </div>
 
                     {leave.status === "approved" &&
                     (leave.compensation_amount != null && leave.compensation_amount > 0) ? (
                       <p className="mb-2 text-sm font-medium text-emerald-800">
-                        Kompensasi: {formatIdr(leave.compensation_amount)}
+                        {t("hr.leave.compensation")} {formatIdr(leave.compensation_amount)}
                         {leave.daily_compensation_rate != null && leave.daily_compensation_rate > 0 ? (
                           <span className="ml-1 text-xs font-normal text-emerald-700">
-                            ({formatIdr(leave.daily_compensation_rate)}/hari)
+                            ({formatIdr(leave.daily_compensation_rate)}{t("hr.leave.perDay")})
                           </span>
                         ) : null}
                       </p>
@@ -724,7 +705,7 @@ export default function LeaveMonitoringPage() {
                     {leave.status === "rejected" && Boolean(leave.rejection_reason?.trim()) && (
                       <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 mb-2">
                         <p className="text-[11px] font-medium text-red-800 mb-0.5">
-                          Alasan penolakan (terlihat staff)
+                          {t("hr.leave.rejectionReasonVisible")}
                         </p>
                         <p className="text-sm text-red-900">{leave.rejection_reason}</p>
                       </div>
@@ -735,15 +716,15 @@ export default function LeaveMonitoringPage() {
                         <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/80 px-3 py-2">
                           <p className="mb-0.5 text-[11px] font-medium text-indigo-800">
                             {leave.status === "approved"
-                              ? "Keputusan HR — disetujui"
-                              : "Keputusan HR — ditolak"}
+                              ? t("hr.leave.hrDecisionApproved")
+                              : t("hr.leave.hrDecisionRejected")}
                           </p>
                           <p className="text-sm text-indigo-950">{formatLeaveHrActionSummary(leave)}</p>
                         </div>
                       )}
 
                     {leave.position?.trim() ? (
-                      <p className="text-xs text-slate-400">Jabatan: {leave.position.trim()}</p>
+                      <p className="text-xs text-slate-400">{t("hr.leave.position")} {leave.position.trim()}</p>
                     ) : null}
                   </div>
                 </div>
@@ -761,7 +742,7 @@ export default function LeaveMonitoringPage() {
                       ) : (
                         <CheckCircle className="w-4 h-4" />
                       )}
-                      Setujui
+                      {t("hr.common.approve")}
                     </button>
                     <button
                       type="button"
@@ -770,7 +751,7 @@ export default function LeaveMonitoringPage() {
                       className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-50"
                     >
                       <XCircle className="w-4 h-4" />
-                      Tolak
+                      {t("hr.common.reject")}
                     </button>
                   </div>
                 )}
@@ -797,20 +778,18 @@ export default function LeaveMonitoringPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="reject-dialog-title" className="text-lg font-semibold text-slate-800">
-              Tolak pengajuan cuti
+              {t("hr.leave.rejectModalTitle")}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Staff akan melihat teks ini di riwayat cuti. Wajib diisi (min. 5 karakter).
-            </p>
+            <p className="mt-1 text-sm text-slate-500">{t("hr.leave.rejectModalDesc")}</p>
             <textarea
               value={rejectReasonDraft}
               onChange={(e) => setRejectReasonDraft(e.target.value)}
               rows={4}
-              placeholder="Contoh: Kuota divisi penuh pada tanggal tersebut / bentrok dengan kebutuhan operasional."
+              placeholder={t("hr.leave.rejectModalPlaceholder")}
               className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
             />
             <p className="mt-1 text-xs text-slate-400">
-              {rejectReasonDraft.trim().length}/5+ karakter
+              {t("hr.leave.charCount", { count: rejectReasonDraft.trim().length })}
             </p>
             <div className="mt-5 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
               <button
@@ -819,7 +798,7 @@ export default function LeaveMonitoringPage() {
                 onClick={closeRejectModal}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                Batal
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -829,7 +808,7 @@ export default function LeaveMonitoringPage() {
                 onClick={() => void submitReject()}
                 className="px-4 py-2.5 rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {actingId === rejectModalId ? "Memproses…" : "Kirim penolakan"}
+                {actingId === rejectModalId ? t("hr.leave.processing") : t("hr.leave.sendRejection")}
               </button>
             </div>
           </div>

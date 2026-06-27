@@ -11,6 +11,7 @@ import {
   type StoreChannelAccount,
 } from "./types";
 import { calculateOrderFees, type FeeContext, type LineInput } from "./mp-fee-engine";
+import { calcSkuFee, resolveSkuFees, type ResolvedSkuFee } from "./mp-sku-fee-server";
 import { buildImportLinePayload, type ParsedImportRow } from "./mp-import-parse";
 import {
   buildProductSkuIndex,
@@ -20,6 +21,13 @@ import {
 import { calculateTemplateOrderFees } from "./mp-template-engine";
 import { fetchMpFeeTemplateLines } from "./mp-template-client";
 import { BIZ_DOC_NUMBER_CONFIG, nextDocNo } from "./doc-number";
+import {
+  getOrCreateImportAccount,
+  validateImportTokoRows,
+  fetchStoreNameForImport,
+} from "./mp-import-resolve";
+import { findCustomerByName } from "./mp-import-order-build";
+import type { ImportOrderHeader } from "./mp-import-schema";
 
 type ListOpts = { filter?: string; expand?: string; sort?: string };
 
@@ -272,34 +280,134 @@ export async function processImportRows(
     ? await fetchMpFeeTemplateLines(effectiveTemplateId)
     : [];
   const useTemplate = templateLines.length > 0;
+  const skipMpFees = !effectiveTemplateId;
 
-  const rules = useTemplate ? [] : await fetchMpFeeRules({ filter: "is_active = true" });
+  const rules =
+    useTemplate || skipMpFees ? [] : await fetchMpFeeRules({ filter: "is_active = true" });
   const mappings = await fetchMpProductMappings({
     filter: "is_active = true",
     expand: "product",
   });
   const productBySku = await buildProductSkuIndex();
 
+  // Fee Engine per SKU (channel + tier + SKU): resolve sekali untuk seluruh batch.
+  // Jika aktif, fee produk & affiliate diambil dari engine ini (SKU → default tier),
+  // sedangkan biaya per-order (gratis ongkir, proses, dll.) tetap dari template/rules.
+  const tierId = account.seller_tier || "";
+  let skuFeeMap = new Map<string, ResolvedSkuFee>();
+  let skuEngineActive = false;
+  if (tierId) {
+    const allProductIds = new Set<string>();
+    for (const row of rows) {
+      const { resolved: prod } = resolveProductBySku(row.mp_sku, account, mappings, productBySku);
+      if (prod?.productId) allProductIds.add(prod.productId);
+    }
+    if (allProductIds.size > 0) {
+      try {
+        const r = await resolveSkuFees(pb, { tierId, productIds: [...allProductIds] });
+        skuFeeMap = r.byProduct;
+        skuEngineActive =
+          !!r.tierDefault ||
+          [...r.byProduct.values()].some((f) => f.mp_source !== "none" || f.aff_source !== "none");
+      } catch {
+        // Collection fee engine belum dibuat → pakai perilaku lama.
+      }
+    }
+  }
+
+  /** Snapshot fee SKU untuk satu baris; null jika engine nonaktif/produk tidak dikenal. */
+  function skuFeeFor(productId: string | undefined, gross: number, qty: number) {
+    if (!skuEngineActive || !productId) return null;
+    const f = skuFeeMap.get(productId);
+    if (!f) return null;
+    return {
+      mp: calcSkuFee(f.mp, gross, qty),
+      aff: calcSkuFee(f.aff, gross, qty),
+      snapshot: {
+        tier: tierId,
+        mp_source: f.mp_source,
+        aff_source: f.aff_source,
+        mp_spec: f.mp,
+        aff_spec: f.aff,
+      },
+    };
+  }
+
   const ctx: FeeContext = {
     channelId: account.channel,
     storeId: account.store,
     storeChannelAccountId: account.id,
     sellerTierId: account.seller_tier,
-    orderDate: rows[0]?.order_date ?? new Date().toISOString().slice(0, 10),
+    orderDate: rows[0]?.header.tgl_transaksi ?? new Date().toISOString().slice(0, 10),
   };
 
   const byOrder = new Map<string, ParsedImportRow[]>();
   for (const row of rows) {
-    const list = byOrder.get(row.mp_order_no) ?? [];
+    const key = row.header.mp_order_no;
+    const list = byOrder.get(key) ?? [];
     list.push(row);
-    byOrder.set(row.mp_order_no, list);
+    byOrder.set(key, list);
   }
 
   let valid = 0;
   let errors = 0;
 
+  function feeJson(header: ImportOrderHeader, extra: Record<string, unknown>): string {
+    return JSON.stringify({ import_header: header, ...extra });
+  }
+
   for (const [, orderRows] of byOrder) {
-    const orderDate = orderRows[0].order_date;
+    const header = orderRows[0].header;
+    const orderDate = header.tgl_transaksi;
+
+    if (!header.pelanggan.trim()) {
+      for (const row of orderRows) {
+        errors++;
+        await createSalesImportLine(
+          buildImportLinePayload(batchId, row, {
+            product: undefined,
+            fee_category: 0,
+            fee_free_shipping: 0,
+            fee_cashback: 0,
+            fee_mall: 0,
+            fee_processing: 0,
+            fee_affiliate: 0,
+            total_fees: 0,
+            expected_net: row.gross_amount,
+            fee_override_json: feeJson(header, {}),
+            validation_status: "error",
+            error_message: "Kolom pelanggan (*) wajib diisi",
+          }),
+        );
+      }
+      continue;
+    }
+
+    const customer = await findCustomerByName(header.pelanggan);
+    if (!customer) {
+      for (const row of orderRows) {
+        errors++;
+        await createSalesImportLine(
+          buildImportLinePayload(batchId, row, {
+            product: undefined,
+            fee_category: 0,
+            fee_free_shipping: 0,
+            fee_cashback: 0,
+            fee_mall: 0,
+            fee_processing: 0,
+            fee_affiliate: 0,
+            total_fees: 0,
+            expected_net: row.gross_amount,
+            fee_override_json: feeJson(header, { customer_error: true }),
+            validation_status: "error",
+            error_message: `Pelanggan "${header.pelanggan}" tidak ada di master Kontak`,
+          }),
+        );
+      }
+      continue;
+    }
+
+    const headerWithCustomer = { ...header, email: header.email || customer.email };
     const lineInputs: LineInput[] = [];
     const resolved: {
       row: ParsedImportRow;
@@ -320,8 +428,50 @@ export async function processImportRows(
     }
 
     let lineIdx = 0;
-    if (useTemplate) {
-      const tFees = calculateTemplateOrderFees(templateLines, lineInputs);
+    if (skipMpFees) {
+      for (const { row, productId, error } of resolved) {
+        const hasError = !!error;
+        if (hasError) errors++;
+        else valid++;
+        const sku = skuFeeFor(productId, row.gross_amount, row.qty);
+        const skuMp = sku?.mp ?? 0;
+        const skuAff = sku?.aff ?? 0;
+        await createSalesImportLine(
+          buildImportLinePayload(batchId, row, {
+            product: productId,
+            fee_category: skuMp,
+            fee_free_shipping: 0,
+            fee_cashback: 0,
+            fee_mall: 0,
+            fee_processing: 0,
+            fee_affiliate: skuAff,
+            total_fees: skuMp + skuAff,
+            expected_net: row.gross_amount - skuMp - skuAff,
+            fee_override_json: feeJson(headerWithCustomer, {
+              customer_id: customer.id,
+              line_discount_percent: row.discount_percent,
+              ...(sku ? { sku_fee: sku.snapshot } : {}),
+            }),
+            validation_status: hasError ? "error" : "valid",
+            error_message: error,
+          }),
+        );
+      }
+    } else if (useTemplate) {
+      // Engine SKU aktif → fee produk & affiliate dari engine; baris template
+      // per-produk/kategori/affiliate dikecualikan agar tidak dobel hitung.
+      const effectiveTplLines = skuEngineActive
+        ? templateLines.filter((l) => {
+            const code = `${l.code} ${l.label}`.toLowerCase();
+            const perLine =
+              l.line_group === "product" ||
+              l.line_group === "category" ||
+              !!l.scope_product ||
+              !!l.internal_category;
+            return !perLine && !code.includes("affiliate") && !code.includes("afiliasi");
+          })
+        : templateLines;
+      const tFees = calculateTemplateOrderFees(effectiveTplLines, lineInputs);
       const orderDenom =
         tFees.legacy.fee_free_shipping +
         tFees.legacy.fee_cashback +
@@ -330,9 +480,11 @@ export async function processImportRows(
         tFees.legacy.fee_affiliate;
 
       for (const { row, productId, error } of resolved) {
-        const catFee = tFees.lineCategoryFees[lineIdx] ?? 0;
+        const sku = skuFeeFor(productId, row.gross_amount, row.qty);
+        const catFee = sku ? sku.mp : (tFees.lineCategoryFees[lineIdx] ?? 0);
+        const affFee = sku ? sku.aff : lineIdx === 0 ? tFees.legacy.fee_affiliate : 0;
         const alloc = tFees.lineAllocatedOrderFees[lineIdx] ?? 0;
-        const lineTotalFees = catFee + alloc;
+        const lineTotalFees = sku ? catFee + affFee + alloc : catFee + alloc;
         const hasError = !!error;
         if (hasError) errors++;
         else valid++;
@@ -350,13 +502,16 @@ export async function processImportRows(
             fee_cashback: lineIdx === 0 ? tFees.legacy.fee_cashback : 0,
             fee_mall: lineIdx === 0 ? tFees.legacy.fee_mall : 0,
             fee_processing: lineIdx === 0 ? tFees.legacy.fee_processing : 0,
-            fee_affiliate: lineIdx === 0 ? tFees.legacy.fee_affiliate : 0,
+            fee_affiliate: affFee,
             total_fees: lineTotalFees,
             expected_net: row.gross_amount - lineTotalFees,
-            fee_override_json: JSON.stringify({
+            fee_override_json: feeJson(headerWithCustomer, {
+              customer_id: customer.id,
+              line_discount_percent: row.discount_percent,
               template_id: effectiveTemplateId,
               items: tFees.items,
               line_index: lineIdx,
+              ...(sku ? { sku_fee: sku.snapshot } : {}),
             }),
             validation_status: hasError ? "error" : "valid",
             error_message: error,
@@ -365,14 +520,20 @@ export async function processImportRows(
         lineIdx++;
       }
     } else {
-      const oFees = calculateOrderFees(rules, { ...ctx, orderDate }, lineInputs);
+      // Engine SKU aktif → rules category_fee & affiliate dikecualikan (anti dobel).
+      const effectiveRules = skuEngineActive
+        ? rules.filter((r) => r.fee_type !== "category_fee" && r.fee_type !== "affiliate")
+        : rules;
+      const oFees = calculateOrderFees(effectiveRules, { ...ctx, orderDate }, lineInputs);
       const orderDenom =
         oFees.free_shipping + oFees.cashback + oFees.mall_fee + oFees.processing + oFees.affiliate;
 
       for (const { row, productId, error } of resolved) {
-        const catFee = oFees.line_category_fees[lineIdx] ?? 0;
+        const sku = skuFeeFor(productId, row.gross_amount, row.qty);
+        const catFee = sku ? sku.mp : (oFees.line_category_fees[lineIdx] ?? 0);
+        const affFee = sku ? sku.aff : lineIdx === 0 ? oFees.affiliate : 0;
         const alloc = oFees.line_allocated_order_fees[lineIdx] ?? 0;
-        const lineTotalFees = catFee + alloc;
+        const lineTotalFees = sku ? catFee + affFee + alloc : catFee + alloc;
         const hasError = !!error;
         if (hasError) errors++;
         else valid++;
@@ -390,9 +551,14 @@ export async function processImportRows(
             fee_cashback: lineIdx === 0 ? oFees.cashback : 0,
             fee_mall: lineIdx === 0 ? oFees.mall_fee : 0,
             fee_processing: lineIdx === 0 ? oFees.processing : 0,
-            fee_affiliate: lineIdx === 0 ? oFees.affiliate : 0,
+            fee_affiliate: affFee,
             total_fees: lineTotalFees,
             expected_net: row.gross_amount - lineTotalFees,
+            fee_override_json: feeJson(headerWithCustomer, {
+              customer_id: customer.id,
+              line_discount_percent: row.discount_percent,
+              ...(sku ? { sku_fee: sku.snapshot } : {}),
+            }),
             validation_status: hasError ? "error" : "valid",
             error_message: error,
           }),
@@ -413,19 +579,44 @@ export async function processImportRows(
   return { valid, errors };
 }
 
+/** Batalkan batch penjualan yang belum ada invoice terposting. */
+export async function cancelSalesImportBatch(batchId: string): Promise<void> {
+  const batch = await fetchSalesImportBatch(batchId);
+  if (batch.status === "cancelled") return;
+  if (batch.posted_rows > 0) {
+    throw new Error(
+      "Batch sudah ada invoice terposting. Batalkan manual lewat penjualan jika perlu koreksi.",
+    );
+  }
+
+  const lines = await fetchSalesImportLines(batchId);
+  for (const line of lines) {
+    if (line.validation_status === "posted") continue;
+    await updateSalesImportLine(line.id, {
+      validation_status: "skipped",
+      error_message: "Batch dibatalkan",
+    });
+  }
+
+  await updateSalesImportBatch(batchId, { status: "cancelled" });
+}
+
 export async function createImportBatchFromFile(
-  accountId: string,
+  storeId: string,
   rows: ParsedImportRow[],
   userId: string,
   filename?: string,
-  templateId?: string,
+  feeTemplateId?: string,
 ): Promise<SalesImportBatch> {
-  const batchNo = await nextDocNo(BIZ_DOC_NUMBER_CONFIG.imp);
+  const storeName = await fetchStoreNameForImport(storeId);
+  validateImportTokoRows(rows, storeName);
+  const account = await getOrCreateImportAccount(storeId, feeTemplateId || undefined);
 
-  const dates = rows.map((r) => r.order_date).sort();
+  const batchNo = await nextDocNo(BIZ_DOC_NUMBER_CONFIG.imp);
+  const dates = rows.map((r) => r.header.tgl_transaksi).sort();
   const batch = await createSalesImportBatch({
     batch_no: batchNo,
-    store_channel_account: accountId,
+    store_channel_account: account.id,
     period_from: dates[0],
     period_to: dates[dates.length - 1],
     status: "draft",
@@ -437,6 +628,6 @@ export async function createImportBatchFromFile(
     created_by: userId,
   });
 
-  await processImportRows(batch.id, accountId, rows, templateId);
+  await processImportRows(batch.id, account.id, rows, feeTemplateId || undefined);
   return fetchSalesImportBatch(batch.id);
 }

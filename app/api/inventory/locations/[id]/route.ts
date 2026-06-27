@@ -61,12 +61,28 @@ export async function DELETE(req: Request, ctx: RouteCtx) {
     const { id } = await ctx.params;
     const pb = await getLocationPb(req, auth);
 
-    const used = await pb.collection(INV_COLLECTIONS.products).getFullList({
-      filter: `default_location = "${id}"`,
-    });
-    if (used.length > 0) {
+    let usedCount = 0;
+    try {
+      const used = await pb.collection(INV_COLLECTIONS.products).getFullList({
+        filter: `default_location = "${id}"`,
+        fields: "id",
+      });
+      usedCount += used.length;
+    } catch {
+      /* skip */
+    }
+    try {
+      const placed = await pb.collection(INV_COLLECTIONS.productPlacements).getFullList({
+        filter: `location = "${id}" && is_active != false`,
+        fields: "id",
+      });
+      usedCount += placed.length;
+    } catch {
+      /* collection belum ada */
+    }
+    if (usedCount > 0) {
       throw new InventoryApiError(
-        `${used.length} produk masih memakai rak ini. Kosongkan lokasi default produk dulu.`,
+        `${usedCount} produk masih memakai slot ini. Pindahkan penempatan di Daftar Produk dulu.`,
         400,
       );
     }

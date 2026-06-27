@@ -20,6 +20,7 @@ import {
   Loader2,
   Camera,
 } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 interface AttendanceData {
   id: string;
@@ -43,6 +44,8 @@ interface AttendanceData {
 }
 
 export default function HRAttendancePage() {
+  const { t, locale } = useLocale();
+  const dateLocale = locale === "en" ? "en-US" : "id-ID";
   const [data, setData] = useState<AttendanceData[]>([]);
   const [users, setUsers] = useState<RecordModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,17 +187,17 @@ export default function HRAttendancePage() {
           user_name: item.expand?.user?.name || "-",
           date: item.check_in || item.date,
           check_in: item.check_in ?? null,
-          has_selfie: item.check_in_selfie ? "Ya" : "Tidak",
+          has_selfie: item.check_in_selfie ? t("hr.attendance.yes") : t("hr.attendance.no"),
           check_out: item.check_out ?? null,
           status: item.status,
           late_minutes: item.late_minutes || 0,
           work_hours: item.work_hours || 0,
           distance_meter: item.distance_meter ?? "-",
-          is_suspicious: item.is_suspicious ? "Ya" : "Tidak",
+          is_suspicious: item.is_suspicious ? t("hr.attendance.yes") : t("hr.attendance.no"),
         }))
       );
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Gagal export Excel");
+      alert(e instanceof Error ? e.message : t("hr.attendance.exportFailed"));
     }
   };
 
@@ -203,14 +206,14 @@ export default function HRAttendancePage() {
   // =========================
   const formatTime = (dateStr?: string) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleTimeString("id-ID", {
+    return new Date(dateStr).toLocaleTimeString(dateLocale, {
       hour: "2-digit",
       minute: "2-digit",
     });
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("id-ID", {
+    return new Date(dateStr).toLocaleDateString(dateLocale, {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -220,6 +223,16 @@ export default function HRAttendancePage() {
   const formatDistance = (meters?: number) => {
     if (meters === undefined) return "-";
     return meters < 1000 ? `${meters}m` : `${(meters / 1000).toFixed(2)}km`;
+  };
+
+  const statusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      present: t("hr.attendance.statusPresent"),
+      late: t("hr.attendance.statusLate"),
+      absent: t("hr.attendance.statusAbsent"),
+      leave: t("hr.attendance.statusLeave"),
+    };
+    return map[status] ?? status;
   };
 
   const getStatusBadge = (status: string) => {
@@ -239,7 +252,7 @@ export default function HRAttendancePage() {
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
         <Icon className="w-3 h-3" />
-        {status}
+        {statusLabel(status)}
       </span>
     );
   };
@@ -252,9 +265,9 @@ export default function HRAttendancePage() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Monitoring Absensi Karyawan</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{t("hr.attendance.title")}</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Terakhir diperbarui: {lastUpdate.toLocaleTimeString("id-ID")}
+            {t("hr.attendance.lastUpdate", { time: lastUpdate.toLocaleTimeString(dateLocale) })}
           </p>
         </div>
         
@@ -269,7 +282,7 @@ export default function HRAttendancePage() {
             }`}
           >
             <RefreshCw className={`w-4 h-4 ${autoRefresh ? "animate-spin" : ""}`} />
-            {autoRefresh ? "Auto-refresh ON" : "Auto-refresh OFF"}
+            {autoRefresh ? t("hr.attendance.autoRefreshOn") : t("hr.attendance.autoRefreshOff")}
           </button>
 
           {/* Manual refresh */}
@@ -279,7 +292,7 @@ export default function HRAttendancePage() {
             className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
+            {t("hr.attendance.refresh")}
           </button>
 
           {/* Export */}
@@ -288,7 +301,7 @@ export default function HRAttendancePage() {
             className="flex items-center gap-2 px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 text-sm font-medium"
           >
             <Download className="w-4 h-4" />
-            Export Excel
+            {t("hr.attendance.exportExcel")}
           </button>
         </div>
       </div>
@@ -301,7 +314,7 @@ export default function HRAttendancePage() {
               <Users className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Total</p>
+              <p className="text-xs text-slate-500">{t("hr.attendance.statTotal")}</p>
               <p className="text-xl font-bold text-slate-800">{stats.total}</p>
             </div>
           </div>
@@ -313,7 +326,7 @@ export default function HRAttendancePage() {
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Hadir</p>
+              <p className="text-xs text-slate-500">{t("hr.attendance.statPresent")}</p>
               <p className="text-xl font-bold text-green-700">{stats.present}</p>
             </div>
           </div>
@@ -325,7 +338,7 @@ export default function HRAttendancePage() {
               <Clock className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Terlambat</p>
+              <p className="text-xs text-slate-500">{t("hr.attendance.statLate")}</p>
               <p className="text-xl font-bold text-yellow-700">{stats.late}</p>
             </div>
           </div>
@@ -337,7 +350,7 @@ export default function HRAttendancePage() {
               <AlertTriangle className="w-5 h-5 text-orange-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Belum Checkout</p>
+              <p className="text-xs text-slate-500">{t("hr.attendance.statNoCheckout")}</p>
               <p className="text-xl font-bold text-orange-700">{stats.belumCheckout}</p>
             </div>
           </div>
@@ -349,7 +362,7 @@ export default function HRAttendancePage() {
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Mencurigakan</p>
+              <p className="text-xs text-slate-500">{t("hr.attendance.statSuspicious")}</p>
               <p className="text-xl font-bold text-red-700">{stats.suspicious}</p>
             </div>
           </div>
@@ -361,7 +374,7 @@ export default function HRAttendancePage() {
               <TrendingUp className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Rata-rata Jam</p>
+              <p className="text-xs text-slate-500">{t("hr.attendance.statAvgHours")}</p>
               <p className="text-xl font-bold text-purple-700">{stats.avgWorkHours}h</p>
             </div>
           </div>
@@ -372,7 +385,7 @@ export default function HRAttendancePage() {
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <Filter className="w-4 h-4 text-slate-600" />
-          <h3 className="font-semibold text-slate-800">Filter Data</h3>
+          <h3 className="font-semibold text-slate-800">{t("hr.attendance.filterTitle")}</h3>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -381,7 +394,7 @@ export default function HRAttendancePage() {
             onChange={(e) => setSelectedUser(e.target.value)}
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">Semua Karyawan</option>
+            <option value="">{t("hr.attendance.allEmployees")}</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
@@ -401,11 +414,11 @@ export default function HRAttendancePage() {
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">Semua Status</option>
-            <option value="present">Hadir</option>
-            <option value="late">Terlambat</option>
-            <option value="absent">Tidak Hadir</option>
-            <option value="leave">Cuti</option>
+            <option value="">{t("hr.attendance.allStatus")}</option>
+            <option value="present">{t("hr.attendance.statusPresent")}</option>
+            <option value="late">{t("hr.attendance.statusLate")}</option>
+            <option value="absent">{t("hr.attendance.statusAbsent")}</option>
+            <option value="leave">{t("hr.attendance.statusLeave")}</option>
           </select>
 
           <label className="flex items-center gap-2 border border-slate-300 rounded-lg px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
@@ -415,7 +428,7 @@ export default function HRAttendancePage() {
               onChange={(e) => setShowSuspicious(e.target.checked)}
               className="rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
             />
-            <span className="text-slate-700">Hanya Mencurigakan</span>
+            <span className="text-slate-700">{t("hr.attendance.onlySuspicious")}</span>
           </label>
         </div>
 
@@ -424,7 +437,7 @@ export default function HRAttendancePage() {
             onClick={() => fetchData()}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
           >
-            Terapkan Filter
+            {t("hr.attendance.applyFilter")}
           </button>
           
           <button
@@ -436,7 +449,7 @@ export default function HRAttendancePage() {
             }}
             className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 text-sm font-medium"
           >
-            Reset
+            {t("hr.attendance.reset")}
           </button>
         </div>
       </div>
@@ -445,7 +458,7 @@ export default function HRAttendancePage() {
       {loading ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-slate-500">Memuat data...</p>
+          <p className="text-slate-500">{t("hr.attendance.loading")}</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -454,31 +467,31 @@ export default function HRAttendancePage() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Karyawan
+                    {t("hr.attendance.colEmployee")}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Tanggal
+                    {t("hr.attendance.colDate")}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Check In
+                    {t("hr.attendance.colCheckIn")}
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
-                    Selfie
+                    {t("hr.attendance.colSelfie")}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Check Out
+                    {t("hr.attendance.colCheckOut")}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Status
+                    {t("hr.attendance.colStatus")}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Jam Kerja
+                    {t("hr.attendance.colWorkHours")}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
-                    Jarak
+                    {t("hr.attendance.colDistance")}
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
-                    Info
+                    {t("hr.attendance.colInfo")}
                   </th>
                 </tr>
               </thead>
@@ -488,7 +501,7 @@ export default function HRAttendancePage() {
                   <tr>
                     <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                       <Users className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                      <p>Tidak ada data absensi</p>
+                      <p>{t("hr.attendance.empty")}</p>
                     </td>
                   </tr>
                 ) : (
@@ -498,7 +511,7 @@ export default function HRAttendancePage() {
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-medium text-slate-800">
-                            {item.expand?.user?.name || "Unknown"}
+                            {item.expand?.user?.name || t("hr.attendance.unknown")}
                           </p>
                           <p className="text-xs text-slate-500">
                             {item.expand?.user?.email || "-"}
@@ -518,7 +531,7 @@ export default function HRAttendancePage() {
                         </p>
                         {item.late_minutes > 0 && (
                           <p className="text-xs text-yellow-600">
-                            +{item.late_minutes} menit
+                            {t("hr.attendance.lateMinutes", { count: item.late_minutes })}
                           </p>
                         )}
                       </td>
@@ -535,7 +548,7 @@ export default function HRAttendancePage() {
                             className="inline-flex items-center justify-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100"
                           >
                             <Camera className="h-3.5 w-3.5" aria-hidden />
-                            Lihat
+                            {t("hr.attendance.viewSelfie")}
                           </a>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
@@ -576,7 +589,7 @@ export default function HRAttendancePage() {
                             <div className="relative group">
                               <AlertTriangle className="w-4 h-4 text-red-500" />
                               <span className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-800 text-white rounded whitespace-nowrap z-10">
-                                Aktivitas Mencurigakan
+                                {t("hr.attendance.suspiciousTooltip")}
                               </span>
                             </div>
                           )}
@@ -584,7 +597,7 @@ export default function HRAttendancePage() {
                             <div className="relative group">
                               <Clock className="w-4 h-4 text-orange-500" />
                               <span className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-800 text-white rounded whitespace-nowrap z-10">
-                                Belum Check Out
+                                {t("hr.attendance.noCheckoutTooltip")}
                               </span>
                             </div>
                           )}

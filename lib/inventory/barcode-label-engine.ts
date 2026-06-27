@@ -1,6 +1,13 @@
 /** Mesin label barcode/QR — termal & kertas A4/A5/A6, cetak & unduh. */
 
-export type BarcodeSymbology = "code128" | "qr";
+export type BarcodeSymbology = "code128" | "upca" | "itf" | "qr";
+
+export const BARCODE_SYMBOLOGY_OPTIONS: { id: BarcodeSymbology; label: string }[] = [
+  { id: "code128", label: "Code 128" },
+  { id: "upca", label: "UPC-A (12 digit)" },
+  { id: "itf", label: "ITF (Interleaved 2 of 5)" },
+  { id: "qr", label: "QR Code" },
+];
 
 export type PaperKind = "thermal" | "a4" | "a5" | "a6";
 
@@ -56,6 +63,28 @@ export function isCode128Safe(value: string): boolean {
   return /^[\x20-\x7E]+$/.test(value);
 }
 
+export function isUpcASafe(value: string): boolean {
+  return /^\d{12}$/.test(value.trim());
+}
+
+/** ITF (Interleaved 2 of 5) — angka saja, panjang genap (min. 2). */
+export function isItfSafe(value: string): boolean {
+  const d = value.trim();
+  return /^\d+$/.test(d) && d.length >= 2 && d.length % 2 === 0;
+}
+
+export function symbologyLabel(sym: BarcodeSymbology): string {
+  return BARCODE_SYMBOLOGY_OPTIONS.find((o) => o.id === sym)?.label ?? sym;
+}
+
+export function parseSymbologyParam(raw: string | null | undefined): BarcodeSymbology {
+  const s = raw?.trim().toLowerCase();
+  if (s === "qr") return "qr";
+  if (s === "upca" || s === "upc" || s === "upc-a") return "upca";
+  if (s === "itf" || s === "i2of5" || s === "interleaved") return "itf";
+  return "code128";
+}
+
 export function sheetGrid(
   paper: (typeof SHEET_PAPERS)[number],
   label: LabelDimensions,
@@ -74,19 +103,16 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export async function generateCode128DataUrl(
+async function generateJsBarcodeDataUrl(
   value: string,
+  format: string,
   opts?: { barWidth?: number; barHeight?: number },
 ): Promise<string> {
-  const text = normalizeEncodeValue(value);
-  if (!isCode128Safe(text)) {
-    throw new Error("Code128 hanya huruf/angka standar (tanpa aksen).");
-  }
   const JsBarcode = (await import("jsbarcode")).default;
   const canvas = document.createElement("canvas");
   const h = opts?.barHeight ?? 44;
-  JsBarcode(canvas, text, {
-    format: "CODE128",
+  JsBarcode(canvas, value, {
+    format,
     width: opts?.barWidth ?? 2,
     height: h,
     displayValue: false,
@@ -95,6 +121,50 @@ export async function generateCode128DataUrl(
     lineColor: "#000000",
   });
   return canvas.toDataURL("image/png");
+}
+
+export async function generateCode128DataUrl(
+  value: string,
+  opts?: { barWidth?: number; barHeight?: number },
+): Promise<string> {
+  const text = normalizeEncodeValue(value);
+  if (!isCode128Safe(text)) {
+    throw new Error("Code128 hanya huruf/angka standar (tanpa aksen).");
+  }
+  return generateJsBarcodeDataUrl(text, "CODE128", opts);
+}
+
+export async function generateUpcADataUrl(
+  value: string,
+  opts?: { barWidth?: number; barHeight?: number },
+): Promise<string> {
+  const text = normalizeEncodeValue(value);
+  if (!isUpcASafe(text)) {
+    throw new Error("UPC-A harus tepat 12 digit angka.");
+  }
+  return generateJsBarcodeDataUrl(text, "UPC", opts);
+}
+
+export async function generateItfDataUrl(
+  value: string,
+  opts?: { barWidth?: number; barHeight?: number },
+): Promise<string> {
+  const text = normalizeEncodeValue(value);
+  if (!isItfSafe(text)) {
+    throw new Error("ITF: angka saja, panjang genap (mis. 10 atau 14 digit).");
+  }
+  return generateJsBarcodeDataUrl(text, "ITF", opts);
+}
+
+export async function generateBarcodeDataUrl(
+  value: string,
+  symbology: BarcodeSymbology,
+  opts?: { barWidth?: number; barHeight?: number },
+): Promise<string> {
+  if (symbology === "qr") return generateQrDataUrl(value, opts?.barHeight ?? 200);
+  if (symbology === "upca") return generateUpcADataUrl(value, opts);
+  if (symbology === "itf") return generateItfDataUrl(value, opts);
+  return generateCode128DataUrl(value, opts);
 }
 
 export async function generateQrDataUrl(value: string, pixelSize = 200): Promise<string> {
@@ -108,7 +178,7 @@ export async function generateQrDataUrl(value: string, pixelSize = 200): Promise
   });
 }
 
-type CodeImages = { code128?: string; qr?: string };
+type CodeImages = { barcode?: string; qr?: string };
 
 async function loadCodeImages(
   value: string,
@@ -119,10 +189,10 @@ async function loadCodeImages(
     label.heightMm <= 20 ? 32 : label.heightMm <= 30 ? 38 : label.heightMm <= 40 ? 44 : 52;
   const qrPx =
     label.heightMm <= 20 ? 120 : label.heightMm <= 30 ? 150 : label.heightMm <= 40 ? 180 : 220;
-  if (symbology === "code128") {
-    return { code128: await generateCode128DataUrl(value, { barHeight: barH }) };
+  if (symbology === "qr") {
+    return { qr: await generateQrDataUrl(value, qrPx) };
   }
-  return { qr: await generateQrDataUrl(value, qrPx) };
+  return { barcode: await generateBarcodeDataUrl(value, symbology, { barHeight: barH }) };
 }
 
 function expandItems(job: BarcodeLabelJob): BarcodeLabelItem[] {
@@ -183,7 +253,7 @@ export async function renderLabelCanvas(
       img.src = src;
     });
 
-  if (imgs.code128) await drawImg(imgs.code128, w - pad * 2, codeAreaH);
+  if (imgs.barcode) await drawImg(imgs.barcode, w - pad * 2, codeAreaH);
   else if (imgs.qr) await drawImg(imgs.qr, Math.min(w - pad * 2, codeAreaH), codeAreaH);
 
   if (job.showCode) {
@@ -256,7 +326,7 @@ export async function downloadBarcodeLabels(
     triggerDownload(canvasToRawBlob(canvas), `label-${safeCode}-${stamp}.raw`);
   }
 
-  if (flat.length > 1 && format !== "pdf") {
+  if (flat.length > 1) {
     alert(
       `Unduh ${format.toUpperCase()} untuk label pertama (${safeCode}). Untuk banyak salinan gunakan PDF.`,
     );
@@ -279,7 +349,7 @@ async function renderStickerData(
   return {
     title: item.title?.trim() ?? "",
     code,
-    codeImg: imgs.code128 ?? imgs.qr ?? "",
+    codeImg: imgs.barcode ?? imgs.qr ?? "",
     symbology: job.symbology,
   };
 }
@@ -290,11 +360,12 @@ function stickerHtml(s: StickerRender, job: BarcodeLabelJob): string {
     lines.push(`<p class="title">${escapeHtml(s.title)}</p>`);
   }
   const imgClass = job.symbology === "qr" ? "qr" : "bc";
+  const symClass = job.symbology === "qr" ? "qr" : "linear";
   lines.push(`<div class="codes"><img class="${imgClass}" src="${s.codeImg}" alt="code" /></div>`);
   if (job.showCode) {
     lines.push(`<p class="code">${escapeHtml(s.code)}</p>`);
   }
-  return `<div class="sticker ${job.symbology}">${lines.join("")}</div>`;
+  return `<div class="sticker ${symClass}">${lines.join("")}</div>`;
 }
 
 export async function printBarcodeLabels(job: BarcodeLabelJob): Promise<void> {

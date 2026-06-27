@@ -8,6 +8,8 @@ import { getDefaultRouteForUser, canAccess } from "@/lib/rbac";
 
 import { Menu, X } from "lucide-react";
 import { AppBrand } from "@/components/AppBrand";
+import { ActivityNotificationBell } from "@/components/ActivityNotificationBell";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 /** Samakan dengan Sidebar: drawer + hamburger sampai &lt; lg (1024px), hindari sidebar “desktop” di HP landscape / tablet. */
 function subscribeMaxLg(cb: () => void) {
@@ -160,10 +162,13 @@ export default function Navbar({
               <Menu className="h-6 w-6" strokeWidth={2} />
             )}
           </button>
-          <AppBrand
-            height={28}
-            nameClassName="text-sm text-slate-800 sm:text-base"
-          />
+          {/* Nama tidak ditampilkan — tulisan "SERBA System" sudah ada di dalam logo. */}
+          <AppBrand height={28} showName={false} />
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 px-2 sm:justify-center">
+          <LanguageSwitcher compact />
+          <ActivityNotificationBell />
         </div>
 
         {/* RIGHT */}

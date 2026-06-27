@@ -1,6 +1,6 @@
 import { pb } from "@/lib/pocketbase";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
-import { isWarehouseRoom } from "@/lib/inventory/warehouse-rooms";
+import { isWarehouseRoom, type RoomLoc } from "@/lib/inventory/warehouse-rooms";
 
 /** ID lokasi ruangan — langsung dari pilihan atau cari by kode. */
 async function warehouseCodeFor(warehouseId: string): Promise<string> {
@@ -24,7 +24,7 @@ export async function resolveRoomLocationId(
         fields: "id,warehouse,code,is_active",
         requestKey: null,
       });
-      if (loc.warehouse === warehouseId && loc.is_active !== false && isWarehouseRoom(loc, whCode)) {
+      if (loc.warehouse === warehouseId && loc.is_active !== false && isWarehouseRoom(loc as unknown as RoomLoc, whCode)) {
         return loc.id;
       }
     } catch {
@@ -36,7 +36,7 @@ export async function resolveRoomLocationId(
       `warehouse = "${warehouseId}" && code = "${key.replace(/"/g, '\\"')}" && is_active = true`,
       { requestKey: null },
     );
-    return isWarehouseRoom(loc, whCode) ? loc.id : null;
+    return isWarehouseRoom(loc as unknown as RoomLoc, whCode) ? loc.id : null;
   } catch {
     return null;
   }

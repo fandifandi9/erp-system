@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     });
 
     for (const row of candidates) {
-      const m = row as { id: string; movement_no: string };
+      const m = row as unknown as { id: string; movement_no: string };
       const result = await voidStockMovement(
         adminPb,
         m.id,

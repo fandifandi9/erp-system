@@ -2,22 +2,26 @@
  * Sinkron operasi WMS dengan transaksi Bisnis — tanpa stok terpisah.
  * Stok hanya berubah lewat inv_stock_movements (posted).
  */
+import type PocketBase from "pocketbase";
 import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS } from "@/lib/bisnis/types";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 
 type TaskLine = { product: string; sku?: string; name?: string; qty: number };
 
-async function logWmsTask(input: {
-  userId: string;
-  warehouseId: string;
-  activityType: string;
-  entityType: string;
-  entityId: string;
-  payload: Record<string, unknown>;
-}) {
+async function logWmsTaskWithPb(
+  pocket: PocketBase,
+  input: {
+    userId: string;
+    warehouseId: string;
+    activityType: string;
+    entityType: string;
+    entityId: string;
+    payload: Record<string, unknown>;
+  },
+) {
   try {
-    await pb.collection(INV_COLLECTIONS.staffActivities).create({
+    await pocket.collection(INV_COLLECTIONS.staffActivities).create({
       user: input.userId,
       warehouse: input.warehouseId,
       activity_type: input.activityType,
@@ -32,6 +36,67 @@ async function logWmsTask(input: {
   }
 }
 
+async function logWmsTask(input: {
+  userId: string;
+  warehouseId: string;
+  activityType: string;
+  entityType: string;
+  entityId: string;
+  payload: Record<string, unknown>;
+}) {
+  return logWmsTaskWithPb(pb, input);
+}
+
+/** Setelah penjualan posting OUT — antrean picking & packing di WMS (server admin PB). */
+export async function enqueueOutboundFromSalesOrderServer(
+  pocket: PocketBase,
+  soId: string,
+  userId: string,
+) {
+  const so = await pocket.collection(BISNIS_COLLECTIONS.salesOrders).getOne(soId);
+  const lines = await pocket.collection(BISNIS_COLLECTIONS.salesOrderLines).getFullList({
+    filter: `sales_order = "${soId}"`,
+    requestKey: null,
+  });
+
+  const taskLines: TaskLine[] = lines.map((l) => {
+    const row = l as unknown as {
+      product: string;
+      qty: number;
+      sku_snapshot?: string;
+      name_snapshot?: string;
+    };
+    return {
+      product: row.product,
+      qty: Number(row.qty) || 0,
+      sku: row.sku_snapshot,
+      name: row.name_snapshot,
+    };
+  });
+
+  const wh = String(so.warehouse || "");
+  const orderNo = String(so.order_no || soId);
+  const base = { order_no: orderNo, lines: taskLines, status: "pending" };
+
+  await logWmsTaskWithPb(pocket, {
+    userId,
+    warehouseId: wh,
+    activityType: "wms.pick_task",
+    entityType: "biz_sales_orders",
+    entityId: soId,
+    payload: { ...base, kind: "picking" },
+  });
+
+  await logWmsTaskWithPb(pocket, {
+    userId,
+    warehouseId: wh,
+    activityType: "wms.pack_task",
+    entityType: "biz_sales_orders",
+    entityId: soId,
+    payload: { ...base, kind: "packing" },
+  });
+}
+
 /** Setelah penjualan posting OUT — antrean picking & packing di WMS. */
 export async function enqueueOutboundFromSalesOrder(soId: string, userId: string) {
   const so = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getOne(soId);
@@ -41,7 +106,7 @@ export async function enqueueOutboundFromSalesOrder(soId: string, userId: string
   });
 
   const taskLines: TaskLine[] = lines.map((l) => {
-    const row = l as {
+    const row = l as unknown as {
       product: string;
       qty: number;
       sku_snapshot?: string;
@@ -76,14 +141,6 @@ export async function enqueueOutboundFromSalesOrder(soId: string, userId: string
     entityId: soId,
     payload: { ...base, kind: "packing" },
   });
-
-  try {
-    await pb.collection(BISNIS_COLLECTIONS.salesOrders).update(soId, {
-      status: "processing",
-    });
-  } catch {
-    /* status field opsional di PB */
-  }
 }
 
 /** Setelah pembelian posting IN — antrean penerimaan / QC di WMS. */
@@ -95,7 +152,7 @@ export async function enqueueInboundFromPurchaseOrder(poId: string, userId: stri
   });
 
   const taskLines: TaskLine[] = lines.map((l) => {
-    const row = l as { product: string; qty: number };
+    const row = l as unknown as { product: string; qty: number };
     return { product: row.product, qty: Number(row.qty) || 0 };
   });
 
@@ -109,7 +166,7 @@ export async function enqueueInboundFromPurchaseOrder(poId: string, userId: stri
       po_no: String(po.po_no || poId),
       lines: taskLines,
       status: "pending",
-      note: "Stok pusat sudah bertambah (IN). Lanjut penerimaan fisik / QC.",
+      note: "Antrean penerimaan fisik / QC. Stok masuk gudang sementara saat penerimaan ditandai Komplit, lalu disposition ke gudang entitas/rusak.",
     },
   });
 }

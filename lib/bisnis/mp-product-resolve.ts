@@ -123,7 +123,7 @@ export function resolveProductBySku(
 /** Input fee: kategori dikunci dari produk SERBA bila SKU dikenali. */
 export function lineInputForFees(row: ParsedImportRow, resolved?: ResolvedProduct): LineInput {
   return {
-    mpCategory: resolved ? undefined : row.mp_category,
+    mpCategory: undefined,
     internalCategoryId: resolved?.internalCategoryId,
     productId: resolved?.productId,
     grossAmount: row.gross_amount,

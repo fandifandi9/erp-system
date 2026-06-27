@@ -33,7 +33,7 @@ async function clearProductDefaultForSlot(
       fields: "id,sku,name",
     });
     for (const row of list.items) {
-      const p = row as { id: string; sku: string; name: string };
+      const p = row as unknown as { id: string; sku: string; name: string };
       await pb.collection(INV_COLLECTIONS.products).update(p.id, {
         sku: p.sku,
         name: p.name,
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
           await persistLocation(pb, {
             id: rec.id,
             warehouse: body.warehouse,
-            code: (row as { code: string }).code,
+            code: (row as unknown as { code: string }).code,
             name: getSlotDisplayName({ name: rec.name }),
             zone_type: "rack",
             assigned_product: "",

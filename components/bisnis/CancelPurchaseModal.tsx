@@ -1,6 +1,7 @@
 "use client";
 
 import { CancelInvoiceModal } from "@/components/bisnis/CancelInvoiceModal";
+import { useLocale } from "@/components/LocaleProvider";
 
 type Props = {
   billNo: string;
@@ -10,20 +11,16 @@ type Props = {
 };
 
 export function CancelPurchaseModal({ billNo, open, onClose, onConfirm }: Props) {
+  const { t } = useLocale();
   return (
     <CancelInvoiceModal
       invoiceNo={billNo}
       open={open}
       onClose={onClose}
       onConfirm={onConfirm}
-      title="Batalkan pembelian"
-      description={
-        <>
-          Tagihan <span className="font-mono font-medium">{billNo}</span> akan dibatalkan.
-          Stok yang sudah masuk akan dikurangi kembali. Data tetap bisa dilihat tetapi tidak bisa diedit.
-        </>
-      }
-      confirmLabel="Batalkan pembelian"
+      title={t("purchase.cancel.title")}
+      description={t("purchase.cancel.description", { billNo })}
+      confirmLabel={t("purchase.cancel.confirm")}
     />
   );
 }

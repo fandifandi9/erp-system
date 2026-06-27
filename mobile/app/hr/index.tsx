@@ -49,8 +49,8 @@ export default function HrHomeScreen() {
         title="Lembur"
         subtitle="Pengajuan staf & penunjukan HR"
         icon="moon-outline"
-        color="#4338ca"
-        bg="#e0e7ff"
+        color="#000000"
+        bg="#fef3c7"
       />
       <Row
         href="/hr/field-queue"

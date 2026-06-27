@@ -1,5 +1,12 @@
+import type PocketBase from "pocketbase";
 import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS } from "./types";
+
+async function resolveDocPb(): Promise<PocketBase> {
+  if (typeof window !== "undefined") return pb;
+  const { getInventoryAdminPb } = await import("@/lib/inventory/pb-server");
+  return getInventoryAdminPb();
+}
 
 export type NumberingConfig = {
   collection: string;
@@ -39,10 +46,20 @@ export const BIZ_DOC_NUMBER_CONFIG = {
     field: "retur_no",
     prefix: "RET",
   },
+  cn: {
+    collection: BISNIS_COLLECTIONS.creditNotes,
+    field: "cn_no",
+    prefix: "CN",
+  },
   imp: {
     collection: BISNIS_COLLECTIONS.salesImportBatches,
     field: "batch_no",
     prefix: "IMP",
+  },
+  payImp: {
+    collection: BISNIS_COLLECTIONS.paymentImportBatches,
+    field: "batch_no",
+    prefix: "PEL",
   },
 } as const satisfies Record<string, NumberingConfig>;
 
@@ -157,7 +174,8 @@ async function findMaxSeq(config: NumberingConfig, periodKey: string): Promise<n
   let max = 0;
   const needle = `${config.prefix}-${periodKey}-`;
   try {
-    const rows = await pb.collection(config.collection).getFullList<Record<string, unknown>>({
+    const docPb = await resolveDocPb();
+    const rows = await docPb.collection(config.collection).getFullList<Record<string, unknown>>({
       filter: `${config.field} ~ "${escapeFilter(needle)}"`,
       fields: config.field,
       requestKey: null,
@@ -211,7 +229,8 @@ export async function isDocNoTaken(
   let filter = `${config.field} = "${escapeFilter(trimmed)}"`;
   if (excludeId) filter += ` && id != "${escapeFilter(excludeId)}"`;
   try {
-    const list = await pb.collection(config.collection).getList(1, 1, {
+    const docPb = await resolveDocPb();
+    const list = await docPb.collection(config.collection).getList(1, 1, {
       filter,
       requestKey: null,
     });
@@ -229,4 +248,41 @@ export async function assertDocNoAvailable(
   if (await isDocNoTaken(config, docNo, excludeId)) {
     throw new Error(`Nomor ${docNo.trim()} sudah dipakai. Pilih nomor lain.`);
   }
+}
+
+/** Ubah prefix dokumen — MMYYYY & urutan tetap (SO-062026-00019 → INV-062026-00019). */
+export function pairedDocNo(value: string, targetPrefix: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  for (const prefix of [BIZ_DOC_NUMBER_CONFIG.so.prefix, BIZ_DOC_NUMBER_CONFIG.inv.prefix]) {
+    const parts = parseDocNoParts(trimmed, prefix);
+    if (parts) return formatDocNo(targetPrefix, parts.seq, parts.periodKey);
+  }
+  return null;
+}
+
+export function invoiceNoFromSalesOrder(orderNo: string): string | null {
+  return pairedDocNo(orderNo, BIZ_DOC_NUMBER_CONFIG.inv.prefix);
+}
+
+export function salesOrderNoFromInvoice(invoiceNo: string): string | null {
+  return pairedDocNo(invoiceNo, BIZ_DOC_NUMBER_CONFIG.so.prefix);
+}
+
+/**
+ * Nomor invoice dari SO — urutan sama, hanya prefix INV.
+ * Nomor SO eksternal (bukan format SO-MMYYYY-#####) → nomor invoice baru terpisah.
+ */
+export async function resolveInvoiceNoForSalesOrder(
+  orderNo: string,
+  opts?: { periodDate?: string | Date },
+): Promise<string> {
+  const paired = invoiceNoFromSalesOrder(orderNo);
+  if (paired) {
+    if (await isDocNoTaken(BIZ_DOC_NUMBER_CONFIG.inv, paired)) {
+      throw new Error(`Nomor invoice pasangan ${paired} sudah dipakai.`);
+    }
+    return paired;
+  }
+  return nextDocNo(BIZ_DOC_NUMBER_CONFIG.inv, { periodDate: opts?.periodDate });
 }

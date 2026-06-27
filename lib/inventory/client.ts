@@ -1,5 +1,6 @@
 import { pb } from "@/lib/pocketbase";
 import { listWarehouseRooms } from "@/lib/inventory/warehouse-rooms";
+import { isSalesWarehouse } from "@/lib/bisnis/warehouse-categories";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 import type { LocationSaveInput } from "@/lib/inventory/location-save";
 import type {
@@ -13,6 +14,109 @@ import type {
   InvZoneSession,
   MovementType,
 } from "@/lib/inventory/types";
+import {
+  getProductImageUrl as getCatalogProductImageUrl,
+  getProductImageUrls,
+} from "@/lib/catalog/product-images";
+
+import type {
+  DamagedStockRow,
+  DamagedWarehouseOption,
+  DispositionLine,
+  RetailWarehouseOption,
+} from "@/lib/inventory/damaged-disposition";
+import type { DamagedIntakeRef } from "@/lib/inventory/damaged-intake-refs";
+
+async function readInvJson(res: Response) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(String(data.error || "Permintaan inventory gagal."));
+  }
+  return data;
+}
+
+export type DamagedWriteOffExpense = {
+  expenseId: string;
+  expenseNo: string;
+  total: number;
+  kind?: "write_down" | "reversal" | "write_off";
+};
+
+export type DamagedDispositionResult = {
+  expense?: DamagedWriteOffExpense | null;
+  accounting?: DamagedWriteOffExpense | null;
+};
+
+export async function fetchDamagedWarehouseStock(params?: {
+  companyId?: string;
+  warehouseId?: string;
+}): Promise<{
+  warehouses: DamagedWarehouseOption[];
+  items: DamagedStockRow[];
+  intakeRefs: Record<string, DamagedIntakeRef[]>;
+  retailByCompany: Record<string, RetailWarehouseOption[]>;
+}> {
+  const sp = new URLSearchParams();
+  if (params?.companyId) sp.set("company", params.companyId);
+  if (params?.warehouseId) sp.set("warehouse", params.warehouseId);
+  const res = await fetch(`/api/inventory/damaged-stock?${sp}`, { cache: "no-store" });
+  const data = await readInvJson(res);
+  return {
+    warehouses: (data.warehouses ?? []) as DamagedWarehouseOption[],
+    items: (data.items ?? []) as DamagedStockRow[],
+    intakeRefs: (data.intakeRefs ?? {}) as Record<string, DamagedIntakeRef[]>,
+    retailByCompany: (data.retailByCompany ?? {}) as Record<string, RetailWarehouseOption[]>,
+  };
+}
+
+export async function postDamagedDisposition(input: {
+  action: "repair" | "write_off";
+  damagedWarehouseId: string;
+  companyId: string;
+  lines: DispositionLine[];
+  note?: string;
+  repairTarget?: "entity" | "retail";
+  targetWarehouseId?: string;
+}): Promise<DamagedDispositionResult> {
+  const res = await fetch("/api/inventory/damaged-disposition", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: input.action,
+      damaged_warehouse: input.damagedWarehouseId,
+      company: input.companyId,
+      lines: input.lines,
+      note: input.note,
+      repair_target: input.repairTarget,
+      target_warehouse: input.targetWarehouseId,
+    }),
+  });
+  const data = await readInvJson(res);
+  return {
+    expense: (data.expense ?? null) as DamagedWriteOffExpense | null,
+    accounting: (data.accounting ?? data.expense ?? null) as DamagedWriteOffExpense | null,
+  };
+}
+
+export async function postDamagedReassign(input: {
+  fromDamagedWarehouseId: string;
+  toDamagedWarehouseId: string;
+  lines: DispositionLine[];
+  note: string;
+}) {
+  const res = await fetch("/api/inventory/damaged-disposition", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "reassign",
+      from_damaged_warehouse: input.fromDamagedWarehouseId,
+      to_damaged_warehouse: input.toDamagedWarehouseId,
+      lines: input.lines,
+      note: input.note,
+    }),
+  });
+  return readInvJson(res);
+}
 
 export async function fetchWarehouses(activeOnly = true) {
   const filter = activeOnly ? "is_active = true" : "";
@@ -23,26 +127,64 @@ export async function fetchWarehouses(activeOnly = true) {
   return res.items as unknown as InvWarehouse[];
 }
 
+/** Gudang penjualan retail (role retail / terikat toko) — untuk preview stok jual bundle. */
+export async function fetchSalesWarehouses(activeOnly = true) {
+  const filter = activeOnly ? "is_active = true" : "";
+  const res = await pb.collection(INV_COLLECTIONS.warehouses).getList(1, 200, {
+    sort: "code",
+    filter: filter || undefined,
+    expand: "store",
+  });
+  return (res.items as unknown as Array<InvWarehouse & { warehouse_role?: string; store?: string; expand?: { store?: { name: string } } }>).filter(
+    isSalesWarehouse,
+  );
+}
+
 export async function fetchProducts(params?: {
   q?: string;
   page?: number;
   perPage?: number;
   expand?: string;
+  /** Hanya produk boleh dijual (aktif — simple + bundle). */
+  sellableOnly?: boolean;
+  /** Semua status kecuali nonaktif — default untuk operasional gudang. */
+  operationalOnly?: boolean;
 }) {
   const page = params?.page ?? 1;
-  let filter = "is_active = true";
   const q = (params?.q || "").trim();
-  if (q) {
-    const esc = q.replace(/"/g, '\\"');
-    filter += ` && (sku ~ "${esc}" || name ~ "${esc}" || barcode ~ "${esc}")`;
+  const qPart = q
+    ? ` && (sku ~ "${q.replace(/"/g, '\\"')}" || name ~ "${q.replace(/"/g, '\\"')}" || barcode ~ "${q.replace(/"/g, '\\"')}")`
+    : "";
+
+  const buildFilter = (base: string) => `${base}${qPart}`;
+
+  const tryFilters = params?.sellableOnly
+    ? [
+        buildFilter('lifecycle_status = "active"'),
+        buildFilter("is_active = true"),
+      ]
+    : params?.operationalOnly === false
+      ? [buildFilter("")]
+      : [
+          buildFilter('(lifecycle_status = "active" || lifecycle_status = "draft")'),
+          buildFilter("is_active = true"),
+        ];
+
+  let lastErr: unknown;
+  for (const filter of tryFilters) {
+    try {
+      const res = await pb.collection(INV_COLLECTIONS.products).getList(page, params?.perPage ?? 50, {
+        sort: "name",
+        filter: filter || undefined,
+        expand: params?.expand ?? "category,brand",
+        requestKey: null,
+      });
+      return res;
+    } catch (e) {
+      lastErr = e;
+    }
   }
-  const res = await pb.collection(INV_COLLECTIONS.products).getList(page, params?.perPage ?? 50, {
-    sort: "name",
-    filter,
-    expand: params?.expand ?? "category,brand",
-    requestKey: null,
-  });
-  return res;
+  throw lastErr;
 }
 
 export async function fetchBalances(warehouseId?: string, productId?: string) {
@@ -125,24 +267,33 @@ export async function saveProduct(data: Partial<InvProduct> & { sku: string; nam
   if (data.id) {
     return pb.collection(INV_COLLECTIONS.products).update(data.id, body);
   }
+  const lifecycle = (data as { lifecycle_status?: string }).lifecycle_status ?? "active";
+  const lifecycleFields = {
+    product_type: (data as { product_type?: string }).product_type ?? "simple",
+    lifecycle_status: lifecycle,
+    is_active: lifecycle === "active",
+  };
   if (!(body instanceof FormData)) {
-    return pb.collection(INV_COLLECTIONS.products).create({ uom: "pcs", min_stock: 0, is_active: true, ...body });
+    return pb.collection(INV_COLLECTIONS.products).create({
+      uom: "pcs",
+      min_stock: 0,
+      ...lifecycleFields,
+      ...body,
+    });
   }
   if (!body.has("uom")) body.append("uom", "pcs");
   if (!body.has("min_stock")) body.append("min_stock", "0");
-  if (!body.has("is_active")) body.append("is_active", "true");
+  if (!body.has("product_type")) body.append("product_type", lifecycleFields.product_type);
+  if (!body.has("lifecycle_status")) body.append("lifecycle_status", lifecycleFields.lifecycle_status);
+  if (!body.has("is_active")) body.append("is_active", String(lifecycleFields.is_active));
   return pb.collection(INV_COLLECTIONS.products).create(body);
 }
 
 export function getProductImageUrl(product: InvProduct, thumb = "200x200") {
-  if (!product.image) return null;
-  const record = {
-    id: product.id,
-    collectionId: product.collectionId || "",
-    collectionName: INV_COLLECTIONS.products,
-  };
-  return pb.files.getURL(record, product.image, { thumb });
+  return getCatalogProductImageUrl(product, "image", thumb);
 }
+
+export { getProductImageUrls };
 
 export async function createMovementDraft(input: {
   movement_type: MovementType;
@@ -320,7 +471,7 @@ export async function fetchWarehouseSlotAssignments(warehouseId: string) {
     byRoomId?: Record<string, { id: string; sku: string; name: string }[]>;
   };
   if (!res.ok || json.ok === false) {
-    throw new Error(json.error || "Gagal memuat penempatan ruangan");
+    throw new Error(json.error || "Gagal memuat penempatan slot");
   }
   const rooms = json.rooms ?? json.slots ?? [];
   return {
@@ -350,14 +501,14 @@ export async function saveWarehouseRoom(data: {
     try {
       json = (await res.json()) as typeof json;
     } catch {
-      throw new Error("Gagal menyimpan ruangan (respons server tidak valid).");
+      throw new Error("Gagal menyimpan slot (respons server tidak valid).");
     }
-    if (!res.ok || json.ok === false) throw new Error(json.error || "Gagal menyimpan ruangan");
+    if (!res.ok || json.ok === false) throw new Error(json.error || "Gagal menyimpan slot");
     return json.record;
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
       throw new Error(
-        "Simpan ruangan terlalu lama. Cek koneksi ke PocketBase, lalu coba lagi tanpa memilih produk dulu.",
+        "Simpan slot terlalu lama. Cek koneksi ke PocketBase, lalu coba lagi.",
       );
     }
     throw err;
@@ -754,15 +905,32 @@ export async function deleteProductBarcode(id: string) {
 export async function fetchProductPriceTiers(productId: string) {
   const res = await pb.collection(INV_COLLECTIONS.productPriceTiers).getFullList({
     filter: `product = "${productId}"`,
-    sort: "min_qty",
+    sort: "store,min_qty",
+    expand: "store",
   });
   return res as unknown as import("@/lib/inventory/types").InvProductPriceTier[];
 }
 
 export async function saveProductPriceTier(data: {
-  id?: string; product: string; label: string; min_qty: number; price: number;
+  id?: string;
+  product: string;
+  store: string;
+  min_qty: number;
+  max_qty?: number;
+  price: number;
 }) {
-  const payload = { product: data.product, label: data.label.trim(), min_qty: data.min_qty, price: data.price, is_active: true };
+  const minQty = Math.max(1, data.min_qty);
+  const maxQty = data.max_qty && data.max_qty >= minQty ? data.max_qty : minQty;
+  const label = maxQty <= minQty ? String(minQty) : `${minQty}-${maxQty}`;
+  const payload = {
+    product: data.product,
+    store: data.store,
+    label,
+    min_qty: minQty,
+    max_qty: maxQty,
+    price: data.price,
+    is_active: true,
+  };
   if (data.id) return pb.collection(INV_COLLECTIONS.productPriceTiers).update(data.id, payload);
   return pb.collection(INV_COLLECTIONS.productPriceTiers).create(payload);
 }

@@ -1,10 +1,12 @@
 /**
  * Palet & token visual selaras web ERP (dashboard kerja):
- * slate terang, aksen indigo & emerald.
+ * rebrand SERBA System — kuning (#FFC107), hitam (#1A1A1A), putih.
+ * Token "indigo" dipertahankan namanya agar tidak menyentuh semua layar;
+ * nilainya kini hitam (aksi utama) dengan tint kuning untuk latar/border.
  */
 export const PWA = {
   screenBg: "#f8fafc",
-  screenBgTint: "#eef2ff",
+  screenBgTint: "#fffbeb",
   surface: "#ffffff",
   surfaceGlass: "rgba(255,255,255,0.92)",
   border: "#e2e8f0",
@@ -12,10 +14,10 @@ export const PWA = {
   text: "#0f172a",
   textSecondary: "#475569",
   textMuted: "#64748b",
-  indigo: "#4f46e5",
-  indigo700: "#4338ca",
-  indigo100: "#e0e7ff",
-  indigo50: "#eef2ff",
+  indigo: "#1a1a1a",
+  indigo700: "#000000",
+  indigo100: "#fde68a",
+  indigo50: "#fffbeb",
   emerald: "#059669",
   emerald700: "#047857",
   slate50: "#f8fafc",

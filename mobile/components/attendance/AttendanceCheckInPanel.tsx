@@ -270,21 +270,17 @@ export function AttendanceCheckInPanel() {
             </Text>
           </View>
         ) : null}
-        {!record?.check_in ? (
+        {!record?.check_in && requireSelfieHr ? (
           <View style={styles.heroHint}>
             <Text style={styles.heroHintText}>
-              <Text style={styles.heroHintBold}>Foto selfie: </Text>
+              <Text style={styles.heroHintBold}>Foto selfie (audit HR): </Text>
               blok <Text style={styles.heroHintIndigo}>Foto selfie check-in</Text> ada setelah info kantor
               (jika ada) dan sebelum kartu <Text style={styles.heroHintBold}>Status Hari Ini</Text>. Gunakan{" "}
               <Text style={styles.heroHintBold}>Ambil foto</Text> atau <Text style={styles.heroHintBold}>Pilih dari galeri</Text>
-              {requireSelfieHr ? (
-                <Text style={{ fontWeight: "600", color: PWA.amber900 }}>
-                  {" "}
-                  — wajib sebelum Check in.
-                </Text>
-              ) : (
-                <Text> sebelum Check in jika ingin melampirkan foto (opsional).</Text>
-              )}
+              <Text style={{ fontWeight: "600", color: PWA.amber900 }}>
+                {" "}
+                — wajib sebelum Check in.
+              </Text>
             </Text>
           </View>
         ) : null}
@@ -333,14 +329,9 @@ export function AttendanceCheckInPanel() {
             </View>
           ) : null}
 
-          {/* Selfie sebelum check-in */}
-          {!hasCheckIn ? (
-            <View
-              style={[
-                styles.selfieCard,
-                requireSelfieHr ? styles.selfieCardRequired : styles.selfieCardOptional,
-              ]}
-            >
+          {/* Selfie hanya untuk audit — tampil saat HR mengaktifkan require_checkin_selfie */}
+          {!hasCheckIn && requireSelfieHr ? (
+            <View style={[styles.selfieCard, styles.selfieCardRequired]}>
               <View style={styles.selfieCardHeader}>
                 <View style={styles.selfieIconWrap}>
                   <Ionicons name="camera" size={22} color={PWA.indigo} />
@@ -348,13 +339,9 @@ export function AttendanceCheckInPanel() {
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.selfieCardTitle}>Foto selfie check-in</Text>
                   <Text style={styles.selfieCardSub}>
-                    {requireSelfieHr ? (
-                      <Text style={{ fontWeight: "600", color: PWA.amber900 }}>
-                        Wajib untuk akun Anda (HR mengaktifkan audit selfie). Tanpa foto, check-in ditolak.
-                      </Text>
-                    ) : (
-                      "Opsional — membantu HR memverifikasi kehadiran. Anda tetap bisa check-in tanpa foto."
-                    )}
+                    <Text style={{ fontWeight: "600", color: PWA.amber900 }}>
+                      Wajib untuk akun Anda (HR mengaktifkan audit selfie). Tanpa foto, check-in ditolak.
+                    </Text>
                   </Text>
                 </View>
               </View>
@@ -602,7 +589,7 @@ const styles = StyleSheet.create({
     borderColor: PWA.indigo100,
     marginBottom: 16,
   },
-  officeName: { fontSize: 14, fontWeight: "700", color: "#1e1b4b" },
+  officeName: { fontSize: 14, fontWeight: "700", color: "#1a1a1a" },
   officeSub: { marginTop: 4, fontSize: 12, color: PWA.indigo700 },
   statusCard: {
     backgroundColor: PWA.surface,
@@ -697,10 +684,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     marginBottom: 16,
-  },
-  selfieCardOptional: {
-    backgroundColor: PWA.surface,
-    borderColor: PWA.border,
   },
   selfieCardRequired: {
     backgroundColor: PWA.amber50,

@@ -9,6 +9,7 @@ import {
 import { formatIntegerId } from "@/lib/format-number";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/components/LocaleProvider";
 
 type PbUserRow = {
   id: string;
@@ -80,6 +81,7 @@ async function fetchUsersByIds(ids: string[]): Promise<Map<string, PbUserRow>> {
 }
 
 export default function EmployeesPage() {
+  const { t } = useLocale();
   const router = useRouter();
   const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,12 +93,12 @@ export default function EmployeesPage() {
   // ================= TOGGLE STATUS =================
   const toggleStatus = async (profile: EmployeeProfile) => {
     if (currentUser?.role !== "owner") {
-      alert("Hanya owner yang bisa ubah status");
+      alert(t("hr.common.ownerOnlyStatus"));
       return;
     }
 
     if (!profile?.userId) {
-      alert("User tidak valid");
+      alert(t("hr.common.invalidUser"));
       return;
     }
 
@@ -117,10 +119,10 @@ export default function EmployeesPage() {
         )
       );
 
-      alert("Status berhasil diubah");
+      alert(t("hr.common.statusChanged"));
     } catch (err) {
       console.error("TOGGLE ERROR:", err);
-      alert("Gagal update status");
+      alert(t("hr.common.statusChangeFailed"));
     }
   };
 
@@ -206,7 +208,7 @@ export default function EmployeesPage() {
   if (!hasAccess) {
     return (
       <div className="p-6 text-red-500">
-        Tidak punya akses
+        {t("hr.common.noAccess")}
       </div>
     );
   }
@@ -215,7 +217,7 @@ export default function EmployeesPage() {
   if (loading) {
     return (
       <div className="p-6 text-slate-500">
-        Loading data karyawan...
+        {t("hr.employees.loading")}
       </div>
     );
   }
@@ -228,12 +230,12 @@ export default function EmployeesPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-800">
-            Data Karyawan
+            {t("hr.employees.title")}
           </h1>
           <p className="text-sm text-slate-500">
             {role === "owner"
-              ? "Kelola seluruh data karyawan perusahaan"
-              : "Lihat data karyawan (read-only)"}
+              ? t("hr.employees.subtitleOwner")
+              : t("hr.employees.subtitleHr")}
           </p>
         </div>
 
@@ -242,7 +244,7 @@ export default function EmployeesPage() {
             onClick={() => router.push("/hr/employees/new")}
             className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-indigo-700 transition"
           >
-            Tambah Karyawan
+            {t("hr.employees.add")}
           </button>
         )}
       </div>
@@ -252,14 +254,14 @@ export default function EmployeesPage() {
         <table className="w-full text-sm text-slate-900">
           <thead className="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-800">
             <tr>
-              <th className="px-6 py-3 text-left">Nama</th>
-              <th className="px-6 py-3 text-left">Email</th>
-              <th className="px-6 py-3 text-left">Posisi</th>
-              <th className="px-6 py-3 text-center">Selfie wajib</th>
-              <th className="px-6 py-3 text-left">Kuota cuti / bulan</th>
-              <th className="px-6 py-3 text-left">Role</th>
-              <th className="px-6 py-3 text-left">Status</th>
-              <th className="px-6 py-3 text-right">Aksi</th>
+              <th className="px-6 py-3 text-left">{t("hr.employees.colName")}</th>
+              <th className="px-6 py-3 text-left">{t("hr.employees.colEmail")}</th>
+              <th className="px-6 py-3 text-left">{t("hr.employees.colPosition")}</th>
+              <th className="px-6 py-3 text-center">{t("hr.employees.colSelfie")}</th>
+              <th className="px-6 py-3 text-left">{t("hr.employees.colLeaveQuota")}</th>
+              <th className="px-6 py-3 text-left">{t("hr.employees.colRole")}</th>
+              <th className="px-6 py-3 text-left">{t("hr.employees.colStatus")}</th>
+              <th className="px-6 py-3 text-right">{t("hr.employees.colActions")}</th>
             </tr>
           </thead>
 
@@ -292,7 +294,7 @@ export default function EmployeesPage() {
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      {profile.requireCheckinSelfie ? "Ya" : "Tidak"}
+                      {profile.requireCheckinSelfie ? t("hr.common.yes") : t("hr.common.no")}
                     </span>
                   </td>
 
@@ -300,7 +302,7 @@ export default function EmployeesPage() {
                     <span className="font-semibold text-slate-800">
                       {formatIntegerId(profile.leaveBookingsQuota)}×
                     </span>
-                    <span className="block text-xs text-slate-500">booking / bulan</span>
+                    <span className="block text-xs text-slate-500">{t("hr.employees.bookingPerMonth")}</span>
                   </td>
 
                   <td className="px-6 py-4">
@@ -332,8 +334,8 @@ export default function EmployeesPage() {
                       }`}
                     >
                       {profile.status === "active"
-                        ? "Aktif"
-                        : "Nonaktif"}
+                        ? t("hr.common.active")
+                        : t("hr.common.inactive")}
                     </button>
                   </td>
 
@@ -341,14 +343,14 @@ export default function EmployeesPage() {
                     <button
                       onClick={() => {
                         if (!profile.userId) {
-                          alert("User tidak valid");
+                          alert(t("hr.common.invalidUser"));
                           return;
                         }
                         router.push(`/hr/employees/${profile.userId}`);
                       }}
                       className="text-blue-600 hover:underline text-sm"
                     >
-                      Lihat Detail
+                      {t("hr.common.viewDetail")}
                     </button>
                   </td>
                 </tr>
@@ -359,22 +361,19 @@ export default function EmployeesPage() {
 
         {profiles.length === 0 && (
           <div className="py-12 text-center text-sm font-medium text-slate-600">
-            Belum ada data karyawan
+            {t("hr.employees.empty")}
           </div>
         )}
       </div>
 
       <p className="text-xs text-slate-500">
-        <strong>Kuota cuti:</strong> jumlah maksimal pengajuan cuti{" "}
-        <strong>pending + disetujui</strong> dalam satu bulan kalender. Ubah nilai default per orang di halaman detail
-        karyawan — field PocketBase{" "}
-        <code className="rounded bg-slate-100 px-1">{PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD}</code> pada koleksi{" "}
-        <code className="rounded bg-slate-100 px-1">profiles</code>{" "}
-        (angka ≥ 1); jika belum ada, dipakai batas aplikasi ({getMaxBookingsPerMonth()}×).
+        {t("hr.employees.quotaNote", {
+          field: PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD,
+          default: String(getMaxBookingsPerMonth()),
+        })}
       </p>
       <p className="text-xs text-slate-500">
-        <strong>Email:</strong> diambil dari akun PocketBase (<code className="rounded bg-slate-100 px-1">users</code>
-        ); jika masih kosong, isi kolom tersebut di PocketBase atau pastikan pengguna punya akun lengkap dengan email.
+        {t("hr.employees.emailNote")}
       </p>
     </div>
   );

@@ -165,11 +165,29 @@ export default function InventoryStockPage() {
                     >
                       <td className="px-4 py-3 font-mono text-xs">{p?.sku || "—"}</td>
                       <td className="px-4 py-3">{p?.name || r.product}</td>
-                      <td className="px-4 py-3 font-semibold">{formatIntegerId(r.qty_on_hand)}</td>
+                      <td
+                        className={`px-4 py-3 font-semibold ${
+                          (r.qty_on_hand ?? 0) < 0 ? "text-red-700" : ""
+                        }`}
+                      >
+                        {formatIntegerId(r.qty_on_hand)}
+                      </td>
                       <td className="px-4 py-3">{formatIntegerId(r.qty_reserved)}</td>
-                      <td className="px-4 py-3">{formatIntegerId(r.qty_available)}</td>
+                      <td
+                        className={`px-4 py-3 ${
+                          (r.qty_available ?? 0) < 0 ? "font-semibold text-red-700" : ""
+                        }`}
+                      >
+                        {formatIntegerId(r.qty_available)}
+                      </td>
                       <td className="px-4 py-3">
-                        {low ? <WmsBadge tone="amber">Rendah</WmsBadge> : <WmsBadge tone="emerald">OK</WmsBadge>}
+                        {(r.qty_on_hand ?? 0) < 0 ? (
+                          <WmsBadge tone="red">Minus</WmsBadge>
+                        ) : low ? (
+                          <WmsBadge tone="amber">Rendah</WmsBadge>
+                        ) : (
+                          <WmsBadge tone="emerald">OK</WmsBadge>
+                        )}
                       </td>
                     </tr>
                   );

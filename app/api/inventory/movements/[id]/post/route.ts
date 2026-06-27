@@ -53,7 +53,44 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     const result = await postStockMovement(adminPb, id, auth.userId);
 
-    return NextResponse.json({ ok: true, data: result });
+    const movement = await adminPb.collection(INV_COLLECTIONS.movements).getOne<{
+      movement_type: string;
+      from_warehouse?: string;
+      to_warehouse?: string;
+      reference_type?: string;
+      reference_no?: string;
+      notes?: string;
+    }>(id, {
+      fields: "movement_type,from_warehouse,to_warehouse,reference_type,reference_no,notes",
+    });
+
+    let accounting = null;
+    if (
+      movement.movement_type === "TRANSFER" &&
+      movement.from_warehouse &&
+      movement.to_warehouse
+    ) {
+      const movLines = await adminPb.collection(INV_COLLECTIONS.movementLines).getFullList<{
+        product: string;
+        qty?: number;
+      }>({
+        filter: `movement = "${id}"`,
+        fields: "product,qty",
+      });
+      const { applyDamagedTransferAccounting } = await import("@/lib/inventory/damaged-accounting");
+      accounting = await applyDamagedTransferAccounting({
+        pb: adminPb,
+        fromWarehouseId: movement.from_warehouse,
+        toWarehouseId: movement.to_warehouse,
+        referenceType: movement.reference_type ?? "MANUAL",
+        referenceNo: movement.reference_no ?? result.movement_no,
+        lines: movLines.map((l) => ({ product: String(l.product), qty: Number(l.qty) || 0 })),
+        userId: auth.userId,
+        noteSuffix: movement.notes,
+      });
+    }
+
+    return NextResponse.json({ ok: true, data: result, accounting });
   } catch (err) {
     return jsonError(err);
   }

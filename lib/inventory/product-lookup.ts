@@ -2,6 +2,26 @@ import type PocketBase from "pocketbase";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 import type { InvProduct } from "@/lib/inventory/types";
 
+async function findActiveProduct(
+  pb: PocketBase,
+  baseFilter: string,
+): Promise<InvProduct | null> {
+  const attempts = [
+    `${baseFilter} && is_active = true`,
+    `${baseFilter} && lifecycle_status = "active"`,
+    baseFilter,
+  ];
+  for (const filter of attempts) {
+    try {
+      const res = await pb.collection(INV_COLLECTIONS.products).getList(1, 1, { filter });
+      if (res.items[0]) return res.items[0] as unknown as InvProduct;
+    } catch {
+      /* coba filter berikutnya */
+    }
+  }
+  return null;
+}
+
 export async function findProductByBarcode(
   pb: PocketBase,
   barcode: string
@@ -9,14 +29,8 @@ export async function findProductByBarcode(
   const esc = barcode.trim().replace(/"/g, '\\"');
   if (!esc) return null;
 
-  try {
-    const primary = await pb.collection(INV_COLLECTIONS.products).getList(1, 1, {
-      filter: `barcode = "${esc}" && is_active = true`,
-    });
-    if (primary.items[0]) return primary.items[0] as unknown as InvProduct;
-  } catch {
-    /* */
-  }
+  const byBarcode = await findActiveProduct(pb, `barcode = "${esc}"`);
+  if (byBarcode) return byBarcode;
 
   try {
     const alt = await pb.collection(INV_COLLECTIONS.productBarcodes).getList(1, 1, {
@@ -29,14 +43,8 @@ export async function findProductByBarcode(
     /* collection optional */
   }
 
-  try {
-    const sku = await pb.collection(INV_COLLECTIONS.products).getList(1, 1, {
-      filter: `sku = "${esc}" && is_active = true`,
-    });
-    if (sku.items[0]) return sku.items[0] as unknown as InvProduct;
-  } catch {
-    /* */
-  }
+  const bySku = await findActiveProduct(pb, `sku = "${esc}"`);
+  if (bySku) return bySku;
 
   return null;
 }

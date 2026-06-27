@@ -84,6 +84,20 @@ export function detectSuspiciousGPSJump(
 /**
  * Store device info in localStorage for comparison
  */
+/** ID perangkat stabil untuk terminal WMS / absensi. */
+export function getOrCreateDeviceId(): string {
+  if (typeof window === "undefined") return "server";
+  try {
+    const stored = localStorage.getItem("device_id");
+    if (stored?.trim()) return stored.trim();
+    const id = generateDeviceFingerprint();
+    storeDeviceInfo(id);
+    return id;
+  } catch {
+    return generateDeviceFingerprint();
+  }
+}
+
 export function storeDeviceInfo(deviceId: string): void {
   try {
     const lastSeen = new Date().toISOString();

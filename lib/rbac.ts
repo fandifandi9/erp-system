@@ -30,6 +30,11 @@ const ROLE_ACCESS_BY_CODE: Record<UserRoleCode, string[]> = {
     "/hr/field-activity",
     "/hr/offices",
     "/hr/profile",
+    "/laporan",
+    "/laporan/sdm",
+    "/pengaturan",
+    "/pengaturan/role",
+    "/pengaturan/notifikasi",
     ...STAFF_WEB_PATHS,
     ...DEFAULT_USER_ACCESS,
   ],
@@ -101,6 +106,17 @@ export const getAllowedPathsForUser = (user: AuthUserShape | null | undefined): 
   return base;
 };
 
+/** Ringkasan akses per role (read-only, untuk halaman pengaturan). */
+export const ROLE_ACCESS_SUMMARY: { code: UserRoleCode | "owner"; label: string; paths: string[] }[] = [
+  { code: "owner", label: "Owner", paths: ["* (semua modul)"] },
+  { code: "hr", label: "HR", paths: ROLE_ACCESS_BY_CODE.hr },
+  { code: "manager", label: "Manager", paths: ROLE_ACCESS_BY_CODE.manager },
+  { code: "staff", label: "Staff", paths: ROLE_ACCESS_BY_CODE.staff },
+  { code: "staff-basic", label: "Staff Basic", paths: ROLE_ACCESS_BY_CODE["staff-basic"] },
+  { code: "security", label: "Security", paths: ROLE_ACCESS_BY_CODE.security },
+  { code: "ob", label: "OB", paths: ROLE_ACCESS_BY_CODE.ob },
+];
+
 export const canAccess = (user: AuthUserShape | null | undefined, pathname: string): boolean => {
   const rules = getAllowedPathsForUser(user);
   if (rules.includes("*")) return true;
@@ -137,6 +153,12 @@ export const KNOWN_ROUTES = [
   "/login",
   "/erp-locked",
   "/mobile-bridge",
+  "/katalog",
+  "/katalog/produk",
+  "/katalog/bundling",
+  "/katalog/harga",
+  "/katalog/mapping",
+  "/katalog/akun-mp",
   "/inventory",
   "/inventory/products",
   "/inventory/warehouses",
@@ -149,8 +171,12 @@ export const KNOWN_ROUTES = [
   "/wms/receiving",
   "/wms/qc",
   "/wms/putaway",
+  "/wms/permintaan-barang",
   "/wms/picking",
+  "/wms/validasi",
   "/wms/packing",
+  "/wms/pickup",
+  "/wms/selesai",
   "/wms/requests",
   "/wms/opname",
   "/wms/audit",
@@ -171,6 +197,8 @@ export const KNOWN_ROUTES = [
   "/gudang/lokasi",
   // Manajemen Bisnis
   "/bisnis",
+  "/pos",
+  "/bisnis/pos-registers",
   "/bisnis/penjualan",
   "/bisnis/purchase-order",
   "/bisnis/pembelian",
@@ -188,6 +216,27 @@ export const KNOWN_ROUTES = [
   "/bisnis/laba-rugi",
   "/bisnis/laporan-penjualan",
   "/bisnis/laporan-pembelian",
+  "/keuangan",
+  "/keuangan/kas-bank",
+  "/keuangan/pemasukan",
+  "/keuangan/piutang",
+  "/keuangan/hutang",
+  "/keuangan/transfer",
+  "/keuangan/rekonsiliasi",
+  "/keuangan/arus-kas",
+  "/laporan",
+  "/laporan/sdm",
+  "/laporan/inventory",
+  "/laporan/gudang",
+  "/laporan/marketplace",
+  "/penjualan",
+  "/pembelian",
+  "/pengaturan",
+  "/pengaturan/perusahaan",
+  "/pengaturan/role",
+  "/pengaturan/notifikasi",
+  "/pengaturan/integrasi",
+  "/pengaturan/audit-log",
   // Manajemen Staff (alias /hr)
   "/staff",
   "/staff/karyawan",

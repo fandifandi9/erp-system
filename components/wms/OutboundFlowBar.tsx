@@ -1,19 +1,19 @@
 "use client";
 
 import { WMS_OUTBOUND_FLOW_STEPS } from "@/lib/wms/navigation";
-import type { OutboundStage } from "@/lib/wms/outbound-workflow";
+import { outboundStageStepIndex, type OutboundStage } from "@/lib/wms/outbound-workflow";
+import { useLocale } from "@/components/LocaleProvider";
 
-const STAGE_INDEX: Record<OutboundStage, number> = {
-  pick_pending: 0,
-  pick_done: 1,
-  validate_pending: 1,
-  validate_done: 2,
-  pack_done: 3,
-  pickup_done: 4,
+const FLOW_LABEL_KEYS: Record<(typeof WMS_OUTBOUND_FLOW_STEPS)[number]["key"], string> = {
+  picking: "wms.flow.picking",
+  validate_pack: "wms.flow.validatePack",
+  ready_pickup: "wms.flow.readyPickup",
+  completed: "wms.flow.completed",
 };
 
 export function OutboundFlowBar({ stage }: { stage: OutboundStage }) {
-  const active = STAGE_INDEX[stage] ?? 0;
+  const { t } = useLocale();
+  const current = outboundStageStepIndex(stage);
   return (
     <div className="flex flex-wrap gap-1">
       {WMS_OUTBOUND_FLOW_STEPS.map((s, i) => (
@@ -21,10 +21,14 @@ export function OutboundFlowBar({ stage }: { stage: OutboundStage }) {
           <span
             className={
               "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide " +
-              (i <= active ? `${s.color} text-white` : "bg-slate-100 text-slate-400")
+              (i === current
+                ? `${s.color} text-white ring-2 ring-offset-1 ring-indigo-300`
+                : i < current
+                  ? "bg-slate-200 text-slate-600"
+                  : "bg-slate-100 text-slate-400")
             }
           >
-            {s.label}
+            {t(FLOW_LABEL_KEYS[s.key])}
           </span>
           {i < WMS_OUTBOUND_FLOW_STEPS.length - 1 && (
             <span className="text-slate-300">→</span>

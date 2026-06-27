@@ -10,6 +10,7 @@ import { getLocationPlacement } from "@/lib/inventory/location-fields";
 
 import { getAssignedProductId } from "@/lib/inventory/slot-product";
 
+import { getProductPlacementLocationInWarehouse } from "@/lib/inventory/product-warehouse-placement";
 import { isWarehouseRoom } from "@/lib/inventory/warehouse-rooms";
 
 
@@ -68,7 +69,7 @@ type LocationRow = InvLocation & {
 
 function formatPutawaySummary(loc: LocationRow, warehouseLabel: string): PutawayDestination {
 
-  const zoneTypeLabel = loc.zone_type ? labelZoneType(loc.zone_type) : "Ruangan";
+  const zoneTypeLabel = loc.zone_type ? labelZoneType(loc.zone_type) : "Slot";
 
   const placement = getLocationPlacement(loc);
 
@@ -82,7 +83,7 @@ function formatPutawaySummary(loc: LocationRow, warehouseLabel: string): Putaway
 
     `Gudang: ${warehouseLabel}`,
 
-    `Ruangan: ${locationCode}`,
+    `Slot: ${locationCode}`,
 
   ];
 
@@ -210,40 +211,14 @@ export async function resolveKnownPutawayInWarehouse(
 
 
 
-  let product: InvProduct | null = null;
-
-  try {
-
-    product = (await pb.collection(INV_COLLECTIONS.products).getOne(productId, {
-
-      fields: "id,sku,barcode,name,default_location",
-
-      requestKey: null,
-
-    })) as InvProduct;
-
-  } catch {
-
-    return null;
-
-  }
-
-
-
-  if (product.default_location) {
-
-    const loc = await loadLocation(product.default_location);
-
-    if (loc && loc.warehouse === warehouseId && isWarehouseRoom(loc, whCode)) {
-
+  const placed = await getProductPlacementLocationInWarehouse(pb, warehouseId, productId);
+  if (placed) {
+    const loc = (await loadLocation(placed.id)) ?? (placed as LocationRow);
+    if (loc && loc.warehouse === warehouseId) {
       const wh = loc.expand?.warehouse;
-
       const whLabel = formatWarehouseLabel(wh ?? null, warehouseId);
-
       return { ...formatPutawaySummary(loc, whLabel), source: "default_location" };
-
     }
-
   }
 
 

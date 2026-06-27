@@ -38,7 +38,7 @@ export async function fetchLastPurchaseUnitCosts(
   const map: Record<string, LastPurchaseCost> = {};
 
   for (const row of lines) {
-    const line = row as {
+    const line = row as unknown as {
       product: string;
       unit_cost: number;
       expand?: {

@@ -132,7 +132,7 @@ export default function LoginScreen() {
                 resizeMode="contain"
                 accessibilityLabel="SDI"
               />
-              <Text style={styles.brandTitle}>{APP_DISPLAY_NAME}</Text>
+              {/* Nama app tidak diulang — sudah ada di dalam logo. */}
               <Text style={styles.brandSub}>Operasional perusahaan</Text>
               <Text style={styles.version}>{getAppVersionDisplay()}</Text>
             </View>

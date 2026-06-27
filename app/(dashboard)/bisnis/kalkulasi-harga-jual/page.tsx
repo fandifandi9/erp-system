@@ -267,9 +267,9 @@ export default function KalkulasiHargaJualPage() {
             <h1 className="text-2xl font-bold text-slate-900">Kalkulasi Harga Jual</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500">
               Rekomendasi harga jual satuan dari modal + target untung. Pilih tier marketplace di kiri untuk bandingkan biaya.
-              Atur fee template di{" "}
-              <Link href="/bisnis/penjualan-online/pengaturan" className="font-medium text-indigo-600 underline">
-                Penjualan Online → Pengaturan
+              Atur rumus potongan di{" "}
+              <Link href="/bisnis/marketplace" className="font-medium text-indigo-600 underline">
+                Master Marketplace
               </Link>
               .
             </p>

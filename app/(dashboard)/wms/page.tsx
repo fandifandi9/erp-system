@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   PackageOpen,
   ShieldCheck,
-  MapPinned,
   ShoppingCart,
   PackageCheck,
   ClipboardCheck,
@@ -26,17 +25,29 @@ import {
   WmsLoading,
 } from "@/components/wms/ui";
 import { WMS_FLOW_STEPS, WMS_OUTBOUND_FLOW } from "@/lib/wms/navigation";
-import { fetchBalances, fetchMovements, fetchPackingSessions } from "@/lib/inventory/client";
+import { fetchBalances } from "@/lib/inventory/client";
+import {
+  fetchPurchaseOrders,
+  fetchReturs,
+  purchaseOrdersReceivingPbFilter,
+} from "@/lib/bisnis/client";
+import { loadOutboundQueueStats } from "@/lib/wms/outbound-queues";
+import { salesReturnsReceivingPbFilter } from "@/lib/wms/sales-return-receive";
 import { formatIntegerId } from "@/lib/format-number";
 import type { InvStockBalance } from "@/lib/inventory/types";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function WmsDashboardPage() {
+  const { t } = useLocale();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [stats, setStats] = useState({
-    draftMovements: 0,
+    inboundQueue: 0,
     lowStock: 0,
-    openPacking: 0,
+    outboundTotal: 0,
+    outboundPicking: 0,
+    outboundValidate: 0,
+    outboundPickup: 0,
     productSkus: 0,
   });
   const [stockPreview, setStockPreview] = useState<InvStockBalance[]>([]);
@@ -45,22 +56,29 @@ export default function WmsDashboardPage() {
     void (async () => {
       setLoadError("");
       try {
-        const [draftsRes, balancesRes, packingRes] = await Promise.allSettled([
-          fetchMovements({ status: "draft", page: 1 }),
+        const [balancesRes, inboundPoRes, inboundReturRes, outboundRes] = await Promise.allSettled([
           fetchBalances(),
-          fetchPackingSessions(),
+          fetchPurchaseOrders({ page: 1, perPage: 1, filter: purchaseOrdersReceivingPbFilter() }),
+          fetchReturs({ page: 1, perPage: 1, filter: salesReturnsReceivingPbFilter() }),
+          loadOutboundQueueStats(),
         ]);
 
-        const drafts =
-          draftsRes.status === "fulfilled" ? draftsRes.value : { totalItems: 0 };
         const balances = balancesRes.status === "fulfilled" ? balancesRes.value : [];
-        const packing =
-          packingRes.status === "fulfilled"
-            ? packingRes.value
-            : { items: [] as { status?: string }[], totalItems: 0 };
+        const inboundPo =
+          inboundPoRes.status === "fulfilled" ? inboundPoRes.value : { totalItems: 0 };
+        const inboundRetur =
+          inboundReturRes.status === "fulfilled" ? inboundReturRes.value : { totalItems: 0 };
+        const outbound =
+          outboundRes.status === "fulfilled"
+            ? outboundRes.value
+            : { picking: 0, validate: 0, pickup: 0, total: 0 };
 
-        if (draftsRes.status === "rejected" && balancesRes.status === "rejected") {
-          setLoadError("Gagal memuat data gudang. Periksa koneksi PocketBase dan koleksi inventory.");
+        if (
+          balancesRes.status === "rejected" &&
+          inboundPoRes.status === "rejected" &&
+          outboundRes.status === "rejected"
+        ) {
+          setLoadError(t("wms.hub.errLoad"));
         }
 
         const low = balances.filter((b) => {
@@ -68,17 +86,17 @@ export default function WmsDashboardPage() {
           const min = p?.min_stock ?? 0;
           return min > 0 && (b.qty_on_hand ?? 0) < min;
         });
-        const openPack = (packing.items as { status?: string }[]).filter(
-          (s) => s.status === "open" || s.status === "in_progress",
-        ).length;
 
         const withStock = balances.filter((b) => (b.qty_on_hand ?? 0) > 0);
         const uniqueProducts = new Set(withStock.map((b) => b.product));
 
         setStats({
-          draftMovements: drafts.totalItems ?? 0,
+          inboundQueue: (inboundPo.totalItems ?? 0) + (inboundRetur.totalItems ?? 0),
           lowStock: low.length,
-          openPacking: openPack,
+          outboundTotal: outbound.total,
+          outboundPicking: outbound.picking,
+          outboundValidate: outbound.validate,
+          outboundPickup: outbound.pickup,
           productSkus: uniqueProducts.size,
         });
         setStockPreview(withStock.slice(0, 12));
@@ -92,9 +110,9 @@ export default function WmsDashboardPage() {
     <InventoryGate>
       <InventoryShell title="" subtitle="" module="wms">
         <WmsHero
-          eyebrow="WMS Operation"
-          title="Operasi Gudang"
-          subtitle="Operasional gudang — produk & stok dari master pusat Manajemen Bisnis (bukan daftar produk terpisah)."
+          eyebrow={t("wms.hub.eyebrow")}
+          title={t("wms.hub.title")}
+          subtitle={t("wms.hub.subtitle")}
         >
           <WmsFlowBar steps={WMS_FLOW_STEPS} activeIndex={1} />
         </WmsHero>
@@ -110,37 +128,47 @@ export default function WmsDashboardPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <WmsStatCard
-              label="SKU ada stok"
+              label={t("wms.hub.statSkus")}
               value={formatIntegerId(stats.productSkus)}
-              sub="Di semua gudang"
+              sub={t("wms.hub.statSkusSub")}
               icon={Package}
               href="/gudang/stok"
               accent="emerald"
             />
             <WmsStatCard
-              label="Draf mutasi"
-              value={formatIntegerId(stats.draftMovements)}
-              sub="Belum mempengaruhi stok"
+              label={t("wms.hub.statInbound")}
+              value={formatIntegerId(stats.inboundQueue)}
+              sub={t("wms.hub.statInboundSub")}
               icon={PackageOpen}
               href="/gudang/penerimaan"
               accent="amber"
-              warn={stats.draftMovements > 0}
+              warn={stats.inboundQueue > 0}
             />
             <WmsStatCard
-              label="Stok kritis"
+              label={t("wms.hub.statLowStock")}
               value={formatIntegerId(stats.lowStock)}
-              sub="Di bawah minimum"
+              sub={t("wms.hub.statLowStockSub")}
               icon={AlertTriangle}
               href="/gudang/stok"
               accent="amber"
               warn={stats.lowStock > 0}
             />
             <WmsStatCard
-              label="Kemasan aktif"
-              value={formatIntegerId(stats.openPacking)}
+              label={t("wms.hub.statOutbound")}
+              value={formatIntegerId(stats.outboundTotal)}
+              sub={
+                stats.outboundTotal > 0
+                  ? t("wms.hub.statOutboundSub", {
+                      picking: stats.outboundPicking,
+                      validate: stats.outboundValidate,
+                      pickup: stats.outboundPickup,
+                    })
+                  : t("wms.hub.statOutboundEmpty")
+              }
               icon={PackageCheck}
-              href="/gudang/packing"
+              href="/wms/permintaan-barang"
               accent="violet"
+              warn={stats.outboundTotal > 0}
             />
           </div>
         )}
@@ -148,19 +176,19 @@ export default function WmsDashboardPage() {
         {!loading && stockPreview.length > 0 ? (
           <WmsCard>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-slate-800">Produk dengan saldo stok (preview)</p>
+              <p className="text-sm font-semibold text-slate-800">{t("wms.hub.stockPreview")}</p>
               <Link href="/gudang/stok" className="text-sm font-medium text-indigo-600 hover:underline">
-                Stok global lengkap →
+                {t("wms.hub.stockFull")}
               </Link>
             </div>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-left text-xs text-slate-500">
                   <tr>
-                    <th className="pb-2 pr-4">SKU</th>
-                    <th className="pb-2 pr-4">Produk</th>
-                    <th className="pb-2 pr-4">Gudang</th>
-                    <th className="pb-2 text-right">On hand</th>
+                    <th className="pb-2 pr-4">{t("wms.hub.colSku")}</th>
+                    <th className="pb-2 pr-4">{t("wms.hub.colProduct")}</th>
+                    <th className="pb-2 pr-4">{t("wms.hub.colWarehouse")}</th>
+                    <th className="pb-2 text-right">{t("wms.hub.colOnHand")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -181,39 +209,31 @@ export default function WmsDashboardPage() {
         ) : !loading ? (
           <WmsCard className="border-dashed border-slate-200">
             <p className="text-sm text-slate-600">
-              Belum ada saldo stok terposting. Buat <strong>pembelian</strong> di Manajemen Bisnis agar stok
-              masuk, lalu refresh halaman ini.
+              {t("wms.hub.noStock")}
             </p>
             <Link
               href="/bisnis/pembelian/buat"
               className="mt-2 inline-block text-sm font-medium text-indigo-600 hover:underline"
             >
-              Buat pembelian →
+              {t("wms.hub.createPurchase")}
             </Link>
           </WmsCard>
         ) : null}
 
         <WmsCard>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Alur keluar</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("wms.hub.outboundFlow")}</p>
           <div className="mt-3 overflow-x-auto pb-1">
             <WmsFlowBar steps={WMS_OUTBOUND_FLOW} activeIndex={0} />
           </div>
         </WmsCard>
 
         <div>
-          <p className="mb-3 text-sm font-semibold text-slate-700">Operasi cepat</p>
+          <p className="mb-3 text-sm font-semibold text-slate-700">{t("wms.hub.quickOps")}</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <WmsNavTile
-              href="/gudang/produk"
-              label="Daftar produk"
-              description="SKU, barcode, stok — tanpa harga"
-              icon={Package}
-              accent="indigo"
-            />
-            <WmsNavTile
               href="/gudang/penerimaan"
-              label="Penerimaan"
-              description="Scan barcode, master produk pusat"
+              label={t("wms.hub.tileReceiving")}
+              description={t("wms.hub.tileReceivingDesc")}
               icon={PackageOpen}
               accent="emerald"
             />
@@ -224,33 +244,21 @@ export default function WmsDashboardPage() {
               accent="amber"
             />
             <WmsNavTile
-              href="/gudang/putaway"
-              label="Putaway"
-              icon={MapPinned}
-              accent="indigo"
-            />
-            <WmsNavTile
-              href="/gudang/picking"
-              label="Picking"
-              description="Sales order + scan"
+              href="/wms/permintaan-barang"
+              label={t("wms.hub.tileRequest")}
+              description={t("wms.hub.tileRequestDesc")}
               icon={ShoppingCart}
               accent="violet"
             />
             <WmsNavTile
-              href="/gudang/packing"
-              label="Packing"
-              icon={PackageCheck}
-              accent="cyan"
-            />
-            <WmsNavTile
               href="/gudang/stok"
-              label="Stok global"
+              label={t("wms.hub.tileGlobalStock")}
               icon={Boxes}
               accent="emerald"
             />
             <WmsNavTile
               href="/gudang/scanner"
-              label="Scanner / zona"
+              label={t("wms.hub.tileScanner")}
               icon={QrCode}
               accent="emerald"
             />
@@ -271,13 +279,13 @@ export default function WmsDashboardPage() {
 
         <WmsCard className="border-dashed border-indigo-200 bg-indigo-50/30">
           <p className="text-sm text-slate-600">
-            Lihat semua produk (tanpa harga) di{" "}
-            <Link href="/gudang/produk" className="font-semibold text-indigo-600 hover:underline">
-              Gudang → Daftar Produk
+            {t("wms.hub.hintPrefix")}{" "}
+            <Link href="/gudang/stok" className="font-semibold text-indigo-600 hover:underline">
+              {t("wms.hub.hintWarehouseStock")}
             </Link>
-            . Ubah master di{" "}
-            <Link href="/bisnis/produk" className="font-semibold text-indigo-600 hover:underline">
-              Manajemen Bisnis → Produk
+            {t("wms.hub.hintMid")}{" "}
+            <Link href="/katalog/produk" className="font-semibold text-indigo-600 hover:underline">
+              {t("wms.hub.hintBusinessProducts")}
             </Link>
             .
           </p>

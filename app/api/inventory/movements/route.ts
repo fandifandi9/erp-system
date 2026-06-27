@@ -101,6 +101,24 @@ export async function POST(req: Request) {
       const adminPb = await getInventoryAdminPb();
       const { postStockMovement } = await import("@/lib/inventory/stock-engine");
       await postStockMovement(adminPb, movement.id, auth.userId);
+
+      if (
+        body.movement_type === "TRANSFER" &&
+        body.from_warehouse &&
+        body.to_warehouse
+      ) {
+        const { applyDamagedTransferAccounting } = await import("@/lib/inventory/damaged-accounting");
+        await applyDamagedTransferAccounting({
+          pb: adminPb,
+          fromWarehouseId: body.from_warehouse,
+          toWarehouseId: body.to_warehouse,
+          referenceType: body.reference_type ?? "MANUAL",
+          referenceNo: movement.movement_no,
+          lines: body.lines.map((l) => ({ product: l.product, qty: Number(l.qty) || 0 })),
+          userId: auth.userId,
+          noteSuffix: body.notes,
+        });
+      }
     }
 
     return NextResponse.json({

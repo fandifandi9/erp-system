@@ -5,7 +5,19 @@ import {
   enqueueInboundFromPurchaseOrder,
   enqueueOutboundFromSalesOrder,
 } from "@/lib/wms/fulfillment";
-import { shouldSyncCashInvoice } from "./invoice-status";
+import {
+  assertCashAccountBelongsToCompany,
+  assertWarehouseBelongsToCompany,
+  mergeCompanyFilter,
+  mergeSalesCompanyFilter,
+  resolveCompanyForBillPayment,
+  resolveCompanyForExpense,
+  resolveCompanyForInvoice,
+  resolveCompanyForPayment,
+  resolveCompanyForPurchaseBill,
+  resolveCompanyForPurchaseOrder,
+  resolveCompanyForSalesOrder,
+} from "./entity-resolve";
 import {
   BISNIS_COLLECTIONS,
   type Customer,
@@ -16,8 +28,10 @@ import {
   type PurchaseOrder,
   type PurchaseOrderLine,
   type Retur,
+  type ReturLine,
   type ProductPrice,
   type Expense,
+  type CreditNote,
   type PurchaseBill,
   type Store,
   type TaxRate,
@@ -25,6 +39,10 @@ import {
   type PaymentCondition,
   type PaymentMethodSetting,
 } from "./types";
+import { filterStoresForSales, filterSalesStoresByCompany, entityPlaceholderStoreNames } from "./store-filters";
+import { fetchCompanyProfiles } from "./company-client";
+import { shouldSyncCashInvoice } from "./invoice-status";
+import { INV_COLLECTIONS } from "@/lib/inventory/types";
 
 /** Coba expand penuh dulu; jika field relation belum ada di PB, fallback ke expand minimal. */
 async function getOneWithExpandFallback<T>(
@@ -33,9 +51,13 @@ async function getOneWithExpandFallback<T>(
   expandCandidates: string[],
 ): Promise<T> {
   let lastErr: unknown;
-  for (const expand of expandCandidates) {
+  const candidates = expandCandidates.some((c) => c === "") ? expandCandidates : [...expandCandidates, ""];
+  for (const expand of candidates) {
     try {
-      return await pb.collection(collection).getOne<T>(id, { expand, requestKey: null });
+      return await pb.collection(collection).getOne<T>(
+        id,
+        expand ? { expand, requestKey: null } : { requestKey: null },
+      );
     } catch (e) {
       lastErr = e;
       if (e instanceof ClientResponseError && (e.status === 400 || e.status === 404)) {
@@ -53,6 +75,10 @@ type ListOptions = {
   sort?: string;
   filter?: string;
   expand?: string;
+  /** Scope entitas aktif — hanya record milik company ini. */
+  companyId?: string;
+  /** Toko penjualan entitas — untuk SO/invoice legacy tanpa field company. */
+  storeIds?: string[];
 };
 
 const DEFAULT_PER_PAGE = 20;
@@ -62,7 +88,7 @@ function listOpts(opts?: ListOptions) {
     page: opts?.page ?? 1,
     perPage: opts?.perPage ?? DEFAULT_PER_PAGE,
     sort: opts?.sort ?? "-created",
-    filter: opts?.filter ?? "",
+    filter: mergeCompanyFilter(opts?.filter, opts?.companyId),
     expand: opts?.expand ?? "",
     requestKey: null,
   };
@@ -175,21 +201,33 @@ export async function fetchSalesOrders(opts?: ListOptions) {
     opts?.page ?? 1,
     opts?.perPage ?? DEFAULT_PER_PAGE,
     {
-      ...listOpts(opts),
+      page: opts?.page ?? 1,
+      perPage: opts?.perPage ?? DEFAULT_PER_PAGE,
+      sort: opts?.sort ?? "-created",
+      filter: mergeSalesCompanyFilter(opts?.filter, opts?.companyId, opts?.storeIds),
       expand: opts?.expand ?? "customer,warehouse,created_by",
+      requestKey: null,
     },
   );
 }
 
 export async function fetchSalesOrder(id: string) {
   return getOneWithExpandFallback<SalesOrder>(BISNIS_COLLECTIONS.salesOrders, id, [
+    "customer,warehouse,created_by,approved_by,store",
     "customer,warehouse,created_by,approved_by",
     "customer,warehouse,created_by",
   ]);
 }
 
 export async function createSalesOrder(data: Partial<SalesOrder>) {
-  return pb.collection(BISNIS_COLLECTIONS.salesOrders).create<SalesOrder>(data);
+  const company = await resolveCompanyForSalesOrder(data);
+  if (data.warehouse && company) {
+    await assertWarehouseBelongsToCompany(data.warehouse, company);
+  }
+  return pb.collection(BISNIS_COLLECTIONS.salesOrders).create<SalesOrder>({
+    ...data,
+    ...(company ? { company } : {}),
+  });
 }
 
 export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
@@ -211,7 +249,36 @@ export async function fetchSalesOrderLines(salesOrderId: string) {
   });
 }
 
-export async function createSalesOrderLine(data: Partial<SalesOrderLine>) {
+export async function createSalesOrderLine(
+  data: Partial<SalesOrderLine>,
+  opts?: { skipSerialValidation?: boolean },
+) {
+  if (data.product && data.qty && !opts?.skipSerialValidation) {
+    const { assertSalesLineSerials, fetchRequiresSerialMap, serialsForSalesLine } =
+      await import("@/lib/wms/serial-numbers");
+    const requiresMap = await fetchRequiresSerialMap([data.product]);
+    assertSalesLineSerials(
+      [
+        {
+          product: data.product,
+          qty: Number(data.qty) || 0,
+          serial_numbers_json: data.serial_numbers_json,
+          name: data.name_snapshot,
+        },
+      ],
+      requiresMap,
+      data.name_snapshot ? { [data.product]: data.name_snapshot } : undefined,
+    );
+    const sns = serialsForSalesLine({
+      product: data.product,
+      qty: Number(data.qty) || 0,
+      serial_numbers_json: data.serial_numbers_json,
+    });
+    if (sns.length > 0 && !data.serial_numbers_json) {
+      const { serializeSerialNumbersJson } = await import("@/lib/wms/serial-numbers");
+      data = { ...data, serial_numbers_json: serializeSerialNumbersJson(sns) };
+    }
+  }
   return pb.collection(BISNIS_COLLECTIONS.salesOrderLines).create<SalesOrderLine>(data);
 }
 
@@ -230,21 +297,33 @@ export async function fetchInvoices(opts?: ListOptions) {
     opts?.page ?? 1,
     opts?.perPage ?? DEFAULT_PER_PAGE,
     {
-      ...listOpts(opts),
+      page: opts?.page ?? 1,
+      perPage: opts?.perPage ?? DEFAULT_PER_PAGE,
+      sort: opts?.sort ?? "-created",
+      filter: mergeSalesCompanyFilter(opts?.filter, opts?.companyId, opts?.storeIds),
       expand: opts?.expand ?? "customer,sales_order",
+      requestKey: null,
     },
   );
 }
 
 export async function fetchInvoice(id: string) {
-  return pb.collection(BISNIS_COLLECTIONS.invoices).getOne<Invoice>(id, {
-    expand: "customer,sales_order,created_by,sales_channel,store_channel_account",
-    requestKey: null,
-  });
+  return getOneWithExpandFallback<Invoice>(BISNIS_COLLECTIONS.invoices, id, [
+    "customer,sales_order,created_by,sales_channel,store_channel_account",
+    "customer,sales_order,created_by",
+    "customer,sales_order",
+    "customer",
+  ]);
 }
 
 export async function createInvoice(data: Partial<Invoice>) {
-  return pb.collection(BISNIS_COLLECTIONS.invoices).create<Invoice>(data);
+  const { generateInvoiceShareToken } = await import("./invoice-share-token");
+  const company = await resolveCompanyForInvoice(data);
+  return pb.collection(BISNIS_COLLECTIONS.invoices).create<Invoice>({
+    ...data,
+    ...(company ? { company } : {}),
+    share_token: data.share_token?.trim() || generateInvoiceShareToken(),
+  });
 }
 
 export async function updateInvoice(id: string, data: Partial<Invoice>) {
@@ -270,13 +349,18 @@ export async function cancelInvoice(invoice: Invoice, cancelReason?: string) {
       `Batal penjualan ${invoice.invoice_no}`,
     );
     if (voided === 0 && lines.length > 0 && so.warehouse) {
+      const { resolveMovementLinesFromSale } = await import("@/lib/catalog/sale-stock-lines");
+      const stockLines = await resolveMovementLinesFromSale(
+        pb,
+        lines.map((l) => ({ product: l.product, qty: l.qty, sales_order_line_id: l.id })),
+      );
       await createAutoStockMovement({
         type: "PURCHASE",
         warehouse: so.warehouse,
         reference_type: "SALES_CANCEL",
         reference_id: soId,
         reference_no: invoice.invoice_no,
-        lines: lines.map((l) => ({ product: l.product, qty: l.qty })),
+        lines: stockLines,
       });
     }
     await cancelWmsTasksForEntity("biz_sales_orders", soId);
@@ -304,18 +388,28 @@ export async function syncCashInvoiceStatus(invoice: Invoice) {
 
 // ─── Payments ───
 
+export type PaymentKind = "payment" | "refund";
+
 export type Payment = {
   id: string;
   invoice: string;
+  /** Entitas pemilik transaksi — derive dari invoice atau akun kas. */
+  company?: string;
   payment_date: string;
   amount: number;
   payment_method: string;
+  payment_kind?: PaymentKind;
+  /** Fee/denda tambahan saat pelunasan — Pendapatan Lain-lain periode berjalan. */
+  fee_amount?: number;
+  /** Akun kas/bank tujuan dana (biz_cash_accounts) — dipakai saldo kas. */
+  cash_account?: string;
   reference_no?: string;
   notes?: string;
   created_by: string;
   created: string;
   expand?: {
     payment_method?: { id: string; code?: string; name: string };
+    invoice?: { id: string; invoice_no?: string };
   };
 };
 
@@ -329,7 +423,14 @@ export async function fetchPayments(invoiceId: string) {
 }
 
 export async function createPayment(data: Partial<Payment>) {
-  return pb.collection(BISNIS_COLLECTIONS.payments).create<Payment>(data);
+  const company = await resolveCompanyForPayment(data);
+  if (data.cash_account && company) {
+    await assertCashAccountBelongsToCompany(data.cash_account, company);
+  }
+  return pb.collection(BISNIS_COLLECTIONS.payments).create<Payment>({
+    ...data,
+    ...(company ? { company } : {}),
+  });
 }
 
 // ─── Purchase Orders ───
@@ -347,14 +448,26 @@ export async function fetchPurchaseOrders(opts?: ListOptions) {
 
 export async function fetchPurchaseOrder(id: string) {
   return getOneWithExpandFallback<PurchaseOrder>(BISNIS_COLLECTIONS.purchaseOrders, id, [
+    "supplier,warehouse,company,created_by,approved_by,warehouse_processed_by,receiving_warehouse",
     "supplier,warehouse,created_by,approved_by,warehouse_processed_by,receiving_warehouse",
     "supplier,warehouse,created_by,approved_by",
     "supplier,warehouse,created_by",
   ]);
 }
 
+export async function updatePurchaseOrderWithFiles(id: string, fd: FormData) {
+  return pb.collection(BISNIS_COLLECTIONS.purchaseOrders).update<PurchaseOrder>(id, fd);
+}
+
 export async function createPurchaseOrder(data: Partial<PurchaseOrder>) {
-  return pb.collection(BISNIS_COLLECTIONS.purchaseOrders).create<PurchaseOrder>(data);
+  const company = await resolveCompanyForPurchaseOrder(data);
+  if (data.warehouse && company) {
+    await assertWarehouseBelongsToCompany(data.warehouse, company);
+  }
+  return pb.collection(BISNIS_COLLECTIONS.purchaseOrders).create<PurchaseOrder>({
+    ...data,
+    ...(company ? { company } : {}),
+  });
 }
 
 export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrder>) {
@@ -401,6 +514,49 @@ export async function fetchReturs(opts?: ListOptions) {
   );
 }
 
+/** Retur penjualan terbuka untuk satu SO (draf / disetujui). */
+export async function fetchOpenReturForSalesOrder(salesOrderId: string) {
+  const res = await pb.collection(BISNIS_COLLECTIONS.returs).getList<Retur>(1, 1, {
+    filter: `sales_order = "${salesOrderId}" && (status = "draft" || status = "approved")`,
+    sort: "-created",
+    requestKey: null,
+  });
+  return res.items[0] ?? null;
+}
+
+/** Semua retur penjualan untuk satu SO (riwayat + terbuka). */
+export async function fetchRetursForSalesOrder(salesOrderId: string) {
+  const res = await pb.collection(BISNIS_COLLECTIONS.returs).getList<Retur>(1, 50, {
+    filter: `(sales_order = "${salesOrderId}" || reference_id = "${salesOrderId}") && type = "penjualan"`,
+    sort: "-created",
+    requestKey: null,
+  });
+  return res.items;
+}
+
+/** Peta SO id → retur terbuka (untuk badge di daftar pesanan). */
+export async function fetchOpenRetursBySalesOrderIds(soIds: string[]) {
+  const map = new Map<string, Retur>();
+  if (!soIds.length) return map;
+  const chunks: string[][] = [];
+  for (let i = 0; i < soIds.length; i += 15) {
+    chunks.push(soIds.slice(i, i + 15));
+  }
+  for (const chunk of chunks) {
+    const idFilter = chunk.map((id) => `sales_order = "${id}"`).join(" || ");
+    const res = await pb.collection(BISNIS_COLLECTIONS.returs).getList<Retur>(1, chunk.length * 2, {
+      filter: `type = "penjualan" && (status = "draft" || status = "approved") && (${idFilter})`,
+      sort: "-created",
+      requestKey: null,
+    });
+    for (const r of res.items) {
+      const soId = r.sales_order || r.reference_id;
+      if (soId && !map.has(soId)) map.set(soId, r);
+    }
+  }
+  return map;
+}
+
 export async function fetchRetur(id: string) {
   return pb.collection(BISNIS_COLLECTIONS.returs).getOne<Retur>(id, {
     expand: "customer,supplier,warehouse,created_by",
@@ -422,19 +578,6 @@ export async function deleteRetur(id: string) {
 
 // ─── Retur Lines ───
 
-export type ReturLine = {
-  id: string;
-  retur: string;
-  product: string;
-  qty: number;
-  unit_price?: number;
-  line_total?: number;
-  reason?: string;
-  expand?: {
-    product?: { id: string; sku: string; name: string };
-  };
-};
-
 export async function fetchReturLines(returId: string) {
   return pb.collection(BISNIS_COLLECTIONS.returLines).getFullList<ReturLine>({
     filter: `retur = "${returId}"`,
@@ -447,6 +590,252 @@ export async function fetchReturLines(returId: string) {
 export async function createReturLine(data: Partial<ReturLine>) {
   return pb.collection(BISNIS_COLLECTIONS.returLines).create<ReturLine>(data);
 }
+
+export async function updateReturLine(id: string, data: Partial<ReturLine>) {
+  return pb.collection(BISNIS_COLLECTIONS.returLines).update<ReturLine>(id, data);
+}
+
+export async function deleteReturLine(id: string) {
+  return pb.collection(BISNIS_COLLECTIONS.returLines).delete(id);
+}
+
+/** Credit notes terkait invoice (document chain). */
+export async function fetchCreditNotesForInvoice(invoiceId: string) {
+  const res = await pb.collection(BISNIS_COLLECTIONS.creditNotes).getList<CreditNote>(1, 50, {
+    filter: `invoice = "${invoiceId}" && status != "cancelled"`,
+    sort: "created",
+    requestKey: null,
+  });
+  return res.items;
+}
+
+/** Retur penjualan terkait invoice. */
+export async function fetchRetursForInvoice(invoiceId: string) {
+  const res = await pb.collection(BISNIS_COLLECTIONS.returs).getList<Retur>(1, 50, {
+    filter: `invoice = "${invoiceId}" && type = "penjualan" && status != "cancelled"`,
+    sort: "created",
+    requestKey: null,
+  });
+  return res.items;
+}
+
+/** Baris retur untuk banyak retur sekaligus. */
+export async function fetchReturLinesForReturIds(returIds: string[]) {
+  if (!returIds.length) return [] as ReturLine[];
+  const chunks: string[][] = [];
+  for (let i = 0; i < returIds.length; i += 12) {
+    chunks.push(returIds.slice(i, i + 12));
+  }
+  const all: ReturLine[] = [];
+  for (const chunk of chunks) {
+    const filter = chunk.map((id) => `retur = "${id}"`).join(" || ");
+    const rows = await pb.collection(BISNIS_COLLECTIONS.returLines).getFullList<ReturLine>({
+      filter,
+      requestKey: null,
+    });
+    all.push(...rows);
+  }
+  return all;
+}
+
+/** Biaya settlement terkait nomor retur. */
+export async function fetchExpensesForReturNos(returNos: string[]) {
+  const nos = returNos.map((n) => n.trim()).filter(Boolean);
+  if (!nos.length) return [] as Expense[];
+  const chunks: string[][] = [];
+  for (let i = 0; i < nos.length; i += 12) {
+    chunks.push(nos.slice(i, i + 12));
+  }
+  const all: Expense[] = [];
+  for (const chunk of chunks) {
+    const filter = chunk.map((n) => `reference_no = "${n.replace(/"/g, '\\"')}"`).join(" || ");
+    const rows = await pb.collection(BISNIS_COLLECTIONS.expenses).getFullList<Expense>({
+      filter,
+      requestKey: null,
+    });
+    all.push(...rows);
+  }
+  return all;
+}
+
+export type InvoiceRelatedDocMap = Map<
+  string,
+  import("@/lib/bisnis/sales-document-chain").InvoiceRelatedIndicators
+>;
+
+/** Indikator dokumen turunan untuk banyak invoice (daftar penagihan). */
+export async function fetchRelatedDocIndicatorsByInvoiceIds(
+  invoiceIds: string[],
+): Promise<InvoiceRelatedDocMap> {
+  const map: InvoiceRelatedDocMap = new Map();
+  if (!invoiceIds.length) return map;
+
+  const { buildInvoiceRelatedIndicators } = await import("@/lib/bisnis/sales-document-chain");
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < invoiceIds.length; i += 12) {
+    chunks.push(invoiceIds.slice(i, i + 12));
+  }
+
+  const retursByInvoice = new Map<string, Retur[]>();
+  const cnsByInvoice = new Map<string, CreditNote[]>();
+
+  for (const chunk of chunks) {
+    const invFilter = chunk.map((id) => `invoice = "${id}"`).join(" || ");
+    const [returs, cns] = await Promise.all([
+      pb.collection(BISNIS_COLLECTIONS.returs).getList<Retur>(1, chunk.length * 5, {
+        filter: `type = "penjualan" && status != "cancelled" && (${invFilter})`,
+        sort: "-created",
+        requestKey: null,
+      }),
+      pb.collection(BISNIS_COLLECTIONS.creditNotes).getList<CreditNote>(1, chunk.length * 5, {
+        filter: `status != "cancelled" && (${chunk.map((id) => `invoice = "${id}"`).join(" || ")})`,
+        sort: "-created",
+        requestKey: null,
+      }),
+    ]);
+    for (const r of returs.items) {
+      const invId = r.invoice;
+      if (!invId) continue;
+      const list = retursByInvoice.get(invId) ?? [];
+      list.push(r);
+      retursByInvoice.set(invId, list);
+    }
+    for (const cn of cns.items) {
+      const invId = cn.invoice;
+      if (!invId) continue;
+      const list = cnsByInvoice.get(invId) ?? [];
+      list.push(cn);
+      cnsByInvoice.set(invId, list);
+    }
+  }
+
+  for (const invId of invoiceIds) {
+    const returs = retursByInvoice.get(invId) ?? [];
+    const cns = cnsByInvoice.get(invId) ?? [];
+    map.set(
+      invId,
+      buildInvoiceRelatedIndicators(returs, cns, []),
+    );
+  }
+
+  return map;
+}
+
+/** Buat retur penjualan dari SO (server API). */
+export async function createSalesReturFromOrderApi(
+  salesOrderId: string,
+  input?: import("@/lib/bisnis/sales-retur-expected").CreateSalesReturInput,
+) {
+  const res = await fetch(`/api/bisnis/sales-orders/${salesOrderId}/retur`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: input ? JSON.stringify(input) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal membuat retur"));
+  }
+  return data.data as { retur: Retur; lines: ReturLine[] };
+}
+
+export async function createPurchaseReturFromOrderApi(purchaseOrderId: string) {
+  const res = await fetch(`/api/bisnis/purchase-orders/${purchaseOrderId}/retur`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal membuat retur pembelian"));
+  }
+  return data.data as { retur: Retur; lines: ReturLine[] };
+}
+
+/** Selesaikan retur (penjualan / pembelian). */
+export async function completeReturApi(returId: string) {
+  const res = await fetch(`/api/bisnis/returs/${returId}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal menyelesaikan retur"));
+  }
+  return data.data;
+}
+
+/** @deprecated gunakan completeReturApi */
+export const completeSalesReturApi = completeReturApi;
+
+export type WmsReceiveReturBody = {
+  unboxing_video_path?: string;
+  received_lines?: {
+    line_id?: string;
+    product: string;
+    qty: number;
+    condition?: "good" | "damaged";
+  }[];
+  wms_note?: string;
+};
+
+export async function confirmSalesReturnWmsReceiveApi(
+  returId: string,
+  body?: WmsReceiveReturBody,
+) {
+  const res = await fetch(`/api/bisnis/returs/${returId}/wms-receive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal konfirmasi penerimaan retur"));
+  }
+  return data.data as Retur;
+}
+
+/** Posting settlement finance setelah stok retur sudah diposting. */
+export async function settleSalesReturApi(returId: string) {
+  const res = await fetch(`/api/bisnis/returs/${returId}/settle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal settlement retur"));
+  }
+  return data.data;
+}
+
+/** Selesaikan klarifikasi penerimaan PO (stok transit → disposition + tagihan). */
+export async function finalizePurchaseReceivingApi(poId: string) {
+  const res = await fetch(`/api/bisnis/purchase-orders/${poId}/finalize-receiving`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal menyelesaikan penerimaan"));
+  }
+  return data.data as { po: PurchaseOrder; billId?: string };
+}
+
+/** Batalkan retur (draf atau selesai). */
+export async function cancelReturApi(returId: string, reason?: string) {
+  const res = await fetch(`/api/bisnis/returs/${returId}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: reason?.trim() || "" }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal membatalkan retur"));
+  }
+  return data.data as Retur;
+}
+
+/** @deprecated gunakan cancelReturApi */
+export const cancelSalesReturApi = cancelReturApi;
 
 // ─── Product Prices ───
 
@@ -502,11 +891,19 @@ export async function fetchExpense(id: string) {
 }
 
 export async function createExpense(data: Partial<Expense>) {
-  return pb.collection(BISNIS_COLLECTIONS.expenses).create<Expense>(data);
+  const { prepareExpensePayload } = await import("./expense-posting");
+  const payload = await prepareExpensePayload(data);
+  return pb.collection(BISNIS_COLLECTIONS.expenses).create<Expense>(payload);
 }
 
 export async function updateExpense(id: string, data: Partial<Expense>) {
-  return pb.collection(BISNIS_COLLECTIONS.expenses).update<Expense>(id, data);
+  const { prepareExpensePayload } = await import("./expense-posting");
+  const prev = await pb
+    .collection(BISNIS_COLLECTIONS.expenses)
+    .getOne<Expense>(id, { fields: "status,cash_account,total", requestKey: null })
+    .catch(() => null);
+  const payload = await prepareExpensePayload(data, { isUpdate: true, prev: prev ?? undefined });
+  return pb.collection(BISNIS_COLLECTIONS.expenses).update<Expense>(id, payload);
 }
 
 export async function deleteExpense(id: string) {
@@ -534,7 +931,11 @@ export async function fetchPurchaseBill(id: string) {
 }
 
 export async function createPurchaseBill(data: Partial<PurchaseBill>) {
-  return pb.collection(BISNIS_COLLECTIONS.purchaseBills).create<PurchaseBill>(data);
+  const company = await resolveCompanyForPurchaseBill(data);
+  return pb.collection(BISNIS_COLLECTIONS.purchaseBills).create<PurchaseBill>({
+    ...data,
+    ...(company ? { company } : {}),
+  });
 }
 
 export async function updatePurchaseBill(id: string, data: Partial<PurchaseBill>) {
@@ -585,28 +986,45 @@ export async function cancelPurchaseBill(bill: PurchaseBill, cancelReason?: stri
 export type BillPayment = {
   id: string;
   purchase_bill: string;
+  /** Entitas pemilik transaksi — derive dari bill atau akun kas. */
+  company?: string;
   payment_date: string;
   amount: number;
   payment_method: string;
+  /** Akun kas/bank sumber dana (biz_cash_accounts) — dipakai saldo kas. */
+  cash_account?: string;
   reference_no?: string;
   notes?: string;
   created_by: string;
   created: string;
+  expand?: {
+    payment_method?: { id: string; code?: string; name: string };
+    cash_account?: { id: string; name: string };
+  };
 };
 
 export async function fetchBillPayments(billId: string) {
   return pb.collection(BISNIS_COLLECTIONS.billPayments).getFullList<BillPayment>({
     filter: `purchase_bill = "${billId}"`,
     sort: "-payment_date",
+    expand: "payment_method,cash_account",
     requestKey: null,
   });
 }
 
 export async function createBillPayment(data: Partial<BillPayment>) {
-  return pb.collection(BISNIS_COLLECTIONS.billPayments).create<BillPayment>(data);
+  const company = await resolveCompanyForBillPayment(data);
+  if (data.cash_account && company) {
+    await assertCashAccountBelongsToCompany(data.cash_account, company);
+  }
+  return pb.collection(BISNIS_COLLECTIONS.billPayments).create<BillPayment>({
+    ...data,
+    ...(company ? { company } : {}),
+  });
 }
 
 export {
+  cancelPurchaseOrderWithoutBill,
   createBillFromPurchaseOrder,
   fetchPurchaseBillByPurchaseOrder,
   canEditPurchaseOrder,
@@ -626,6 +1044,7 @@ export {
 } from "./purchase-warehouse";
 
 export {
+  cancelSalesOrderWithoutInvoice,
   createInvoiceFromSalesOrder,
   fetchInvoiceBySalesOrder,
   canEditSalesOrder,
@@ -651,6 +1070,9 @@ export {
   purchaseOrderFilterToPb,
   salesOrderFilterToPb,
   ORDER_DOC_STATUS_FILTER,
+  OPEN_ORDER_DOC_STATUS_FILTER,
+  openSalesOrdersListFilterToPb,
+  openPurchaseOrdersListFilterToPb,
 } from "./order-doc-status";
 
 export {
@@ -775,6 +1197,34 @@ export async function createAutoStockMovement(params: {
   return data;
 }
 
+export async function createAutoTransferMovement(params: {
+  from_warehouse: string;
+  to_warehouse: string;
+  reference_type: string;
+  reference_id: string;
+  reference_no: string;
+  lines: { product: string; qty: number }[];
+  note_suffix?: string;
+}) {
+  const userId = pb.authStore.model?.id;
+  if (!userId) throw new Error("User belum login");
+
+  const res = await fetch("/api/inventory/movements/auto-transfer", {
+    method: "POST",
+    headers: bizStockAuthHeaders(),
+    body: JSON.stringify({ ...params, user_id: userId }),
+  });
+
+  const data = await readApiJsonSafe(res);
+  if (!res.ok) {
+    throw new Error(
+      String(data.error || "") ||
+        "Gagal membuat transfer stok otomatis. Pastikan POCKETBASE_ADMIN_EMAIL/PASSWORD di .env.local.",
+    );
+  }
+  return data;
+}
+
 /** Stok pusat + antrean WMS setelah penjualan tersimpan. */
 export async function applySalesStockAndWms(
   soId: string,
@@ -802,16 +1252,18 @@ export async function applySalesStockOnly(
   movement: {
     warehouse: string;
     reference_no: string;
-    lines: { product: string; qty: number }[];
+    lines: { product: string; qty: number; sales_order_line_id?: string }[];
   },
 ) {
+  const { resolveMovementLinesFromSale } = await import("@/lib/catalog/sale-stock-lines");
+  const lines = await resolveMovementLinesFromSale(pb, movement.lines);
   await createAutoStockMovement({
     type: "SALE",
     warehouse: movement.warehouse,
     reference_type: "SALES_ORDER",
     reference_id: soId,
     reference_no: movement.reference_no,
-    lines: movement.lines,
+    lines,
   });
 }
 
@@ -880,15 +1332,38 @@ export async function replaceAutoStockMovement(params: {
 
 // ── Store ──
 
-export async function fetchStores(activeOnly = true) {
-  const filter = activeOnly ? "is_active = true" : "";
+export async function fetchStores(activeOnly = true, companyId?: string) {
+  const parts: string[] = [];
+  if (activeOnly) parts.push("is_active = true");
+  if (companyId) parts.push(`company = "${companyId}"`);
   const res = await pb.collection(BISNIS_COLLECTIONS.stores).getFullList<Store>({
     sort: "name",
-    filter: filter || undefined,
+    filter: parts.length ? parts.join(" && ") : undefined,
     expand: "default_warehouse",
     requestKey: null,
   });
   return res;
+}
+
+/** Toko penjualan aktif — bukan placeholder entitas; legacy tanpa field company tetap muncul. */
+export async function fetchSalesStores(companyId?: string) {
+  const [storesAll, warehouses, profiles] = await Promise.all([
+    fetchStores(true),
+    pb.collection(INV_COLLECTIONS.warehouses).getFullList<{
+      id: string;
+      store?: string;
+      warehouse_role?: string;
+    }>({
+      fields: "id,store,warehouse_role",
+      requestKey: null,
+    }),
+    fetchCompanyProfiles(true).catch(() => [] as { company_name: string }[]),
+  ]);
+  const entityNames = entityPlaceholderStoreNames(profiles);
+  const scoped = filterSalesStoresByCompany(storesAll, companyId);
+  return filterStoresForSales(scoped, warehouses, entityNames).sort((a, b) =>
+    a.name.localeCompare(b.name, "id"),
+  );
 }
 
 export async function fetchStore(id: string) {
@@ -1029,9 +1504,36 @@ export {
   updateSalesImportLine,
   processImportRows,
   createImportBatchFromFile,
+  cancelSalesImportBatch,
 } from "./mp-client";
 
 export { postSalesImportBatch } from "./mp-import-post";
+export {
+  fetchPaymentImportBatches,
+  fetchPaymentImportBatch,
+  createPaymentImportBatch,
+  updatePaymentImportBatch,
+  fetchPaymentImportLines,
+  createPaymentImportLine,
+  updatePaymentImportLine,
+  processPaymentImportRows,
+  createPaymentImportBatchFromFile,
+  cancelPaymentImportBatch,
+} from "./payment-import-client";
+export { postPaymentImportBatch } from "./payment-import-post";
+export {
+  salesBatchToActivity,
+  paymentBatchToActivity,
+  salesImportTargets,
+  paymentImportTargets,
+  resolveImportDisplayStatus,
+  IMPORT_DISPLAY_STATUS_UI,
+  type ImportActivityRow,
+  type ImportActivityKind,
+  type ImportDisplayStatus,
+  fetchImportActivityRows,
+} from "./import-activity";
+export { parsePaymentImportFile, PAYMENT_IMPORT_TEMPLATE_HEADERS } from "./payment-import-parse";
 export { calculateOrderFees, pickBestRule, calcFeeAmount } from "./mp-fee-engine";
 export {
   fetchMpFeeTemplates,

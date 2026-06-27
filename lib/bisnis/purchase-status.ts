@@ -1,4 +1,5 @@
-import type { PurchaseBill, PurchaseBillStatus } from "@/lib/bisnis/types";
+import { pb } from "@/lib/pocketbase";
+import { BISNIS_COLLECTIONS, type PurchaseBill, type PurchaseBillStatus } from "@/lib/bisnis/types";
 
 export type PurchaseDisplayStatus = "unpaid" | "overdue" | "paid" | "cancelled";
 
@@ -38,14 +39,32 @@ export function getPurchaseDisplayStatus(
   return "unpaid";
 }
 
+/** Bill belum lunas yang lewat jatuh tempo otomatis jadi "overdue" (lazy sync saat dibuka). */
+export async function syncBillOverdueStatus(bill: PurchaseBill): Promise<PurchaseBill> {
+  if (getPurchaseDisplayStatus(bill) !== "unpaid" || !bill.due_date) return bill;
+  const due = new Date(bill.due_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  if (due >= today) return bill;
+  try {
+    await pb
+      .collection(BISNIS_COLLECTIONS.purchaseBills)
+      .update(bill.id, { status: "overdue" satisfies PurchaseBillStatus });
+    return { ...bill, status: "overdue" };
+  } catch {
+    return bill;
+  }
+}
+
 export function purchaseFilterToPb(filter: string): string | undefined {
   return PURCHASE_STATUS_FILTER.find((f) => f.value === filter)?.filter;
 }
 
 export function canEditPurchaseBill(bill: Pick<PurchaseBill, "status">): boolean {
-  return getPurchaseDisplayStatus(bill) !== "cancelled";
+  return bill.status !== "cancelled";
 }
 
 export function canCancelPurchaseBill(bill: Pick<PurchaseBill, "status">): boolean {
-  return getPurchaseDisplayStatus(bill) !== "cancelled";
+  return bill.status !== "cancelled";
 }

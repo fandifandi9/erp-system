@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { pb } from "@/lib/pocketbase";
 import { MapPin, Plus, Edit2, Trash2, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { canAccess, normalizeAuthModel } from "@/lib/rbac";
+import { useLocale } from "@/components/LocaleProvider";
 
 interface Office {
   id: string;
@@ -18,6 +19,7 @@ interface Office {
 }
 
 export default function OfficesPage() {
+  const { t } = useLocale();
   const [offices, setOffices] = useState<Office[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -122,31 +124,31 @@ export default function OfficesPage() {
       });
 
       if (isNaN(lat) || isNaN(lng)) {
-        setError("Koordinat GPS tidak valid");
+        setError(t("hr.offices.errInvalidCoords"));
         setProcessing(false);
         return;
       }
 
       if (isNaN(radius)) {
-        setError("Radius tidak valid. Harus berupa angka.");
+        setError(t("hr.offices.errInvalidRadius"));
         setProcessing(false);
         return;
       }
 
       if (lat < -90 || lat > 90) {
-        setError("Latitude harus antara -90 dan 90");
+        setError(t("hr.offices.errLatRange"));
         setProcessing(false);
         return;
       }
 
       if (lng < -180 || lng > 180) {
-        setError("Longitude harus antara -180 dan 180");
+        setError(t("hr.offices.errLngRange"));
         setProcessing(false);
         return;
       }
 
       if (radius < 10 || radius > 1000) {
-        setError("Radius harus antara 10 dan 1000 meter");
+        setError(t("hr.offices.errRadiusRange"));
         setProcessing(false);
         return;
       }
@@ -199,22 +201,22 @@ export default function OfficesPage() {
       handleCloseModal();
       
       // Show success message
-      alert(editingOffice ? "Kantor berhasil diupdate!" : "Kantor berhasil ditambahkan!");
+      alert(editingOffice ? t("hr.offices.updated") : t("hr.offices.created"));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan kantor");
+      setError(err instanceof Error ? err.message : t("hr.offices.saveFailed"));
     } finally {
       setProcessing(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Yakin ingin menghapus kantor ini?")) return;
+    if (!confirm(t("hr.offices.deleteConfirm"))) return;
 
     try {
       await pb.collection("offices").delete(id);
       await fetchOffices();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Gagal menghapus kantor");
+      alert(err instanceof Error ? err.message : t("hr.offices.deleteFailed"));
     }
   };
 
@@ -226,9 +228,9 @@ export default function OfficesPage() {
       
       // Force refresh
       await fetchOffices();
-      alert("Status kantor berhasil diubah!");
+      alert(t("hr.offices.toggleSuccess"));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Gagal update status");
+      alert(err instanceof Error ? err.message : t("hr.common.statusChangeFailed"));
     }
   };
 
@@ -245,7 +247,7 @@ export default function OfficesPage() {
     return (
       <div className="p-6">
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
-          ❌ Akses ditolak. Halaman ini hanya untuk HR dan Owner.
+          {t("hr.common.accessDeniedHrOwner")}
         </div>
       </div>
     );
@@ -256,26 +258,26 @@ export default function OfficesPage() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">Pengaturan GPS Kantor</h1>
-          <p className="text-slate-500 mt-1">Kelola lokasi kantor untuk validasi absensi</p>
+          <h1 className="text-3xl font-bold text-slate-800">{t("hr.offices.title")}</h1>
+          <p className="text-slate-500 mt-1">{t("hr.offices.subtitle")}</p>
         </div>
         <button
           onClick={() => handleOpenModal()}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
         >
           <Plus className="w-5 h-5" />
-          Tambah Kantor
+          {t("hr.offices.add")}
         </button>
       </div>
 
       {/* INFO BOX */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="font-medium text-blue-900 mb-2">📍 Cara Mendapatkan Koordinat GPS:</p>
+        <p className="font-medium text-blue-900 mb-2">{t("hr.offices.gpsHowTo")}</p>
         <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
-          <li>Buka Google Maps</li>
-          <li>Klik kanan pada lokasi kantor → &quot;What&apos;s here?&quot;</li>
-          <li>Copy koordinat (contoh: -6.200000, 106.816666)</li>
-          <li>Paste di form di bawah</li>
+          <li>{t("hr.offices.gpsStep1")}</li>
+          <li>{t("hr.offices.gpsStep2")}</li>
+          <li>{t("hr.offices.gpsStep3")}</li>
+          <li>{t("hr.offices.gpsStep4")}</li>
         </ol>
       </div>
 
@@ -283,8 +285,8 @@ export default function OfficesPage() {
       {offices.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <MapPin className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-          <p className="text-lg font-medium text-slate-800">Belum ada kantor</p>
-          <p className="text-sm text-slate-500 mt-1">Tambahkan kantor pertama untuk mulai validasi GPS</p>
+          <p className="text-lg font-medium text-slate-800">{t("hr.offices.emptyTitle")}</p>
+          <p className="text-sm text-slate-500 mt-1">{t("hr.offices.emptyDesc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -303,11 +305,11 @@ export default function OfficesPage() {
                     <h3 className="font-semibold text-slate-800">{office.name}</h3>
                     {office.is_active ? (
                       <span className="text-xs text-green-600 flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> Aktif
+                        <CheckCircle className="w-3 h-3" /> {t("hr.common.active")}
                       </span>
                     ) : (
                       <span className="text-xs text-red-600 flex items-center gap-1">
-                        <XCircle className="w-3 h-3" /> Nonaktif
+                        <XCircle className="w-3 h-3" /> {t("hr.common.inactive")}
                       </span>
                     )}
                   </div>
@@ -317,20 +319,20 @@ export default function OfficesPage() {
               {/* GPS INFO */}
               <div className="space-y-2 mb-4 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Latitude:</span>
+                  <span className="text-slate-500">{t("hr.offices.latitude")}</span>
                   <span className="font-mono text-slate-800">{(office.lat || 0).toFixed(6)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Longitude:</span>
+                  <span className="text-slate-500">{t("hr.offices.longitude")}</span>
                   <span className="font-mono text-slate-800">{(office.lng || 0).toFixed(6)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Radius:</span>
+                  <span className="text-slate-500">{t("hr.offices.radius")}</span>
                   <span className="font-semibold text-indigo-600">{office.radius || 100}m</span>
                 </div>
                 {office.address && (
                   <div className="pt-2 border-t border-slate-100">
-                    <span className="text-slate-500 text-xs">Alamat:</span>
+                    <span className="text-slate-500 text-xs">{t("hr.offices.address")}</span>
                     <p className="text-slate-700 text-xs mt-1">{office.address}</p>
                   </div>
                 )}
@@ -343,7 +345,7 @@ export default function OfficesPage() {
                 rel="noopener noreferrer"
                 className="block mb-3 px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs text-center text-slate-600 transition"
               >
-                📍 Buka di Google Maps
+                {t("hr.offices.openMaps")}
               </a>
 
               {/* ACTIONS */}
@@ -356,7 +358,7 @@ export default function OfficesPage() {
                       : "bg-green-100 text-green-700 hover:bg-green-200"
                   }`}
                 >
-                  {office.is_active ? "Nonaktifkan" : "Aktifkan"}
+                  {office.is_active ? t("hr.offices.deactivate") : t("hr.offices.activate")}
                 </button>
                 <button
                   onClick={() => handleOpenModal(office)}
@@ -383,7 +385,7 @@ export default function OfficesPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-slate-800">
-              {editingOffice ? "Edit Kantor" : "Tambah Kantor Baru"}
+              {editingOffice ? t("hr.offices.editTitle") : t("hr.offices.addTitle")}
             </h2>
 
             {error && (
@@ -396,13 +398,13 @@ export default function OfficesPage() {
               {/* NAME */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Nama Kantor *
+                  {t("hr.offices.nameLabel")}
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Head Office"
+                  placeholder={t("hr.offices.namePlaceholder")}
                   className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                   required
                 />
@@ -411,12 +413,12 @@ export default function OfficesPage() {
               {/* ADDRESS */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Alamat
+                  {t("hr.offices.addressLabel")}
                 </label>
                 <textarea
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Jl. Contoh No. 123, Jakarta"
+                  placeholder={t("hr.offices.addressPlaceholder")}
                   className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                   rows={2}
                 />
@@ -425,39 +427,39 @@ export default function OfficesPage() {
               {/* LATITUDE */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Latitude *
+                  {t("hr.offices.latLabel")}
                 </label>
                 <input
                   type="text"
                   value={formData.lat}
                   onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
-                  placeholder="-6.200000"
+                  placeholder={t("hr.offices.latPlaceholder")}
                   className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
                   required
                 />
-                <p className="text-xs text-slate-500 mt-1">Contoh: -6.200000 (untuk Jakarta)</p>
+                <p className="text-xs text-slate-500 mt-1">{t("hr.offices.latHint")}</p>
               </div>
 
               {/* LONGITUDE */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Longitude *
+                  {t("hr.offices.lngLabel")}
                 </label>
                 <input
                   type="text"
                   value={formData.lng}
                   onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
-                  placeholder="106.816666"
+                  placeholder={t("hr.offices.lngPlaceholder")}
                   className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
                   required
                 />
-                <p className="text-xs text-slate-500 mt-1">Contoh: 106.816666 (untuk Jakarta)</p>
+                <p className="text-xs text-slate-500 mt-1">{t("hr.offices.lngHint")}</p>
               </div>
 
               {/* RADIUS */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Radius (meter) *
+                  {t("hr.offices.radiusLabel")}
                 </label>
                 <input
                   type="number"
@@ -469,14 +471,14 @@ export default function OfficesPage() {
                   required
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Karyawan hanya bisa check-in dalam radius ini (10-1000 meter)
+                  {t("hr.offices.radiusHint")}
                 </p>
               </div>
 
               {/* MAX CHECKIN DISTANCE */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Max Check-in Distance (meter)
+                  {t("hr.offices.maxCheckinLabel")}
                 </label>
                 <input
                   type="number"
@@ -487,23 +489,23 @@ export default function OfficesPage() {
                   className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  0 = mengikuti radius utama
+                  {t("hr.offices.maxCheckinHint")}
                 </p>
               </div>
 
               {/* TIMEZONE */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Timezone
+                  {t("hr.offices.timezoneLabel")}
                 </label>
                 <select
                   value={formData.timezone}
                   onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
                   className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                 >
-                  <option value="Asia/Jakarta">Asia/Jakarta (WIB)</option>
-                  <option value="Asia/Makassar">Asia/Makassar (WITA)</option>
-                  <option value="Asia/Jayapura">Asia/Jayapura (WIT)</option>
+                  <option value="Asia/Jakarta">{t("hr.offices.tzJakarta")}</option>
+                  <option value="Asia/Makassar">{t("hr.offices.tzMakassar")}</option>
+                  <option value="Asia/Jayapura">{t("hr.offices.tzJayapura")}</option>
                 </select>
               </div>
 
@@ -517,7 +519,7 @@ export default function OfficesPage() {
                   className="w-4 h-4 text-indigo-600 rounded"
                 />
                 <label htmlFor="is_active" className="text-sm font-medium text-slate-700">
-                  Aktifkan kantor ini
+                  {t("hr.offices.activateOffice")}
                 </label>
               </div>
 
@@ -529,7 +531,7 @@ export default function OfficesPage() {
                   className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition"
                   disabled={processing}
                 >
-                  Batal
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
@@ -539,10 +541,10 @@ export default function OfficesPage() {
                   {processing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Menyimpan...
+                      {t("hr.common.saving")}
                     </>
                   ) : (
-                    "Simpan"
+                    t("common.save")
                   )}
                 </button>
               </div>

@@ -128,7 +128,7 @@ export default function InventoryHubScreen() {
 
       <Link href="/inventory/product-scan" asChild>
         <Pressable style={styles.tile}>
-          <View style={[styles.iconBox, { backgroundColor: "#e0e7ff" }]}>
+          <View style={[styles.iconBox, { backgroundColor: "#fef3c7" }]}>
             <Ionicons name="barcode-outline" size={26} color={PWA.indigo} />
           </View>
           <View style={styles.tileText}>

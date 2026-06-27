@@ -1,47 +1,31 @@
 import * as XLSX from "xlsx";
 import type { SalesImportLine } from "./types";
+import {
+  IMPORT_COLUMN_ALIASES,
+  IMPORT_TEMPLATE_COLUMNS,
+  IMPORT_TEMPLATE_HEADER_KEYS,
+  type ImportOrderHeader,
+  type ParsedImportRow,
+  parseDiscountType,
+  parseYesNo,
+} from "./mp-import-schema";
 
-/** Baris mentah dari Excel sebelum disimpan ke PB. */
-export type ParsedImportRow = {
-  rowNo: number;
-  mp_order_no: string;
-  order_date: string;
-  mp_buyer_name?: string;
-  mp_sku: string;
-  product_name?: string;
-  mp_category?: string;
-  qty: number;
-  unit_price: number;
-  gross_amount: number;
-};
-
-const HEADER_ALIASES: Record<string, string[]> = {
-  mp_order_no: ["mp_order_no", "no_pesanan", "order_no", "nomor_pesanan", "no order", "order id"],
-  mp_buyer_name: [
-    "mp_buyer_name",
-    "buyer_name",
-    "nama_pembeli",
-    "nama pembeli",
-    "penerima",
-    "nama_penerima",
-    "customer_name",
-  ],
-  order_date: ["order_date", "tanggal", "tgl_order", "tgl pesanan", "date"],
-  mp_sku: ["mp_sku", "sku", "kode_produk", "seller_sku", "sku penjual"],
-  product_name: ["product_name", "nama_produk", "nama produk", "product"],
-  mp_category: ["mp_category", "kategori", "category", "kategori_mp"],
-  qty: ["qty", "quantity", "jumlah", "qty_produk"],
-  unit_price: ["unit_price", "harga", "harga_jual", "price", "harga satuan"],
-};
+export type { ParsedImportRow, ImportOrderHeader } from "./mp-import-schema";
 
 function normalizeHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/\s+/g, "_");
+  return h
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[()]/g, "")
+    .replace(/\*+/g, "")
+    .replace(/_+/g, "_");
 }
 
-function findColumnKey(headers: string[], field: keyof typeof HEADER_ALIASES): number {
+function findColumnKey(headers: string[], field: keyof typeof IMPORT_COLUMN_ALIASES): number {
   const normalized = headers.map(normalizeHeader);
-  for (const alias of HEADER_ALIASES[field]) {
-    const idx = normalized.indexOf(alias);
+  for (const alias of IMPORT_COLUMN_ALIASES[field]) {
+    const idx = normalized.indexOf(normalizeHeader(alias));
     if (idx >= 0) return idx;
   }
   return -1;
@@ -79,6 +63,40 @@ function parseExcelDate(v: unknown): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function buildHeader(row: unknown[], col: Record<string, number>): ImportOrderHeader {
+  return {
+    toko: cellStr(row, col.toko),
+    pelanggan: cellStr(row, col.pelanggan),
+    email: cellStr(row, col.email) || undefined,
+    no_so: cellStr(row, col.no_so) || undefined,
+    no_referensi: cellStr(row, col.no_referensi) || undefined,
+    tgl_transaksi: parseExcelDate(col.tgl_transaksi >= 0 ? row[col.tgl_transaksi] : undefined),
+    jatuh_tempo: col.jatuh_tempo >= 0 && cellStr(row, col.jatuh_tempo)
+      ? parseExcelDate(row[col.jatuh_tempo])
+      : undefined,
+    term: cellStr(row, col.term) || undefined,
+    metode_bayar: cellStr(row, col.metode_bayar) || undefined,
+    lewat_wms: col.lewat_wms >= 0 ? parseYesNo(cellStr(row, col.lewat_wms)) : false,
+    pesan: cellStr(row, col.pesan) || undefined,
+    memo: cellStr(row, col.memo) || undefined,
+    harga_termasuk_ppn:
+      col.harga_termasuk_ppn >= 0 ? parseYesNo(cellStr(row, col.harga_termasuk_ppn)) : false,
+    ppn_persen: col.ppn_persen >= 0 ? cellNum(row, col.ppn_persen) : 0,
+    diskon_order: col.diskon_order >= 0 ? cellNum(row, col.diskon_order) : 0,
+    diskon_order_tipe:
+      col.diskon_order_tipe >= 0
+        ? parseDiscountType(cellStr(row, col.diskon_order_tipe))
+        : "persen",
+    materai: col.materai >= 0 ? cellNum(row, col.materai) : 0,
+    mp_order_no: cellStr(row, col.mp_order_no),
+    pembeli_mp: cellStr(row, col.pembeli_mp) || undefined,
+    ekspedisi: cellStr(row, col.ekspedisi) || undefined,
+    no_resi: cellStr(row, col.no_resi) || undefined,
+    ongkir: col.ongkir >= 0 ? cellNum(row, col.ongkir) : 0,
+    alamat_kirim: cellStr(row, col.alamat_kirim) || undefined,
+  };
+}
+
 export function parseSalesImportFile(buffer: ArrayBuffer): ParsedImportRow[] {
   const wb = XLSX.read(buffer, { type: "array", cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -88,45 +106,46 @@ export function parseSalesImportFile(buffer: ArrayBuffer): ParsedImportRow[] {
   if (rows.length < 2) throw new Error("Minimal 1 baris data + header");
 
   const headers = (rows[0] as unknown[]).map((h) => String(h ?? ""));
-  const col = {
-    order: findColumnKey(headers, "mp_order_no"),
-    buyer: findColumnKey(headers, "mp_buyer_name"),
-    date: findColumnKey(headers, "order_date"),
-    sku: findColumnKey(headers, "mp_sku"),
-    name: findColumnKey(headers, "product_name"),
-    category: findColumnKey(headers, "mp_category"),
-    qty: findColumnKey(headers, "qty"),
-    price: findColumnKey(headers, "unit_price"),
-  };
+  const col: Record<string, number> = {};
+  for (const key of Object.keys(IMPORT_COLUMN_ALIASES) as (keyof typeof IMPORT_COLUMN_ALIASES)[]) {
+    col[key] = findColumnKey(headers, key);
+  }
 
-  if (col.order < 0) throw new Error("Kolom mp_order_no / no_pesanan tidak ditemukan");
-  if (col.sku < 0) throw new Error("Kolom mp_sku / sku tidak ditemukan");
-  if (col.qty < 0) throw new Error("Kolom qty / jumlah tidak ditemukan");
+  if (col.toko < 0) throw new Error('Kolom toko (*) tidak ditemukan — unduh template Excel terbaru');
+  if (col.pelanggan < 0) throw new Error('Kolom pelanggan (*) tidak ditemukan');
+  if (col.tgl_transaksi < 0 && col.mp_order_no < 0) {
+    throw new Error("Kolom tgl_transaksi (*) atau order_date wajib ada");
+  }
+  if (col.mp_order_no < 0) throw new Error("Kolom mp_order_no (*) tidak ditemukan");
+  if (col.mp_sku < 0) throw new Error("Kolom mp_sku (*) tidak ditemukan");
+  if (col.qty < 0) throw new Error("Kolom qty (*) tidak ditemukan");
+  if (col.harga_satuan < 0) throw new Error("Kolom harga_satuan (*) tidak ditemukan");
 
   const out: ParsedImportRow[] = [];
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i] as unknown[];
     if (!row || row.every((c) => c == null || String(c).trim() === "")) continue;
 
-    const mp_order_no = cellStr(row, col.order);
-    const mp_sku = cellStr(row, col.sku);
-    if (!mp_order_no || !mp_sku) continue;
+    const header = buildHeader(row, col);
+    const mp_sku = cellStr(row, col.mp_sku);
+    if (!header.mp_order_no || !mp_sku) continue;
 
     const qty = Math.max(1, Math.round(cellNum(row, col.qty) || 1));
-    const unit_price = cellNum(row, col.price);
-    const gross_amount = unit_price > 0 ? Math.round(unit_price * qty) : cellNum(row, col.price);
+    const unit_price = cellNum(row, col.harga_satuan);
+    const discount_percent = col.diskon_baris_pct >= 0 ? cellNum(row, col.diskon_baris_pct) : 0;
+    const gross = Math.round(qty * unit_price * (1 - discount_percent / 100));
 
     out.push({
       rowNo: i + 1,
-      mp_order_no,
-      order_date: parseExcelDate(col.date >= 0 ? row[col.date] : undefined),
-      mp_buyer_name: col.buyer >= 0 ? cellStr(row, col.buyer) : undefined,
+      header,
       mp_sku,
-      product_name: col.name >= 0 ? cellStr(row, col.name) : undefined,
-      mp_category: col.category >= 0 ? cellStr(row, col.category) : undefined,
+      product_name: col.nama_produk >= 0 ? cellStr(row, col.nama_produk) : undefined,
+      catatan_baris: col.catatan_baris >= 0 ? cellStr(row, col.catatan_baris) : undefined,
       qty,
-      unit_price: unit_price || (qty > 0 ? Math.round(gross_amount / qty) : 0),
-      gross_amount: gross_amount || Math.round(unit_price * qty),
+      unit: col.unit >= 0 ? cellStr(row, col.unit) || "pcs" : "pcs",
+      unit_price,
+      discount_percent,
+      gross_amount: gross || Math.round(unit_price * qty),
     });
   }
 
@@ -152,15 +171,15 @@ export function buildImportLinePayload(
     error_message?: string;
   },
 ): Partial<SalesImportLine> {
+  const h = row.header;
   return {
     batch: batchId,
     row_no: row.rowNo,
-    mp_order_no: row.mp_order_no,
-    order_date: row.order_date,
-    mp_buyer_name: row.mp_buyer_name,
+    mp_order_no: h.mp_order_no,
+    order_date: h.tgl_transaksi,
+    mp_buyer_name: h.pembeli_mp,
     mp_sku: row.mp_sku,
     product_name: row.product_name,
-    mp_category: row.mp_category,
     qty: row.qty,
     unit_price: row.unit_price,
     gross_amount: row.gross_amount,
@@ -179,24 +198,11 @@ export function buildImportLinePayload(
   };
 }
 
-/** Template XLSX untuk download (sheet Penjualan). CSV legacy: {@link importTemplateCsv}. */
-export const IMPORT_TEMPLATE_HEADERS = [
-  "mp_order_no",
-  "order_date",
-  "mp_buyer_name",
-  "mp_sku",
-  "product_name",
-  "mp_category",
-  "qty",
-  "unit_price",
-] as const;
+export const IMPORT_TEMPLATE_HEADERS = IMPORT_TEMPLATE_HEADER_KEYS;
 
 export function importTemplateCsv(): string {
   const note =
-    "# mp_sku = Kode produk/SKU di master SERBA (sama di Shopee, Tokopedia, BliBli). mp_category opsional (diabaikan jika SKU dikenali).";
-  const sample = [
-    ["ORD-20260528-001", "28/05/2026", "Budi Santoso", "22344FGG56666", "COSTA CT-6218 Tripod", "", "2", "250000"],
-    ["ORD-20260528-002", "28/05/2026", "Siti Aminah", "22344FGG56666", "COSTA CT-6218 Tripod", "", "1", "250000"],
-  ];
-  return [note, IMPORT_TEMPLATE_HEADERS.join(","), ...sample.map((r) => r.join(","))].join("\n");
+    "# Template import penjualan SERBA — kolom (*) wajib. Pelanggan harus ada di master Kontak.";
+  const headers = IMPORT_TEMPLATE_COLUMNS.map((c) => c.header).join(",");
+  return [note, headers].join("\n");
 }

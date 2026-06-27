@@ -6,8 +6,8 @@ import {
   upsertProductSkuFee,
   bulkUpsertProductSkuFees,
   isProductFeeLine,
-  type MpFeeTemplateLine,
 } from "@/lib/bisnis/mp-template-client";
+import type { MpFeeTemplateLine } from "@/lib/bisnis/types";
 import { formatIdDecimal, parseIdDecimal } from "@/lib/format-id-number";
 import { getErrorMessage } from "@/lib/errors";
 

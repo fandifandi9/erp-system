@@ -4,6 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import { BarChart3, Loader2, AlertCircle, TrendingUp, TrendingDown, DollarSign, Calendar, ChevronDown } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS } from "@/lib/bisnis/types";
+import { buildReportFilter, REPORT_ALL, reportDimensionSummary } from "@/lib/bisnis/report-filters";
+import { mergeCompanyFilter } from "@/lib/bisnis/entity-resolve";
+import { useReportDimensions } from "@/lib/bisnis/use-report-dimensions";
+import { ReportDimensionFilters } from "@/components/bisnis/ReportDimensionFilters";
+import { fetchLastPurchaseUnitCosts } from "@/lib/bisnis/purchase-cost";
+import type { CreditNote, Invoice, SalesOrderLine } from "@/lib/bisnis/types";
+import type { Payment } from "@/lib/bisnis/client";
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(v);
@@ -63,10 +70,22 @@ type PLData = {
   pendapatan: {
     penjualan: number;
     penjualanCount: number;
+    /** Retur Penjualan (nota kredit periode ini) — contra revenue. */
+    retur: number;
+    returCount: number;
+    /** Pendapatan bersih = penjualan − retur. */
+    bersih: number;
+  };
+  pendapatanLain: {
+    /** Fee/denda pelunasan yang dicatat saat pembayaran (akrual periode bayar). */
+    total: number;
+    count: number;
   };
   hpp: {
-    pembelian: number;
-    pembelianCount: number;
+    total: number;
+    qty: number;
+    /** Jumlah produk terjual yang belum punya harga modal pembelian. */
+    missingCost: number;
   };
   labaKotor: number;
   biayaOperasional: {
@@ -85,6 +104,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   utilitas: "Utilitas",
   transportasi: "Transportasi",
   marketing: "Marketing & Promosi",
+  marketplace: "Biaya Marketplace",
   perlengkapan: "Perlengkapan & ATK",
   penyusutan: "Penyusutan Aset",
   pajak: "Pajak",
@@ -93,6 +113,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function LabaRugiPage() {
+  const {
+    companyId,
+    companyName,
+    stores,
+    warehouses,
+    channels,
+    storeId,
+    setStoreId,
+    warehouseId,
+    setWarehouseId,
+    channelId,
+    setChannelId,
+    dimensions,
+  } = useReportDimensions();
+
   const [period, setPeriod] = useState<PeriodType>("bulan_ini");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -105,55 +140,117 @@ export default function LabaRugiPage() {
     setError(null);
     try {
       const range = getDateRange(period, customFrom, customTo);
-      const dateFilter = `created >= "${range.from} 00:00:00" && created <= "${range.to} 23:59:59"`;
+      const dateFrom = range.from;
+      const dateTo = `${range.to} 23:59:59`;
 
-      const [salesResult, purchaseResult, expenseResult] = await Promise.all([
-        pb.collection(BISNIS_COLLECTIONS.salesOrders).getList(1, 1, {
-          filter: dateFilter,
-          requestKey: null,
-        }).catch(() => null),
-        pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getList(1, 1, {
-          filter: dateFilter,
-          requestKey: null,
-        }).catch(() => null),
-        pb.collection(BISNIS_COLLECTIONS.expenses).getList(1, 1, {
-          filter: dateFilter,
-          requestKey: null,
-        }).catch(() => null),
+      // Pendapatan = invoice terbit pada periode (bukan SO), konsisten dengan laporan penjualan.
+      const invoiceFilter = buildReportFilter(
+        `issue_date >= "${dateFrom}" && issue_date <= "${dateTo}" && status != "cancelled"`,
+        { companyId, storeId, warehouseId, channelId, warehouseField: "sales_order.warehouse" },
+      );
+      const expenseFilter = buildReportFilter(
+        `expense_date >= "${dateFrom}" && expense_date <= "${dateTo}" && status != "cancelled" && status != "draft"`,
+        { companyId, storeId, warehouseId },
+      );
+
+      // Retur Penjualan (nota kredit) dicatat di periode terbit nota — bukan periode invoice asli.
+      const creditNoteFilter = mergeCompanyFilter(
+        `cn_date >= "${dateFrom}" && cn_date <= "${dateTo}" && status = "issued"`,
+        companyId,
+      );
+      // Fee/denda pelunasan = Pendapatan Lain-lain di periode pembayaran.
+      const feeFilter = mergeCompanyFilter(
+        `payment_date >= "${dateFrom}" && payment_date <= "${dateTo}" && fee_amount > 0`,
+        companyId,
+      );
+
+      const [invoices, allExpenses, creditNotes, feePayments] = await Promise.all([
+        pb
+          .collection(BISNIS_COLLECTIONS.invoices)
+          .getFullList<Invoice>({ filter: invoiceFilter, requestKey: null })
+          .catch(() => [] as Invoice[]),
+        pb
+          .collection(BISNIS_COLLECTIONS.expenses)
+          .getFullList({ filter: expenseFilter, requestKey: null })
+          .catch(() => [] as Record<string, unknown>[]),
+        pb
+          .collection(BISNIS_COLLECTIONS.creditNotes)
+          .getFullList<CreditNote>({ filter: creditNoteFilter, expand: "invoice.sales_order", requestKey: null })
+          .catch(() => [] as CreditNote[]),
+        pb
+          .collection(BISNIS_COLLECTIONS.payments)
+          .getFullList<Payment & { expand?: { invoice?: Invoice } }>({
+            filter: feeFilter,
+            expand: "invoice.sales_order",
+            requestKey: null,
+          })
+          .catch(() => [] as (Payment & { expand?: { invoice?: Invoice } })[]),
       ]);
 
-      const salesFilter = `${dateFilter} && status != "cancelled"`;
+      const totalPenjualan = invoices.reduce((s, inv) => s + (inv.total ?? 0), 0);
 
-      const [allSales, allPurchases, allExpenses] = await Promise.all([
-        salesResult && salesResult.totalItems > 0
-          ? pb.collection(BISNIS_COLLECTIONS.salesOrders).getFullList({
-              filter: salesFilter,
-              requestKey: null,
-            })
-          : Promise.resolve([]),
-        purchaseResult && purchaseResult.totalItems > 0
-          ? pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getFullList({
-              filter: dateFilter,
-              requestKey: null,
-            })
-          : Promise.resolve([]),
-        expenseResult && expenseResult.totalItems > 0
-          ? pb.collection(BISNIS_COLLECTIONS.expenses).getFullList({
-              filter: dateFilter,
-              requestKey: null,
-            })
-          : Promise.resolve([]),
-      ]);
+      const matchInvoiceDims = (inv?: Invoice) => {
+        if (!inv) {
+          return (
+            storeId === REPORT_ALL && warehouseId === REPORT_ALL && channelId === REPORT_ALL
+          );
+        }
+        if (storeId !== REPORT_ALL && inv.store !== storeId) return false;
+        if (channelId !== REPORT_ALL && inv.platform_source !== channelId) return false;
+        if (warehouseId !== REPORT_ALL) {
+          const invWh = inv.expand?.sales_order?.warehouse;
+          if (!invWh || invWh !== warehouseId) return false;
+        }
+        return true;
+      };
 
-      const totalPenjualan = allSales.reduce((s, o) => s + ((o as Record<string, number>).total ?? 0), 0);
-      const totalPembelian = allPurchases.reduce((s, o) => s + ((o as Record<string, number>).total ?? 0), 0);
+      const cnInPeriod = creditNotes.filter((cn) => matchInvoiceDims(cn.expand?.invoice));
+      const totalRetur = cnInPeriod.reduce((s, cn) => s + (Number(cn.amount) || 0), 0);
+      const pendapatanBersih = totalPenjualan - totalRetur;
+
+      const feeInPeriod = feePayments.filter(
+        (p) => p.payment_kind !== "refund" && matchInvoiceDims(p.expand?.invoice),
+      );
+      const totalPendapatanLain = feeInPeriod.reduce((s, p) => s + (Number(p.fee_amount) || 0), 0);
+
+      // HPP = qty terjual × harga modal (unit_cost pembelian terakhir per produk).
+      const soIds = [...new Set(invoices.map((inv) => inv.sales_order).filter(Boolean))] as string[];
+      let soLines: SalesOrderLine[] = [];
+      for (let i = 0; i < soIds.length; i += 40) {
+        const chunk = soIds.slice(i, i + 40);
+        const part = await pb
+          .collection(BISNIS_COLLECTIONS.salesOrderLines)
+          .getFullList<SalesOrderLine>({
+            filter: chunk.map((sid) => `sales_order = "${sid}"`).join(" || "),
+            requestKey: null,
+          })
+          .catch(() => [] as SalesOrderLine[]);
+        soLines = soLines.concat(part);
+      }
+
+      const costs =
+        soLines.length > 0
+          ? await fetchLastPurchaseUnitCosts().catch(
+              () => ({} as Record<string, { unit_cost?: number }>),
+            )
+          : {};
+      let totalHpp = 0;
+      let totalQty = 0;
+      const missingCostProducts = new Set<string>();
+      for (const line of soLines) {
+        const qty = Number(line.qty) || 0;
+        totalQty += qty;
+        const cost = costs[line.product]?.unit_cost ?? 0;
+        if (cost > 0) totalHpp += qty * cost;
+        else if (line.product) missingCostProducts.add(line.product);
+      }
 
       const expByCat = new Map<string, number>();
       let totalBiaya = 0;
       allExpenses.forEach((e) => {
         const rec = e as Record<string, unknown>;
         const cat = (rec.category as string) ?? "lainnya";
-        const amt = (rec.total as number) ?? 0;
+        const amt = (rec.total as number) ?? (rec.amount as number) ?? 0;
         totalBiaya += amt;
         expByCat.set(cat, (expByCat.get(cat) ?? 0) + amt);
       });
@@ -164,13 +261,20 @@ export default function LabaRugiPage() {
       });
       byCategory.sort((a, b) => b.total - a.total);
 
-      const labaKotor = totalPenjualan - totalPembelian;
-      const labaBersih = labaKotor - totalBiaya;
-      const margin = totalPenjualan > 0 ? (labaBersih / totalPenjualan) * 100 : 0;
+      const labaKotor = pendapatanBersih - totalHpp;
+      const labaBersih = labaKotor + totalPendapatanLain - totalBiaya;
+      const margin = pendapatanBersih > 0 ? (labaBersih / pendapatanBersih) * 100 : 0;
 
       setPlData({
-        pendapatan: { penjualan: totalPenjualan, penjualanCount: allSales.length },
-        hpp: { pembelian: totalPembelian, pembelianCount: allPurchases.length },
+        pendapatan: {
+          penjualan: totalPenjualan,
+          penjualanCount: invoices.length,
+          retur: totalRetur,
+          returCount: cnInPeriod.length,
+          bersih: pendapatanBersih,
+        },
+        pendapatanLain: { total: totalPendapatanLain, count: feeInPeriod.length },
+        hpp: { total: totalHpp, qty: totalQty, missingCost: missingCostProducts.size },
         labaKotor,
         biayaOperasional: { total: totalBiaya, count: allExpenses.length, byCategory },
         labaBersih,
@@ -181,11 +285,12 @@ export default function LabaRugiPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, customFrom, customTo]);
+  }, [period, customFrom, customTo, storeId, warehouseId, channelId, companyId]);
 
   useEffect(() => { loadReport(); }, [loadReport]);
 
   const range = getDateRange(period, customFrom, customTo);
+  const dimSummary = reportDimensionSummary(dimensions, { stores, warehouses, channels });
 
   return (
     <div className="min-h-screen space-y-6">
@@ -197,13 +302,31 @@ export default function LabaRugiPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Laporan Laba Rugi</h1>
-            <p className="text-sm text-slate-500">Profit & Loss Statement — {range.label}</p>
+            <p className="text-sm text-slate-500">
+              Profit & Loss Statement — {range.label}
+              {dimSummary ? ` · ${dimSummary}` : stores.length > 1 ? " · Semua toko" : ""}
+            </p>
           </div>
         </div>
       </div>
 
       {/* Period Selector */}
       <div className="flex flex-wrap items-end gap-3">
+        <ReportDimensionFilters
+          companyName={companyName}
+          stores={stores}
+          warehouses={warehouses}
+          channels={channels}
+          storeId={storeId}
+          onStoreChange={setStoreId}
+          warehouseId={warehouseId}
+          onWarehouseChange={setWarehouseId}
+          channelId={channelId}
+          onChannelChange={setChannelId}
+          showStore={stores.length > 0}
+          showWarehouse
+          showChannel
+        />
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Periode</label>
           <div className="relative">
@@ -250,8 +373,8 @@ export default function LabaRugiPage() {
         <>
           {/* Summary Cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard label="Pendapatan" value={fmt(plData.pendapatan.penjualan)} sub={`${plData.pendapatan.penjualanCount} transaksi`} icon={TrendingUp} color="emerald" />
-            <SummaryCard label="HPP (Pembelian)" value={fmt(plData.hpp.pembelian)} sub={`${plData.hpp.pembelianCount} transaksi`} icon={TrendingDown} color="blue" />
+            <SummaryCard label="Pendapatan Bersih" value={fmt(plData.pendapatan.bersih)} sub={`${plData.pendapatan.penjualanCount} invoice${plData.pendapatan.retur > 0 ? ` − retur ${fmt(plData.pendapatan.retur)}` : ""}`} icon={TrendingUp} color="emerald" />
+            <SummaryCard label="HPP (Barang Terjual)" value={fmt(plData.hpp.total)} sub={`${plData.hpp.qty} pcs terjual`} icon={TrendingDown} color="blue" />
             <SummaryCard label="Total Biaya" value={fmt(plData.biayaOperasional.total)} sub={`${plData.biayaOperasional.count} pencatatan`} icon={DollarSign} color="red" />
             <SummaryCard
               label="Laba Bersih"
@@ -275,18 +398,26 @@ export default function LabaRugiPage() {
               <div className="px-6 py-4">
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-emerald-700">Pendapatan</h3>
                 <div className="space-y-2">
-                  <PLRow label="Penjualan" value={plData.pendapatan.penjualan} count={plData.pendapatan.penjualanCount} color="emerald" />
+                  <PLRow label="Penjualan (invoice terbit)" value={plData.pendapatan.penjualan} count={plData.pendapatan.penjualanCount} color="emerald" />
+                  {plData.pendapatan.retur > 0 && (
+                    <PLRow label="Retur Penjualan (nota kredit)" value={-plData.pendapatan.retur} count={plData.pendapatan.returCount} color="red" />
+                  )}
                 </div>
-                <PLTotalRow label="Total Pendapatan" value={plData.pendapatan.penjualan} color="emerald" />
+                <PLTotalRow label="Total Pendapatan Bersih" value={plData.pendapatan.bersih} color="emerald" />
               </div>
 
               {/* HPP */}
               <div className="px-6 py-4">
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-blue-700">Harga Pokok Penjualan (HPP)</h3>
                 <div className="space-y-2">
-                  <PLRow label="Pembelian Barang" value={plData.hpp.pembelian} count={plData.hpp.pembelianCount} color="blue" />
+                  <PLRow label={`Barang terjual × harga modal (${plData.hpp.qty} pcs)`} value={plData.hpp.total} color="blue" />
                 </div>
-                <PLTotalRow label="Total HPP" value={plData.hpp.pembelian} color="blue" />
+                {plData.hpp.missingCost > 0 && (
+                  <p className="mt-2 text-xs text-amber-600">
+                    {plData.hpp.missingCost} produk terjual belum punya riwayat harga beli — HPP-nya dihitung 0.
+                  </p>
+                )}
+                <PLTotalRow label="Total HPP" value={plData.hpp.total} color="blue" />
               </div>
 
               {/* Laba Kotor */}
@@ -297,9 +428,9 @@ export default function LabaRugiPage() {
                     {fmt(plData.labaKotor)}
                   </span>
                 </div>
-                {plData.pendapatan.penjualan > 0 && (
+                {plData.pendapatan.bersih > 0 && (
                   <p className="mt-0.5 text-right text-xs text-slate-500">
-                    Margin kotor: {((plData.labaKotor / plData.pendapatan.penjualan) * 100).toFixed(1)}%
+                    Margin kotor: {((plData.labaKotor / plData.pendapatan.bersih) * 100).toFixed(1)}%
                   </p>
                 )}
               </div>
@@ -319,12 +450,23 @@ export default function LabaRugiPage() {
                 <PLTotalRow label="Total Biaya Operasional" value={plData.biayaOperasional.total} color="red" />
               </div>
 
+              {/* Pendapatan Lain-lain */}
+              {plData.pendapatanLain.total > 0 && (
+                <div className="px-6 py-4">
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-emerald-700">Pendapatan Lain-lain</h3>
+                  <div className="space-y-2">
+                    <PLRow label="Fee / denda pelunasan" value={plData.pendapatanLain.total} count={plData.pendapatanLain.count} color="emerald" />
+                  </div>
+                  <PLTotalRow label="Total Pendapatan Lain-lain" value={plData.pendapatanLain.total} color="emerald" />
+                </div>
+              )}
+
               {/* Laba Bersih */}
               <div className={`px-6 py-5 ${plData.labaBersih >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-base font-bold text-slate-900">LABA / (RUGI) BERSIH</span>
-                    {plData.pendapatan.penjualan > 0 && (
+                    {plData.pendapatan.bersih > 0 && (
                       <p className="mt-0.5 text-xs text-slate-600">
                         Net Margin: {fmtPct(plData.margin)}
                       </p>

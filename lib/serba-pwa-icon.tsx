@@ -2,7 +2,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 
-type Props = { size: number };
+type Props = {
+  size: number;
+  /** Latar ikon. Favicon pakai transparan; Apple Touch wajib opaque (putih). */
+  background?: string;
+  /** Perbesar logo (sumber punya padding safe-zone adaptive icon ±38%). */
+  zoom?: number;
+};
 
 let cachedB64: string | null = null;
 
@@ -14,8 +20,13 @@ async function logoDataUrl(): Promise<string> {
 }
 
 /** Favicon / PWA / Apple Touch — dari `public/systemLogo.png` (sama dengan app mobile). */
-export async function serbaIconImageResponse({ size }: Props) {
+export async function serbaIconImageResponse({
+  size,
+  background = "transparent",
+  zoom = 1,
+}: Props) {
   const src = await logoDataUrl();
+  const imgSize = Math.round(size * zoom);
   return new ImageResponse(
     (
       <div
@@ -25,11 +36,12 @@ export async function serbaIconImageResponse({ size }: Props) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#ffffff",
+          overflow: "hidden",
+          background,
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} width={size} height={size} style={{ objectFit: "contain" }} alt="" />
+        <img src={src} width={imgSize} height={imgSize} style={{ objectFit: "contain" }} alt="" />
       </div>
     ),
     { width: size, height: size }

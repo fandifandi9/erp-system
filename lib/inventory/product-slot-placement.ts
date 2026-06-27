@@ -4,7 +4,7 @@ import { isAssignableStorageLocation } from "./warehouse-rooms";
 export type ProductWarehousePlacement = {
   slotId: string;
   slot: InvLocation;
-  source: "room_assignment" | "default_location";
+  source: "warehouse_placement" | "room_assignment" | "default_location";
 };
 
 export function resolveProductPlacementInWarehouse(
@@ -16,7 +16,7 @@ export function resolveProductPlacementInWarehouse(
 ): ProductWarehousePlacement | null {
   const assigned = byProductId[productId];
   if (assigned) {
-    return { slotId: assigned.id, slot: assigned, source: "room_assignment" };
+    return { slotId: assigned.id, slot: assigned, source: "warehouse_placement" };
   }
   if (
     defaultLocation?.id &&

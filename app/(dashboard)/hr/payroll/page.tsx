@@ -15,12 +15,16 @@ import {
   type PayrollPeriod,
 } from "@/lib/payroll";
 import { Download, Loader2, Plus, RefreshCw } from "lucide-react";
-
-function money(n: number): string {
-  return new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
-}
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function PayrollPage() {
+  const { t, locale } = useLocale();
+  const moneyFmt = useMemo(
+    () => new Intl.NumberFormat(locale === "en" ? "en-US" : "id-ID"),
+    [locale],
+  );
+  const money = (n: number) => moneyFmt.format(Math.round(n || 0));
+
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string>("");
   const [items, setItems] = useState<PayrollItemView[]>([]);
@@ -44,8 +48,7 @@ export default function PayrollPage() {
       setSettingsId(setting?.id || "");
       setSelectedPeriod((prev) => prev || (allPeriods[0]?.id ?? ""));
     } catch (e: unknown) {
-      const msg =
-        e instanceof Error ? e.message : "Gagal memuat periode atau pengaturan payroll dari server.";
+      const msg = e instanceof Error ? e.message : t("hr.payroll.loadFailed");
       setPageError(msg);
       setPeriods([]);
       setSettingsId("");
@@ -53,7 +56,7 @@ export default function PayrollPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadItems = useCallback(async () => {
     if (!selectedPeriod) {
@@ -79,7 +82,7 @@ export default function PayrollPage() {
 
   const selected = useMemo(
     () => periods.find((p) => p.id === selectedPeriod) ?? null,
-    [periods, selectedPeriod]
+    [periods, selectedPeriod],
   );
 
   const periodLocked = selected ? isPayrollPeriodLockedForRegenerate(selected.status) : false;
@@ -92,13 +95,13 @@ export default function PayrollPage() {
         acc.net += x.net_amount;
         return acc;
       },
-      { gross: 0, deduction: 0, net: 0 }
+      { gross: 0, deduction: 0, net: 0 },
     );
   }, [items]);
 
   const createPeriodNow = async () => {
     if (!settingsId) {
-      alert("Payroll settings aktif belum ditemukan.");
+      alert(t("hr.payroll.noSettingsAlert"));
       return;
     }
     setWorking(true);
@@ -129,7 +132,7 @@ export default function PayrollPage() {
     try {
       await downloadPayrollXlsxForPeriod(selectedPeriod);
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Gagal export Excel");
+      alert(e instanceof Error ? e.message : t("hr.payroll.exportFailed"));
     } finally {
       setWorking(false);
     }
@@ -158,52 +161,35 @@ export default function PayrollPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Payroll Admin</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Generate payroll dari absensi, lembur, bonus kerajinan, dan kompensasi cuti tidak diambil.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">
-          Dropdown &quot;Pilih periode&quot; hanya berisi periode yang sudah tersimpan di PocketBase. Buat periode baru
-          lewat form di bawah (setelah pengaturan payroll ada).
-        </p>
+        <h1 className="text-2xl font-bold text-slate-800">{t("hr.payroll.title")}</h1>
+        <p className="mt-1 text-sm text-slate-500">{t("hr.payroll.subtitle")}</p>
+        <p className="mt-2 text-xs text-slate-500">{t("hr.payroll.periodHint")}</p>
       </div>
 
       {pageError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-          <p className="font-semibold">Gagal memuat data</p>
-          <p className="mt-1 font-mono text-xs break-all">{pageError}</p>
-          <p className="mt-2 text-red-800">
-            Pastikan koleksi <code className="rounded bg-red-100 px-1">payroll_periods</code> dan{" "}
-            <code className="rounded bg-red-100 px-1">payroll_settings</code> ada di PocketBase, dan rule List/View
-            mengizinkan akun Anda (owner/hr).
-          </p>
+          <p className="font-semibold">{t("hr.payroll.loadErrorTitle")}</p>
+          <p className="mt-1 break-all font-mono text-xs">{pageError}</p>
+          <p className="mt-2 text-red-800">{t("hr.payroll.loadErrorHint")}</p>
         </div>
       )}
 
       {!pageError && !loading && !settingsId && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold">Pengaturan payroll belum ditemukan</p>
-          <p className="mt-1">
-            Tombol <strong>Buat periode</strong> tidak akan jalan sampai ada minimal satu record di koleksi{" "}
-            <code className="rounded bg-amber-100 px-1">payroll_settings</code> (bisa ditandai{" "}
-            <code className="rounded bg-amber-100 px-1">is_active=true</code> — kalau field itu belum ada, aplikasi
-            memakai record terbaru).
-          </p>
-          <p className="mt-2 text-amber-900">
-            Di PocketBase Admin: buat koleksi/record sesuai skema Anda, lalu refresh halaman ini.
-          </p>
+          <p className="font-semibold">{t("hr.payroll.noSettingsTitle")}</p>
+          <p className="mt-1">{t("hr.payroll.noSettingsDesc")}</p>
+          <p className="mt-2 text-amber-900">{t("hr.payroll.noSettingsHint")}</p>
         </div>
       )}
 
       {!pageError && !loading && settingsId && periods.length === 0 && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          Belum ada periode payroll. Isi <strong>period key</strong> dan tanggal di bawah, lalu klik{" "}
-          <strong>Buat periode</strong> — setelah itu periode akan muncul di dropdown.
+          {t("hr.payroll.noPeriods")}
         </div>
       )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-800">Buat periode payroll</h2>
+        <h2 className="mb-3 font-semibold text-slate-800">{t("hr.payroll.createSection")}</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <input
             value={newPeriod.period_key}
@@ -239,18 +225,18 @@ export default function PayrollPage() {
             type="button"
             onClick={() => void createPeriodNow()}
             disabled={working || !settingsId || !!pageError}
-            title={!settingsId ? "Butuh minimal satu payroll_settings di PocketBase" : undefined}
+            title={!settingsId ? t("hr.payroll.createPeriodTitle") : undefined}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
           >
             {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Buat periode
+            {t("hr.payroll.createPeriod")}
           </button>
         </div>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold text-slate-800">Periode & proses</h2>
+          <h2 className="font-semibold text-slate-800">{t("hr.payroll.processSection")}</h2>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -258,7 +244,7 @@ export default function PayrollPage() {
               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
             >
               <RefreshCw className="h-4 w-4" />
-              Refresh
+              {t("hr.payroll.refresh")}
             </button>
             <button
               type="button"
@@ -267,7 +253,7 @@ export default function PayrollPage() {
               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              Export Excel
+              {t("hr.payroll.exportExcel")}
             </button>
             <button
               type="button"
@@ -275,7 +261,7 @@ export default function PayrollPage() {
               disabled={!selectedPeriod || working || periodLocked}
               className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
             >
-              Generate item
+              {t("hr.payroll.generateItems")}
             </button>
             <button
               type="button"
@@ -283,7 +269,7 @@ export default function PayrollPage() {
               disabled={!selectedPeriod || working || periodLocked}
               className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
             >
-              Approve periode
+              {t("hr.payroll.approvePeriod")}
             </button>
             <button
               type="button"
@@ -291,7 +277,7 @@ export default function PayrollPage() {
               disabled={!selectedPeriod || working}
               className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              Tandai paid
+              {t("hr.payroll.markPaid")}
             </button>
             <button
               type="button"
@@ -299,7 +285,7 @@ export default function PayrollPage() {
               disabled={!selectedPeriod || working}
               className="rounded-lg bg-slate-700 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              Tutup periode
+              {t("hr.payroll.closePeriod")}
             </button>
           </div>
         </div>
@@ -310,7 +296,7 @@ export default function PayrollPage() {
             onChange={(e) => setSelectedPeriod(e.target.value)}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            <option value="">-- Pilih periode --</option>
+            <option value="">{t("hr.payroll.selectPeriod")}</option>
             {periods.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.period_key} ({p.status})
@@ -318,34 +304,32 @@ export default function PayrollPage() {
             ))}
           </select>
           <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-            Start: <span className="font-medium text-slate-800">{selected?.start_date || "-"}</span>
+            {t("hr.payroll.start")}{" "}
+            <span className="font-medium text-slate-800">{selected?.start_date || "-"}</span>
           </div>
           <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-            End: <span className="font-medium text-slate-800">{selected?.end_date || "-"}</span>
+            {t("hr.payroll.end")}{" "}
+            <span className="font-medium text-slate-800">{selected?.end_date || "-"}</span>
           </div>
           <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-            Status: <span className="font-medium text-slate-800">{selected?.status || "-"}</span>
+            {t("hr.payroll.status")}{" "}
+            <span className="font-medium text-slate-800">{selected?.status || "-"}</span>
           </div>
         </div>
-        {periodLocked && (
-          <p className="mt-2 text-xs text-amber-800">
-            Periode terkunci untuk generate ulang. Export Excel tetap bisa; untuk koreksi besar buat periode baru atau ubah
-            status di PocketBase Admin.
-          </p>
-        )}
+        {periodLocked && <p className="mt-2 text-xs text-amber-800">{t("hr.payroll.lockedHint")}</p>}
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Total Gross</p>
+          <p className="text-xs text-slate-500">{t("hr.payroll.totalGross")}</p>
           <p className="text-xl font-bold text-slate-900">Rp {money(totals.gross)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Total Potongan</p>
+          <p className="text-xs text-slate-500">{t("hr.payroll.totalDeduction")}</p>
           <p className="text-xl font-bold text-red-700">Rp {money(totals.deduction)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Total Net</p>
+          <p className="text-xs text-slate-500">{t("hr.payroll.totalNet")}</p>
           <p className="text-xl font-bold text-green-700">Rp {money(totals.net)}</p>
         </div>
       </div>
@@ -354,14 +338,14 @@ export default function PayrollPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-100 text-slate-700">
             <tr>
-              <th className="px-3 py-2 text-left">Karyawan</th>
-              <th className="px-3 py-2 text-right">Base</th>
-              <th className="px-3 py-2 text-right">Lembur</th>
-              <th className="px-3 py-2 text-right">Bonus Kerajinan</th>
-              <th className="px-3 py-2 text-right">Komp. Cuti</th>
-              <th className="px-3 py-2 text-right">Pot. Telat</th>
-              <th className="px-3 py-2 text-right">Pot. Alpha</th>
-              <th className="px-3 py-2 text-right">Net</th>
+              <th className="px-3 py-2 text-left">{t("hr.payroll.colEmployee")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colBase")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colOvertime")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colBonus")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colLeaveComp")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colLateDed")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colAbsenceDed")}</th>
+              <th className="px-3 py-2 text-right">{t("hr.payroll.colNet")}</th>
             </tr>
           </thead>
           <tbody>
@@ -370,14 +354,14 @@ export default function PayrollPage() {
                 <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Memuat payroll item...
+                    {t("hr.payroll.loadingItems")}
                   </span>
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
                 <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>
-                  Belum ada payroll item untuk periode ini.
+                  {t("hr.payroll.emptyItems")}
                 </td>
               </tr>
             ) : (
@@ -386,13 +370,23 @@ export default function PayrollPage() {
                   <td className="px-3 py-2">
                     <p className="font-medium text-slate-900">{x.employee_name}</p>
                     <p className="text-xs text-slate-500">
-                      {x.attendance_bonus_eligible ? "Bonus eligible" : "Bonus hangus"} | Encash{" "}
-                      {x.leave_encashment_days} hari
+                      {x.attendance_bonus_eligible
+                        ? t("hr.payroll.bonusEligible")
+                        : t("hr.payroll.bonusForfeited")}{" "}
+                      | {t("hr.payroll.encashDays", { count: x.leave_encashment_days })}
                     </p>
                     {(x.attendance_bonus_reason || x.leave_encashment_reason) && (
                       <p className="mt-1 text-[11px] text-slate-500">
-                        {x.attendance_bonus_reason && <span>Bonus: {x.attendance_bonus_reason}. </span>}
-                        {x.leave_encashment_reason && <span>Cuti: {x.leave_encashment_reason}</span>}
+                        {x.attendance_bonus_reason && (
+                          <span>
+                            {t("hr.payroll.bonusReason")} {x.attendance_bonus_reason}.{" "}
+                          </span>
+                        )}
+                        {x.leave_encashment_reason && (
+                          <span>
+                            {t("hr.payroll.leaveReason")} {x.leave_encashment_reason}
+                          </span>
+                        )}
                       </p>
                     )}
                   </td>
@@ -402,7 +396,9 @@ export default function PayrollPage() {
                   <td className="px-3 py-2 text-right">Rp {money(x.leave_encashment_amount)}</td>
                   <td className="px-3 py-2 text-right text-red-700">Rp {money(x.late_deduction)}</td>
                   <td className="px-3 py-2 text-right text-red-700">Rp {money(x.absence_deduction)}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-green-700">Rp {money(x.net_amount)}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-green-700">
+                    Rp {money(x.net_amount)}
+                  </td>
                 </tr>
               ))
             )}

@@ -19,6 +19,8 @@ type Props = {
   suffix?: string;
   disabled?: boolean;
   "data-nav"?: string;
+  "data-line"?: number;
+  "data-field"?: string;
   onEnterNext?: () => void;
 };
 
@@ -34,6 +36,8 @@ export function NumSpinnerInput({
   suffix,
   disabled,
   "data-nav": dataNav,
+  "data-line": dataLine,
+  "data-field": dataField,
   onEnterNext,
 }: Props) {
   const [text, setText] = useState(value ? fmtNum(value) : "");
@@ -82,13 +86,15 @@ export function NumSpinnerInput({
   };
 
   return (
-    <div className={`flex items-stretch ${className}`}>
+    <div className={`flex w-full min-w-0 max-w-full items-stretch ${className}`}>
       <input
         ref={inputRef}
         type="text"
         inputMode="decimal"
         disabled={disabled}
         data-nav={dataNav}
+        data-line={dataLine}
+        data-field={dataField}
         value={text}
         onFocus={() => { focused.current = true; }}
         onBlur={() => {
@@ -127,7 +133,9 @@ export function NumSpinnerInput({
           <ChevronDown className="h-3 w-3" />
         </button>
       </div>
-      {suffix ? <span className="ml-0.5 self-center text-xs text-slate-400">{suffix}</span> : null}
+      {suffix ? (
+        <span className="shrink-0 self-center pl-0.5 text-xs text-slate-400">{suffix}</span>
+      ) : null}
     </div>
   );
 }

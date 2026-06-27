@@ -1,4 +1,5 @@
 import { pb } from "@/lib/pocketbase";
+import { cancelWmsTasksForEntity } from "@/lib/wms/fulfillment";
 import { updateProductBuyPrice } from "@/lib/inventory/client";
 import {
   applyPurchaseStockOnly,
@@ -12,6 +13,10 @@ import {
   billBlockedReason,
   canCreateBillFromPurchaseOrder,
 } from "./purchase-warehouse";
+import {
+  applyReceivingDisposition,
+  resolvePurchaseStockWarehouse,
+} from "./receiving-disposition";
 import { BISNIS_COLLECTIONS, type PurchaseBill, type PurchaseOrder } from "./types";
 
 export async function fetchPurchaseBillByPurchaseOrder(
@@ -29,6 +34,7 @@ export async function fetchPurchaseBillByPurchaseOrder(
 export async function createBillFromPurchaseOrder(
   poId: string,
   userId: string,
+  opts?: { billNo?: string; skipStockPosting?: boolean },
 ): Promise<PurchaseBill> {
   const existing = await fetchPurchaseBillByPurchaseOrder(poId);
   if (existing) {
@@ -50,9 +56,11 @@ export async function createBillFromPurchaseOrder(
     throw new Error("PO tidak punya item produk");
   }
 
-  const billNo = await nextDocNo(BIZ_DOC_NUMBER_CONFIG.bill, {
-    periodDate: po.order_date,
-  });
+  const billNo =
+    opts?.billNo?.trim() ||
+    (await nextDocNo(BIZ_DOC_NUMBER_CONFIG.bill, {
+      periodDate: po.order_date,
+    }));
 
   const bill = await createPurchaseBill({
     bill_no: billNo,
@@ -62,8 +70,9 @@ export async function createBillFromPurchaseOrder(
     due_date: po.expected_date || po.order_date,
     status: "unpaid",
     subtotal: po.subtotal,
-    discount_amount: 0,
+    discount_amount: po.discount_amount ?? 0,
     tax_amount: po.tax_amount,
+    materai_amount: po.materai_amount ?? 0,
     total: po.total,
     paid_amount: 0,
     remaining: po.total,
@@ -71,21 +80,68 @@ export async function createBillFromPurchaseOrder(
     created_by: userId,
   });
 
-  if (po.warehouse) {
+  if (po.warehouse && !opts?.skipStockPosting) {
+    const stockWarehouse = await resolvePurchaseStockWarehouse(po);
     await applyPurchaseStockOnly(po.id, {
-      warehouse: po.warehouse,
+      warehouse: stockWarehouse,
       reference_no: po.po_no,
       lines: lines.map((l) => ({ product: l.product, qty: l.qty })),
     });
+    if (po.send_to_warehouse_at) {
+      await applyReceivingDisposition(po, lines, userId);
+    }
   }
 
   await Promise.all(
     lines.map((l) => updateProductBuyPrice(l.product, l.unit_cost).catch(() => {})),
   );
 
-  await updatePurchaseOrder(po.id, { status: "received" });
+  if (!opts?.skipStockPosting) {
+    await updatePurchaseOrder(po.id, { status: "received" });
+  }
 
   return bill;
+}
+
+/** Batalkan PO yang belum punya tagihan aktif (PO tidak jadi pembelian). */
+export async function cancelPurchaseOrderWithoutBill(
+  poId: string,
+  cancelReason?: string,
+): Promise<PurchaseOrder> {
+  const existing = await fetchPurchaseBillByPurchaseOrder(poId);
+  if (existing && existing.status !== "cancelled") {
+    throw new Error(
+      `PO sudah punya tagihan ${existing.bill_no}. Batalkan lewat halaman tagihan.`,
+    );
+  }
+
+  const po = await fetchPurchaseOrder(poId);
+  if (po.status === "cancelled") {
+    throw new Error("PO sudah dibatalkan.");
+  }
+
+  if (
+    po.send_to_warehouse_at &&
+    po.warehouse_process_status &&
+    po.warehouse_process_status !== "complete"
+  ) {
+    throw new Error(
+      "PO masih diproses gudang — selesaikan atau batalkan penerimaan di WMS dulu.",
+    );
+  }
+
+  const { voidStockMovementsByReference } = await import("./client");
+  await voidStockMovementsByReference(
+    {
+      referenceId: poId,
+      referenceType: "PURCHASE_ORDER",
+      referenceNo: po.po_no,
+    },
+    cancelReason?.trim() ? `Batal PO: ${cancelReason.trim()}` : `Batal PO ${po.po_no}`,
+  );
+  await cancelWmsTasksForEntity("biz_purchase_orders", poId);
+
+  return updatePurchaseOrder(poId, { status: "cancelled" });
 }
 
 export { canEditPurchaseOrderDoc as canEditPurchaseOrder } from "./order-doc-status";

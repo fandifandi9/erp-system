@@ -90,15 +90,26 @@ export const WMS_WEB_PATHS = [
   "/wms/receiving",
   "/wms/qc",
   "/wms/putaway",
+  "/wms/permintaan-barang",
   "/wms/picking",
   "/wms/validasi",
   "/wms/packing",
   "/wms/pickup",
+  "/wms/selesai",
   "/wms/requests",
   "/wms/opname",
   "/wms/audit",
   "/wms/activity",
   "/wms/checkin",
+] as const;
+
+export const CATALOG_WEB_PATHS = [
+  "/katalog",
+  "/katalog/produk",
+  "/katalog/bundling",
+  "/katalog/harga",
+  "/katalog/mapping",
+  "/katalog/akun-mp",
 ] as const;
 
 export const GUDANG_WEB_PATHS = [
@@ -121,10 +132,37 @@ export const GUDANG_WEB_PATHS = [
   "/gudang/scanner",
   "/gudang/label",
   "/gudang/stok",
+  "/gudang/sortir",
+  "/gudang/servis-rusak",
 ] as const;
 
 export const BISNIS_WEB_PATHS = [
+  "/keuangan",
+  "/keuangan/kas-bank",
+  "/keuangan/pemasukan",
+  "/keuangan/piutang",
+  "/keuangan/hutang",
+  "/keuangan/transfer",
+  "/keuangan/rekonsiliasi",
+  "/keuangan/arus-kas",
+  "/laporan",
+  "/laporan/sdm",
+  "/laporan/inventory",
+  "/laporan/gudang",
+  "/laporan/marketplace",
+  "/penjualan",
+  "/pembelian",
+  "/pengaturan",
+  "/pengaturan/perusahaan",
+  "/pengaturan/role",
+  "/pengaturan/notifikasi",
+  "/pengaturan/konteks-kerja",
+  "/aktivitas",
+  "/pengaturan/integrasi",
+  "/pengaturan/audit-log",
   "/bisnis",
+  "/pos",
+  "/bisnis/pos-registers",
   "/bisnis/penjualan",
   "/bisnis/purchase-order",
   "/bisnis/pembelian",
@@ -165,6 +203,7 @@ export const ERP_INVENTORY_CORE_PATHS = [
 
 export const INVENTORY_WEB_PATHS = [
   ...ERP_INVENTORY_CORE_PATHS,
+  ...CATALOG_WEB_PATHS,
   ...WMS_WEB_PATHS,
   ...GUDANG_WEB_PATHS,
   ...BISNIS_WEB_PATHS,

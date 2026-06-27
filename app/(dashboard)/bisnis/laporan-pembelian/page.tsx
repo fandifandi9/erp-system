@@ -6,6 +6,9 @@ import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS } from "@/lib/bisnis/types";
 import type { PurchaseOrder } from "@/lib/bisnis/types";
 import { downloadPurchaseReportXlsx } from "@/lib/export/purchase-report-xlsx";
+import { buildReportFilter, reportDimensionSummary } from "@/lib/bisnis/report-filters";
+import { useReportDimensions } from "@/lib/bisnis/use-report-dimensions";
+import { ReportDimensionFilters } from "@/components/bisnis/ReportDimensionFilters";
 
 const currency = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
@@ -14,6 +17,15 @@ type MonthData = { month: string; value: number };
 type TopItem = { name: string; count: number; total: number };
 
 export default function LaporanPembelianPage() {
+  const {
+    companyId,
+    companyName,
+    warehouses,
+    warehouseId,
+    setWarehouseId,
+    dimensions,
+  } = useReportDimensions();
+
   const [loading, setLoading] = useState(true);
   const [totalSpend, setTotalSpend] = useState(0);
   const [totalPOs, setTotalPOs] = useState(0);
@@ -25,12 +37,18 @@ export default function LaporanPembelianPage() {
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const now = new Date();
       const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0];
 
+      const filter = buildReportFilter(`order_date >= "${yearStart}" && status != "cancelled"`, {
+        companyId,
+        warehouseId,
+      });
+
       const pos = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getFullList<PurchaseOrder>({
-        filter: `order_date >= "${yearStart}" && status != "cancelled"`,
+        filter,
         expand: "supplier",
         requestKey: null,
       });
@@ -74,9 +92,11 @@ export default function LaporanPembelianPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyId, warehouseId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const dimSummary = reportDimensionSummary(dimensions, { warehouses });
 
   const handleExportExcel = async () => {
     if (purchaseOrders.length === 0) return;
@@ -121,7 +141,10 @@ export default function LaporanPembelianPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Laporan Pembelian</h1>
-          <p className="mt-1 text-sm text-slate-500">Analisis pembelian dan tren supplier</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Analisis pembelian dan tren supplier
+            {dimSummary ? ` · ${dimSummary}` : ""}
+          </p>
         </div>
         <button
           type="button"
@@ -133,6 +156,15 @@ export default function LaporanPembelianPage() {
           Export Excel
         </button>
       </div>
+
+      <ReportDimensionFilters
+        companyName={companyName}
+        warehouses={warehouses}
+        warehouseId={warehouseId}
+        onWarehouseChange={setWarehouseId}
+        showStore={false}
+        showWarehouse
+      />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((s) => (

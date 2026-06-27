@@ -17,6 +17,8 @@ import {
   isPocketBaseUnreachable,
 } from "@/lib/errors";
 import { AppVersionWatermark } from "@/components/AppVersionWatermark";
+import { WorkContextProvider } from "@/components/WorkContextProvider";
+import { LocaleProvider } from "@/components/LocaleProvider";
 
 const SESSION_VERIFY_MS = 15_000;
 
@@ -198,8 +200,9 @@ export default function DashboardLayout({
   }
 
   return (
-    <>
-      <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-slate-50 overflow-hidden">
+    <LocaleProvider>
+      <WorkContextProvider>
+        <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-slate-50 overflow-hidden">
         <Sidebar
           mobileOpen={mobileNavOpen}
           onMobileClose={() => setMobileNavOpen(false)}
@@ -218,6 +221,7 @@ export default function DashboardLayout({
         </div>
       </div>
       <AppVersionWatermark variant="dashboard" />
-    </>
+      </WorkContextProvider>
+    </LocaleProvider>
   );
 }

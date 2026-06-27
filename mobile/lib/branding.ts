@@ -7,4 +7,4 @@ export const SYSTEM_LOGO_WIDE = require("@/assets/systemLogoWide.png");
 /** Ikon persegi (launcher, splash) */
 export const SYSTEM_LOGO = require("@/assets/systemLogo.png");
 
-export const SYSTEM_LOGO_WIDE_ASPECT = 467 / 241;
+export const SYSTEM_LOGO_WIDE_ASPECT = 1024 / 158;

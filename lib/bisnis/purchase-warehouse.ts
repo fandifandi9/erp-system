@@ -8,6 +8,7 @@ import {
   fetchPurchaseOrderLines,
   updatePurchaseOrder,
 } from "./client";
+import { emitBusinessEvent } from "@/lib/tenant/activity-events";
 import type {
   PurchaseOrder,
   WarehouseProcessMode,
@@ -44,18 +45,27 @@ export function canSendPurchaseOrderToWarehouse(
 export function canCreateBillFromPurchaseOrder(
   po: Pick<
     PurchaseOrder,
-    "status" | "send_to_warehouse_at" | "warehouse_process_status"
+    | "status"
+    | "send_to_warehouse_at"
+    | "warehouse_process_status"
+    | "receiving_business_status"
   >,
 ): boolean {
   if (po.status === "cancelled" || po.status === "received") return false;
   if (!po.send_to_warehouse_at) return true;
-  return po.warehouse_process_status === "complete";
+  if (po.warehouse_process_status !== "complete") return false;
+  if (po.receiving_business_status === "awaiting_business") return false;
+  return true;
 }
 
 export function billBlockedReason(
   po: Pick<
     PurchaseOrder,
-    "status" | "send_to_warehouse_at" | "warehouse_process_status" | "warehouse"
+    | "status"
+    | "send_to_warehouse_at"
+    | "warehouse_process_status"
+    | "warehouse"
+    | "receiving_business_status"
   >,
 ): string | null {
   if (po.status === "cancelled") return "PO dibatalkan.";
@@ -63,10 +73,13 @@ export function billBlockedReason(
   if (!po.send_to_warehouse_at) return null;
   const wh = getWarehouseProcessStatus(po);
   if (wh === "hold") {
-    return "Gudang masih Hold — tunggu proses QC/putaway selesai (Komplit).";
+    return "Gudang masih Hold — tunggu proses QC selesai (Komplit).";
   }
   if (wh !== "complete") {
     return "Proses gudang belum Komplit — tagihan belum bisa dibuat.";
+  }
+  if (po.receiving_business_status === "awaiting_business") {
+    return "Stok sudah di gudang sementara — selesaikan klarifikasi penerimaan terlebih dahulu.";
   }
   return null;
 }
@@ -77,14 +90,14 @@ export function getPurchaseWmsDisplayStatus(
     PurchaseOrder,
     "send_to_warehouse_at" | "warehouse_process_status" | "status"
   >,
-): { label: string; cls: string } | null {
+): { badgeId: string; label: string; cls: string } | null {
   if (!po.send_to_warehouse_at && !po.warehouse_process_status) return null;
   if (po.status === "received") {
-    return { label: "Stok masuk", cls: "bg-emerald-100 text-emerald-800" };
+    return { badgeId: "po_received", label: "Stok masuk", cls: "bg-emerald-100 text-emerald-800" };
   }
   const wh = getWarehouseProcessStatus(po);
-  if (wh) return WAREHOUSE_PROCESS_STATUS_UI[wh];
-  return WAREHOUSE_PROCESS_STATUS_UI.pending;
+  if (wh) return { ...WAREHOUSE_PROCESS_STATUS_UI[wh], badgeId: `wh_${wh}` };
+  return { ...WAREHOUSE_PROCESS_STATUS_UI.pending, badgeId: "wh_pending" };
 }
 
 /** Admin bisnis: kirim PO ke antrean penerimaan gudang. */
@@ -124,9 +137,11 @@ export async function updateWarehouseProcess(
     surat_jalan_no?: string;
     surat_jalan_verified?: boolean;
     process_mode?: WarehouseProcessMode;
+    /** Wajib saat complete — hindari race dengan autosave QC di browser. */
+    receiving_workflow_json?: string;
   },
 ): Promise<PurchaseOrder> {
-  const po = await fetchPurchaseOrder(poId);
+  let po = await fetchPurchaseOrder(poId);
   if (!po.send_to_warehouse_at) {
     throw new Error("PO belum dikirim ke gudang.");
   }
@@ -164,17 +179,40 @@ export async function updateWarehouseProcess(
   }
 
   const poLines = await fetchPurchaseOrderLines(poId);
+
+  if (opts?.receiving_workflow_json) {
+    po = await updatePurchaseOrder(poId, {
+      receiving_workflow_json: opts.receiving_workflow_json,
+    });
+  }
+
   const wf = parseReceivingWorkflow(po.receiving_workflow_json);
   const wfErr = validateReceivingWorkflowComplete(poLines, wf);
   if (wfErr) throw new Error(wfErr);
 
-  return updatePurchaseOrder(poId, {
+  const updated = await updatePurchaseOrder(poId, {
     ...base,
     warehouse_process_status: "complete",
     warehouse_process_mode: opts?.process_mode ?? po.warehouse_process_mode ?? "direct",
     warehouse_hold_note:
       po.warehouse_process_status === "hold" ? po.warehouse_hold_note : undefined,
   });
+
+  void emitBusinessEvent({
+    event_code: "warehouse.receiving.completed",
+    module: "warehouse",
+    entity_type: "biz_purchase_orders",
+    entity_id: poId,
+    entity_label: po.po_no,
+    warehouse_id: po.warehouse,
+    payload: { ref: po.po_no, po_no: po.po_no },
+    actor_id: userId,
+  });
+
+  const { postWmsPurchaseReceivingToTransit } = await import("./purchase-receiving-finalize");
+  await postWmsPurchaseReceivingToTransit(poId, userId);
+
+  return updated;
 }
 
 export function purchaseOrdersReceivingPbFilter(): string {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
@@ -21,6 +21,8 @@ type LineForm = { product: string; qty: string };
 
 export default function NewMovementPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillFrom = searchParams.get("from") ?? "";
   const user = pb.authStore.model;
   const canPostNow = user && canPostInventoryMovement(user);
 
@@ -38,9 +40,11 @@ export default function NewMovementPage() {
     void Promise.all([fetchWarehouses(), fetchProducts()]).then(([w, p]) => {
       setWarehouses(w);
       setProducts(p.items as unknown as InvProduct[]);
-      if (w[0]) setWarehouse(w[0].id);
+      const fromId =
+        prefillFrom && w.some((wh) => wh.id === prefillFrom) ? prefillFrom : w[0]?.id;
+      if (fromId) setWarehouse(fromId);
     });
-  }, []);
+  }, [prefillFrom]);
 
   const addLine = () => setLines([...lines, { product: "", qty: "1" }]);
   const removeLine = (i: number) => setLines(lines.filter((_, idx) => idx !== i));
@@ -175,7 +179,7 @@ export default function NewMovementPage() {
                   </select>
                   <input
                     type="number"
-                    min={movementType === "ADJUSTMENT" ? undefined : 0.0001}
+                    min={0.0001}
                     step="any"
                     className="w-24 rounded-lg border px-2 py-2 text-sm"
                     value={line.qty}

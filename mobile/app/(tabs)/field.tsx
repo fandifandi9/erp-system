@@ -886,7 +886,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(238, 242, 255, 0.85)",
   },
   hrBoxLbl: { fontSize: 10, fontWeight: "700", color: PWA.indigo700 },
-  hrBoxTxt: { marginTop: 4, fontSize: 13, color: "#1e1b4b" },
+  hrBoxTxt: { marginTop: 4, fontSize: 13, color: "#1a1a1a" },
   cancelBtn: {
     marginTop: 12,
     flexDirection: "row",

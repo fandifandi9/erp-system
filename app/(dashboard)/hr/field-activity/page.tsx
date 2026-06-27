@@ -13,12 +13,14 @@ import {
 import type { FieldActivityRequest } from "@/lib/field_activity";
 import { canAccess } from "@/lib/rbac";
 import { Loader2, MapPin, Calendar, CheckCircle, XCircle, User } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 type Row = FieldActivityRequest & {
   expand?: { user?: { name?: string; email?: string } };
 };
 
 export default function HrFieldActivityPage() {
+  const { t } = useLocale();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
@@ -93,22 +95,19 @@ export default function HrFieldActivityPage() {
     r.expand?.user?.name?.trim() || r.expand?.user?.email?.trim() || r.user.slice(0, 8) + "…";
 
   if (!hasAccess) {
-    return <div className="p-6 text-red-600">Tidak punya akses.</div>;
+    return <div className="p-6 text-red-600">{t("hr.common.noAccess")}</div>;
   }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Aktivitas luar kantor</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Tinjau pengajuan staff untuk meeting, kunjungan, dinas luar kota. Yang disetujui mengizinkan absensi di luar zona
-          pada tanggal yang dicakup.
-        </p>
+        <h1 className="text-2xl font-bold text-slate-800">{t("hr.fieldActivity.title")}</h1>
+        <p className="mt-1 text-sm text-slate-500">{t("hr.fieldActivity.subtitle")}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-xs text-amber-800">Menunggu ACC</p>
+          <p className="text-xs text-amber-800">{t("hr.common.pendingAcc")}</p>
           <p className="text-2xl font-bold text-amber-900">{pendingCount}</p>
         </div>
         <select
@@ -116,8 +115,8 @@ export default function HrFieldActivityPage() {
           onChange={(e) => setFilter(e.target.value as "all" | "pending")}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
         >
-          <option value="pending">Hanya menunggu ACC</option>
-          <option value="all">Semua</option>
+          <option value="pending">{t("hr.fieldActivity.filterPending")}</option>
+          <option value="all">{t("hr.fieldActivity.filterAll")}</option>
         </select>
       </div>
 
@@ -126,7 +125,7 @@ export default function HrFieldActivityPage() {
           <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
         </div>
       ) : filtered.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 py-10 text-center text-slate-500">Tidak ada data.</p>
+        <p className="rounded-xl border border-slate-200 py-10 text-center text-slate-500">{t("hr.common.noData")}</p>
       ) : (
         <div className="space-y-4">
           {filtered.map((r) => (
@@ -151,7 +150,9 @@ export default function HrFieldActivityPage() {
                     </div>
                     <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
                     {r.status === "rejected" && r.rejection_reason && (
-                      <p className="mt-2 text-xs text-red-800">Penolakan: {r.rejection_reason}</p>
+                      <p className="mt-2 text-xs text-red-800">
+                        {t("hr.common.rejection")}: {r.rejection_reason}
+                      </p>
                     )}
                     {formatFieldActivityHrSummary(r) && (
                       <p className="mt-1 text-xs text-slate-500">{formatFieldActivityHrSummary(r)}</p>
@@ -167,7 +168,7 @@ export default function HrFieldActivityPage() {
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
                     >
                       {acting === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                      Setujui
+                      {t("hr.common.approve")}
                     </button>
                     <button
                       type="button"
@@ -179,7 +180,7 @@ export default function HrFieldActivityPage() {
                       className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       <XCircle className="h-4 w-4" />
-                      Tolak
+                      {t("hr.common.reject")}
                     </button>
                   </div>
                 )}
@@ -192,17 +193,17 @@ export default function HrFieldActivityPage() {
       {rejectId && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-            <h2 className="font-semibold text-slate-800">Tolak pengajuan</h2>
+            <h2 className="font-semibold text-slate-800">{t("hr.common.rejectTitle")}</h2>
             <textarea
               value={rejectDraft}
               onChange={(e) => setRejectDraft(e.target.value)}
               rows={4}
               className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Alasan untuk staff (min. 5 karakter)"
+              placeholder={t("hr.common.rejectPlaceholder")}
             />
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setRejectId(null)} className="rounded-xl border px-4 py-2 text-sm">
-                Batal
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -210,7 +211,7 @@ export default function HrFieldActivityPage() {
                 onClick={() => void runReject()}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                Kirim
+                {t("hr.common.send")}
               </button>
             </div>
           </div>
@@ -218,7 +219,8 @@ export default function HrFieldActivityPage() {
       )}
 
       <p className="text-xs text-slate-400">
-        Data dari koleksi <code className="rounded bg-slate-100 px-1 text-slate-600">{FIELD_ACTIVITY_COLLECTION}</code>.
+        {t("hr.common.collectionNote")}{" "}
+        <code className="rounded bg-slate-100 px-1 text-slate-600">{FIELD_ACTIVITY_COLLECTION}</code>.
       </p>
     </div>
   );

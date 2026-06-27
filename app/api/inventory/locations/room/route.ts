@@ -60,19 +60,19 @@ export async function POST(req: Request) {
     const wh = await pb.collection(INV_COLLECTIONS.warehouses).getOne(body.warehouse, {
       fields: "code",
     });
-    const whCode = (wh as { code: string }).code;
+    const whCode = (wh as unknown as { code: string }).code;
     const existing = await pb.collection(INV_COLLECTIONS.locations).getFullList({
       filter: `warehouse = "${body.warehouse}" && is_active = true`,
       fields: "code",
     });
-    const existingCodes = existing.map((r) => (r as { code: string }).code);
+    const existingCodes = existing.map((r) => (r as unknown as { code: string }).code);
 
     let code: string;
     if (body.id) {
       const cur = await pb.collection(INV_COLLECTIONS.locations).getOne(body.id, {
         fields: "code,name",
       });
-      code = (cur as { code: string }).code;
+      code = (cur as unknown as { code: string }).code;
     } else {
       if (!roomName) {
         throw new InventoryApiError("Nama ruangan wajib.", 400);

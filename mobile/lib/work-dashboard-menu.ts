@@ -86,8 +86,8 @@ function getInventoryNativeTiles(user: AuthUser): WorkDashboardTile[] {
       "Cek stok",
       "Scan barcode produk",
       "barcode",
-      "#e0e7ff",
-      "#4338ca",
+      "#fef3c7",
+      "#000000",
       "/inventory/product-scan",
       "/inventory"
     ),
@@ -124,6 +124,22 @@ function getInventoryNativeTiles(user: AuthUser): WorkDashboardTile[] {
   ];
 }
 
+function getWmsNativeTiles(user: AuthUser): WorkDashboardTile[] {
+  if (!canAccessInventory(user)) return [];
+  return [
+    nativeTile(
+      "wms-ws-scan",
+      "Scan meja validasi",
+      "QR meja · CCTV",
+      "desktop",
+      "#cffafe",
+      "#0e7490",
+      "/wms/workstation-scan",
+      "/wms"
+    ),
+  ];
+}
+
 /** Antrean HR di HP — respons ke pengajuan staf. */
 function getHrNativeWorkTiles(user: AuthUser): WorkDashboardTile[] {
   if (!canAccessHrNativeModule(user)) return [];
@@ -143,8 +159,8 @@ function getHrNativeWorkTiles(user: AuthUser): WorkDashboardTile[] {
       "Lembur",
       "ACC pengajuan & penunjukan lembur",
       "moon",
-      "#e0e7ff",
-      "#4338ca",
+      "#fef3c7",
+      "#000000",
       "/hr/overtime-queue",
       "/hr/overtime"
     ),
@@ -170,13 +186,15 @@ export function getWorkDashboardSections(
   const personal = PERSONAL_TILES.filter((t) => !t.accessPath || canAccess(user, t.accessPath));
 
   const inventory = getInventoryNativeTiles(user);
+  const wms = getWmsNativeTiles(user);
+  const ops = [...wms, ...inventory];
 
   if (isHrOrOwnerAccount(user)) {
-    return { personal, workNative: [...getHrNativeWorkTiles(user), ...inventory] };
+    return { personal, workNative: [...getHrNativeWorkTiles(user), ...ops] };
   }
 
-  if (inventory.length > 0) {
-    return { personal, workNative: inventory };
+  if (ops.length > 0) {
+    return { personal, workNative: ops };
   }
 
   return empty;

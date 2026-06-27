@@ -5,10 +5,30 @@ import {
   Wallet, Plus, Search, X, Loader2, ChevronLeft, ChevronRight,
   AlertCircle, Trash2, TrendingDown, Calendar, Receipt,
 } from "lucide-react";
-import { fetchExpenses, createExpense, deleteExpense, fetchAllSuppliers, fetchPaymentMethods } from "@/lib/bisnis/client";
+import {
+  fetchExpenses,
+  createExpense,
+  deleteExpense,
+  fetchAllSuppliers,
+  fetchPaymentMethods,
+  fetchStores,
+} from "@/lib/bisnis/client";
+import { fetchCashAccounts } from "@/lib/bisnis/cash-client";
+import { pickPrimaryCashAccountId } from "@/lib/bisnis/entity-modules";
+import { useWorkContext } from "@/components/WorkContextProvider";
+import { warehousesForStore } from "@/lib/tenant/warehouses-for-store";
 import { assertDocNoAvailable, BIZ_DOC_NUMBER_CONFIG, nextDocNoFor } from "@/lib/bisnis/doc-number";
 import { pb } from "@/lib/pocketbase";
-import type { Expense, ExpenseCategory, Supplier, PaymentMethodSetting } from "@/lib/bisnis/types";
+import { INV_COLLECTIONS } from "@/lib/inventory/types";
+import type {
+  CashAccount,
+  Expense,
+  ExpenseCategory,
+  ExpenseStatus,
+  Store,
+  Supplier,
+  PaymentMethodSetting,
+} from "@/lib/bisnis/types";
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(v);
@@ -20,6 +40,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   utilitas: "Utilitas (Listrik/Air/Internet)",
   transportasi: "Transportasi",
   marketing: "Marketing & Promosi",
+  marketplace: "Biaya Marketplace",
   perlengkapan: "Perlengkapan & ATK",
   penyusutan: "Penyusutan Aset",
   pajak: "Pajak",
@@ -34,6 +55,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   utilitas: "bg-cyan-100 text-cyan-700",
   transportasi: "bg-green-100 text-green-700",
   marketing: "bg-pink-100 text-pink-700",
+  marketplace: "bg-violet-100 text-violet-700",
   perlengkapan: "bg-slate-100 text-slate-700",
   penyusutan: "bg-orange-100 text-orange-700",
   pajak: "bg-red-100 text-red-700",
@@ -43,7 +65,16 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
 
 const PER_PAGE = 20;
 
+const STATUS_LABELS: Record<ExpenseStatus, string> = {
+  draft: "Draft",
+  approved: "Disetujui",
+  paid: "Sudah Dibayar",
+  cancelled: "Dibatalkan",
+};
+
 export default function BiayaPage() {
+  const { context: workCtx } = useWorkContext();
+  const companyId = workCtx?.companyId;
   const [data, setData] = useState<Expense[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [page, setPage] = useState(1);
@@ -55,6 +86,9 @@ export default function BiayaPage() {
   const [showModal, setShowModal] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodSetting[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [warehouses, setWarehouses] = useState<{ id: string; name: string; code: string; store?: string }[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -69,7 +103,15 @@ export default function BiayaPage() {
     supplier: "",
     reference_no: "",
     notes: "",
+    store: "",
+    warehouse: "",
+    cash_account: "",
+    status: "paid" as ExpenseStatus,
   });
+
+  const scopedWarehouses = form.store
+    ? warehousesForStore(form.store, stores, warehouses)
+    : warehouses;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -84,7 +126,8 @@ export default function BiayaPage() {
         perPage: PER_PAGE,
         sort: "-expense_date,-created",
         filter: filters.join(" && "),
-        expand: "supplier,created_by",
+        expand: "supplier,created_by,store,warehouse,cash_account",
+        companyId,
       });
       setData(result.items);
       setTotalItems(result.totalItems);
@@ -93,7 +136,7 @@ export default function BiayaPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, categoryFilter]);
+  }, [page, search, categoryFilter, companyId]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { setPage(1); }, [search, categoryFilter]);
@@ -105,6 +148,14 @@ export default function BiayaPage() {
     } catch {
       expenseNo = "";
     }
+    const defaultStore =
+      (workCtx?.storeId && stores.some((s) => s.id === workCtx.storeId) ? workCtx.storeId : "") ||
+      stores[0]?.id ||
+      "";
+    const defaultWh =
+      workCtx?.warehouseId ||
+      stores.find((s) => s.id === defaultStore)?.default_warehouse ||
+      "";
     setForm({
       expense_no: expenseNo,
       category: "operasional",
@@ -116,24 +167,67 @@ export default function BiayaPage() {
       supplier: "",
       reference_no: "",
       notes: "",
+      store: defaultStore,
+      warehouse: defaultWh,
+      cash_account: pickPrimaryCashAccountId(cashAccounts),
+      status: "paid",
     });
     setFormError(null);
     setShowModal(true);
     try {
-      const [s, pm] = await Promise.all([
+      const [s, pm, st, ca, wh] = await Promise.all([
         fetchAllSuppliers(),
         fetchPaymentMethods().catch(() => [] as PaymentMethodSetting[]),
+        fetchStores(false, companyId),
+        fetchCashAccounts(true, companyId).catch(() => [] as CashAccount[]),
+        pb.collection(INV_COLLECTIONS.warehouses)
+          .getFullList<{ id: string; name: string; code: string; store?: string; company?: string }>({
+            filter: companyId ? `company = "${companyId}"` : undefined,
+            sort: "name",
+            requestKey: null,
+          })
+          .catch(() => []),
       ]);
       setSuppliers(s);
       setPaymentMethods(pm);
+      setStores(st);
+      setCashAccounts(ca);
+      setWarehouses(wh);
+      setForm((f) => ({ ...f, cash_account: pickPrimaryCashAccountId(ca) }));
     } catch {
       setSuppliers([]);
     }
   };
 
+  useEffect(() => {
+    Promise.all([
+      fetchStores(false, companyId).catch(() => [] as Store[]),
+      fetchCashAccounts(true, companyId).catch(() => [] as CashAccount[]),
+      pb.collection(INV_COLLECTIONS.warehouses)
+        .getFullList<{ id: string; name: string; code: string; store?: string }>({
+          filter: companyId ? `company = "${companyId}"` : undefined,
+          sort: "name",
+          requestKey: null,
+        })
+        .catch(() => []),
+    ]).then(([st, ca, wh]) => {
+      setStores(st);
+      setCashAccounts(ca);
+      setWarehouses(wh);
+    });
+  }, [companyId]);
+
   const handleCreate = async () => {
     if (!form.description || form.amount <= 0 || !form.expense_date) {
       setFormError("Deskripsi, jumlah, dan tanggal wajib diisi");
+      return;
+    }
+    if (!form.store) {
+      setFormError("Toko wajib dipilih");
+      return;
+    }
+    if (form.status === "paid" && !form.cash_account) {
+      setFormError("Akun kas/bank wajib dipilih untuk biaya yang sudah dibayar");
       return;
     }
     const expenseNo = form.expense_no.trim();
@@ -157,6 +251,10 @@ export default function BiayaPage() {
         supplier: form.supplier || undefined,
         reference_no: form.reference_no || undefined,
         notes: form.notes || undefined,
+        store: form.store,
+        warehouse: form.warehouse || undefined,
+        cash_account: form.cash_account || undefined,
+        status: form.status,
         created_by: pb.authStore.model?.id as string,
       });
       setShowModal(false);
@@ -208,7 +306,11 @@ export default function BiayaPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Pencatatan Biaya</h1>
-            <p className="text-sm text-slate-500">Catat dan kelola pengeluaran bisnis Anda</p>
+            <p className="text-sm text-slate-500">
+              {workCtx?.companyName
+                ? `Biaya operasional — ${workCtx.companyName}`
+                : "Catat dan kelola pengeluaran bisnis Anda"}
+            </p>
           </div>
         </div>
         <button type="button" onClick={openModal}
@@ -270,14 +372,16 @@ export default function BiayaPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Tanggal</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Kategori</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Deskripsi</th>
+                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 lg:table-cell">Toko</th>
                     <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 md:table-cell">Supplier</th>
+                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 md:table-cell">Status</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Jumlah</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 sm:px-6">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.length === 0 ? (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-400">Belum ada pencatatan biaya.</td></tr>
+                    <tr><td colSpan={9} className="px-6 py-12 text-center text-sm text-slate-400">Belum ada pencatatan biaya.</td></tr>
                   ) : (
                     data.map((e) => (
                       <tr key={e.id} className="transition hover:bg-slate-50/50">
@@ -293,8 +397,16 @@ export default function BiayaPage() {
                           </span>
                         </td>
                         <td className="max-w-[200px] truncate px-4 py-3.5 text-slate-800">{e.description}</td>
+                        <td className="hidden whitespace-nowrap px-4 py-3.5 text-slate-500 lg:table-cell">
+                          {e.expand?.store?.name ?? "—"}
+                        </td>
                         <td className="hidden whitespace-nowrap px-4 py-3.5 text-slate-500 md:table-cell">
                           {e.expand?.supplier?.name ?? "—"}
+                        </td>
+                        <td className="hidden whitespace-nowrap px-4 py-3.5 md:table-cell">
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            {STATUS_LABELS[e.status] ?? e.status}
+                          </span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3.5 text-right font-semibold text-red-700">{fmt(e.total ?? 0)}</td>
                         <td className="whitespace-nowrap px-4 py-3.5 text-right sm:px-6">
@@ -372,6 +484,82 @@ export default function BiayaPage() {
                   </select>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Toko <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      required
+                      value={form.store}
+                      onChange={(e) => {
+                        const storeId = e.target.value;
+                        const st = stores.find((s) => s.id === storeId);
+                        setForm((f) => ({
+                          ...f,
+                          store: storeId,
+                          warehouse: st?.default_warehouse || "",
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+                    >
+                      <option value="">Pilih toko</option>
+                      {stores.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Gudang</label>
+                    <select
+                      value={form.warehouse}
+                      onChange={(e) => setForm((f) => ({ ...f, warehouse: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+                    >
+                      <option value="">— Default toko —</option>
+                      {scopedWarehouses.map((w) => (
+                        <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+                    <select
+                      value={form.status}
+                      onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as ExpenseStatus }))}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+                    >
+                      <option value="paid">Sudah Dibayar (kurangi kas)</option>
+                      <option value="approved">Disetujui (tanpa kas)</option>
+                      <option value="draft">Draft</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Akun Kas/Bank {form.status === "paid" && <span className="text-red-500">*</span>}
+                    </label>
+                    <select
+                      value={form.cash_account}
+                      onChange={(e) => setForm((f) => ({ ...f, cash_account: e.target.value }))}
+                      required={form.status === "paid"}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+                    >
+                      <option value="">Pilih akun</option>
+                      {cashAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {form.status === "paid" && cashAccounts.length === 0 && (
+                  <p className="text-xs text-amber-700">
+                    Belum ada akun kas untuk entitas ini. Tambahkan di Keuangan → Kas & Bank.
+                  </p>
+                )}
+
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Deskripsi <span className="text-red-500">*</span></label>
                   <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -443,7 +631,10 @@ export default function BiayaPage() {
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 Batal
               </button>
-              <button type="button" onClick={handleCreate} disabled={submitting}
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={submitting || (form.status === "paid" && cashAccounts.length === 0)}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50">
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Simpan Biaya

@@ -61,6 +61,24 @@ const TARGETS = [
     values: ["draft", "confirmed", "processing", "shipped", "delivered", "cancelled"],
   },
   {
+    collection: "biz_sales_orders",
+    field: "payment_status",
+    values: ["unpaid", "partial", "paid", "refunded"],
+  },
+  {
+    collection: "biz_sales_orders",
+    field: "payment_method",
+    values: [
+      "cash",
+      "bank_transfer",
+      "credit_card",
+      "debit_card",
+      "e_wallet",
+      "cod",
+      "other",
+    ],
+  },
+  {
     collection: "biz_purchase_orders",
     field: "status",
     values: ["draft", "sent", "confirmed", "partial_received", "received", "cancelled"],

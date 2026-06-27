@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     borderColor: PWA.border,
     backgroundColor: PWA.surface,
   },
-  whOn: { borderColor: PWA.indigo, backgroundColor: "#eef2ff" },
+  whOn: { borderColor: PWA.indigo, backgroundColor: "#fffbeb" },
   whTxt: { fontSize: 14, color: PWA.text },
   camera: { height: 200, borderRadius: 12, overflow: "hidden" },
   line: { fontSize: 14, color: PWA.text },

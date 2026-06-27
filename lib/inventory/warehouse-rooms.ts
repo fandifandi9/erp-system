@@ -2,7 +2,7 @@ import type { InvLocation } from "./types";
 import { parseLayoutFromName } from "./rack-layout";
 import { slugCodePart } from "./location-codes";
 
-type RoomLoc = Pick<InvLocation, "code" | "name" | "zone_type" | "level" | "bin" | "aisle">;
+export type RoomLoc = Pick<InvLocation, "code" | "name" | "zone_type" | "level" | "bin" | "aisle">;
 
 /** Prefix kode ruangan tanpa strip di tengah (WH-009 → WH009). */
 export function compactWarehouseCodePrefix(warehouseCode: string): string {

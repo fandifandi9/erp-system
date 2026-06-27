@@ -8,7 +8,7 @@ export default function GudangLabelRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/gudang/barcode");
+    router.replace("/wms/barcode");
   }, [router]);
 
   return null;

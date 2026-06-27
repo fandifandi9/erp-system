@@ -237,6 +237,32 @@
 
 ---
 
+## 10. Collection `biz_couriers` (master ekspedisi / courier)
+
+| Field name | Type | Setting |
+|------------|------|---------|
+| `code` | Text | Opsional · Unique |
+| `name` | Text | Required · contoh: `JNE` |
+| `logo` | File | Opsional · max 1 gambar |
+| `is_active` | Bool | default true |
+| `notes` | Text | — |
+
+---
+
+## 11. Collection `biz_courier_services` (layanan per ekspedisi)
+
+| Field name | Type | Setting |
+|------------|------|---------|
+| `courier` | Relation → `biz_couriers` | Max 1 · Required |
+| `code` | Text | — |
+| `name` | Text | Required · `Reguler`, `YES`, `Cargo` |
+| `sort_order` | Number | default 0 |
+| `is_active` | Bool | default true |
+
+Setelah collection dibuat + API rules, buka **Bisnis → Ekspedisi** (`/bisnis/ekspedisi`) → tombol **Isi data contoh**.
+
+---
+
 ## Checklist singkat
 
 - [ ] 1–5 wajib (template = import)

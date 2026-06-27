@@ -33,21 +33,21 @@ export default function WmsQcPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Quality Control" subtitle="Inspeksi di zona QC sebelum putaway." module="wms">
+      <InventoryShell title="Quality Control" subtitle="Inspeksi barang setelah penerimaan — sebelum stok tersedia." module="wms">
         <div className="grid gap-4 sm:grid-cols-2">
           <WmsNavTile
-            href="/wms/receiving"
+            href="/gudang/penerimaan"
             label="Dari penerimaan"
             description="Lanjutkan QC setelah goods receipt"
             icon={ShieldCheck}
             accent="amber"
           />
           <WmsNavTile
-            href="/wms/putaway"
-            label="Lanjut putaway"
-            description="Setelah lulus QC"
+            href="/gudang/stok"
+            label="Lihat stok gudang"
+            description="Setelah QC lulus, stok langsung masuk gudang"
             icon={ShieldCheck}
-            accent="indigo"
+            accent="emerald"
           />
         </div>
 

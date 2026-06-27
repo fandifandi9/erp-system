@@ -61,9 +61,9 @@ export function purchaseBillWmsFilterToPb(filter: string): string | undefined {
 export function getWmsRouteBadge(
   order: WmsOrderFields | null | undefined,
   kind: "sales" | "purchase",
-): { label: string; cls: string } {
+): { badgeId: string; label: string; cls: string } {
   if (!order) {
-    return { label: "—", cls: "bg-slate-100 text-slate-400" };
+    return { badgeId: "none", label: "—", cls: "bg-slate-100 text-slate-400" };
   }
   const ui =
     kind === "sales"
@@ -73,9 +73,9 @@ export function getWmsRouteBadge(
     const hasWarehouse =
       "warehouse" in order && !!(order as SalesOrder | PurchaseOrder).warehouse;
     if (hasWarehouse) {
-      return { label: "Belum ke antrean", cls: "bg-amber-50 text-amber-800" };
+      return { badgeId: "not_queued", label: "Belum ke antrean", cls: "bg-amber-50 text-amber-800" };
     }
-    return { label: "Gudang belum dipilih", cls: "bg-slate-100 text-slate-500" };
+    return { badgeId: "wh_not_selected", label: "Gudang belum dipilih", cls: "bg-slate-100 text-slate-500" };
   }
   return ui;
 }

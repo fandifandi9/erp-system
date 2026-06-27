@@ -40,6 +40,7 @@ export default function RootLayout() {
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="hr" options={{ headerShown: false }} />
                   <Stack.Screen name="inventory" options={{ headerShown: false }} />
+                  <Stack.Screen name="wms" options={{ headerShown: false }} />
                 </Stack>
               </OfflineQueueProvider>
             </AppErrorBoundary>

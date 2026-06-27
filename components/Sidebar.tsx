@@ -16,14 +16,29 @@ import { SidebarAccordionSection } from "@/components/SidebarAccordionSection";
 import { SidebarNavLinks } from "@/components/SidebarNavLinks";
 import {
   GUDANG_NAV_ITEMS,
-  BISNIS_NAV_MAIN,
-  BISNIS_NAV_REFERENCE,
-  STAFF_NAV_ITEMS,
-  isAnyNavItemActive,
+  KATALOG_NAV_ITEMS,
+  PENJUALAN_NAV_ITEMS,
+  PEMBELIAN_NAV_ITEMS,
+  POS_NAV_ITEMS,
+  SDM_NAV_ITEMS,
+  KEUANGAN_NAV_ITEMS,
+  LAPORAN_NAV_ITEMS,
+  LAPORAN_NAV_ITEMS_HR,
+  PENGATURAN_NAV_ITEMS,
+  PENGATURAN_NAV_ITEMS_HR,
   isGudangSidebarPath,
-  isBisnisSidebarPath,
-  isStaffSidebarPath,
+  isKatalogSidebarPath,
+  isPenjualanSidebarPath,
+  isPembelianSidebarPath,
+  isPosSidebarPath,
+  isSdmSidebarPath,
+  isKeuanganSidebarPath,
+  isLaporanSidebarPath,
+  isPengaturanSidebarPath,
 } from "@/lib/wms/navigation";
+import { canAccessCatalog } from "@/lib/catalog/catalog-access";
+import { useLocale } from "@/components/LocaleProvider";
+import { translateNavSection } from "@/lib/i18n/nav-catalog";
 
 type SidebarProps = {
   mobileOpen?: boolean;
@@ -45,10 +60,25 @@ function isBerandaPath(pathname: string, dashboardRoute: string | null): boolean
   return false;
 }
 
+function isOnModuleRoute(pathname: string): boolean {
+  return (
+    isKatalogSidebarPath(pathname) ||
+    isPenjualanSidebarPath(pathname) ||
+    isPembelianSidebarPath(pathname) ||
+    isGudangSidebarPath(pathname) ||
+    isPosSidebarPath(pathname) ||
+    isSdmSidebarPath(pathname) ||
+    isKeuanganSidebarPath(pathname) ||
+    isLaporanSidebarPath(pathname) ||
+    isPengaturanSidebarPath(pathname)
+  );
+}
+
 export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
 }: SidebarProps) {
+  const { locale } = useLocale();
   const [user, setUser] = useState<Record<string, unknown> | null>(null);
   const pathname = usePathname();
 
@@ -62,13 +92,11 @@ export default function Sidebar({
   const canInventory = canAccessInventory(user);
   const canGudang = canInventory && canAccessWms(user);
   const canBisnis = canInventory && canAccessErpInventoryCore(user) && !isWarehouseStaffOnly(user);
+  const canKatalog = canAccessCatalog(user);
   const dashboardRoute = getOperationalDashboardRoute(user);
 
-  const onGudangRoute = isGudangSidebarPath(pathname);
-  const onBisnisRoute = isBisnisSidebarPath(pathname);
-  const onStaffRoute = isStaffSidebarPath(pathname);
   const onBerandaRoute =
-    isBerandaPath(pathname, dashboardRoute) && !onGudangRoute && !onBisnisRoute && !onStaffRoute;
+    isBerandaPath(pathname, dashboardRoute) && !isOnModuleRoute(pathname);
 
   const subMenuClass =
     "block rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition";
@@ -79,12 +107,18 @@ export default function Sidebar({
     }
   };
 
+  const renderSection = (sectionKey: string, title: string, items: typeof KATALOG_NAV_ITEMS, active: boolean) => (
+    <SidebarAccordionSection title={translateNavSection(locale, sectionKey, title)} active={active}>
+      <SidebarNavLinks items={items} subMenuClass={subMenuClass} onNavigate={closeIfMobile} />
+    </SidebarAccordionSection>
+  );
+
   return (
     <div className="w-0 shrink-0 overflow-visible lg:w-64 lg:shrink-0">
       {mobileOpen ? (
         <button
           type="button"
-          aria-label="Tutup menu"
+          aria-label={translateNavSection(locale, "closeMenu", "Tutup menu")}
           className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-[2px] lg:hidden"
           onClick={() => onMobileClose?.()}
         />
@@ -107,55 +141,41 @@ export default function Sidebar({
               className={
                 "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition " +
                 (onBerandaRoute
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-amber-400 text-slate-900"
                   : "text-slate-200 hover:bg-slate-800 hover:text-white")
               }
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" strokeWidth={2} />
-              Beranda
+              {translateNavSection(locale, "dashboard", "Dashboard")}
             </Link>
           ) : null}
 
-          {canGudang ? (
-            <SidebarAccordionSection title="Manajemen Gudang" active={onGudangRoute}>
-              <SidebarNavLinks
-                items={GUDANG_NAV_ITEMS}
-                subMenuClass={subMenuClass}
-                onNavigate={closeIfMobile}
-              />
-            </SidebarAccordionSection>
-          ) : null}
+          {canKatalog ? renderSection("katalog", "Katalog Produk", KATALOG_NAV_ITEMS, isKatalogSidebarPath(pathname)) : null}
 
           {canBisnis ? (
-            <SidebarAccordionSection title="Manajemen Bisnis" active={onBisnisRoute}>
-              <SidebarNavLinks
-                items={BISNIS_NAV_MAIN}
-                subMenuClass={subMenuClass}
-                onNavigate={closeIfMobile}
-              />
-              <SidebarAccordionSection
-                title="Master & Pembayaran"
-                compact
-                active={isAnyNavItemActive(pathname, BISNIS_NAV_REFERENCE)}
-                className="mt-1 border-t border-slate-800/50"
-              >
-                <SidebarNavLinks
-                  items={BISNIS_NAV_REFERENCE}
-                  subMenuClass={subMenuClass}
-                  onNavigate={closeIfMobile}
-                />
-              </SidebarAccordionSection>
-            </SidebarAccordionSection>
+            <>
+              {renderSection("penjualan", "Penjualan", PENJUALAN_NAV_ITEMS, isPenjualanSidebarPath(pathname))}
+              {renderSection("pembelian", "Pembelian", PEMBELIAN_NAV_ITEMS, isPembelianSidebarPath(pathname))}
+            </>
           ) : null}
 
-          {canManageHr ? (
-            <SidebarAccordionSection title="Manajemen Staff" active={onStaffRoute}>
-              <SidebarNavLinks
-                items={STAFF_NAV_ITEMS}
-                subMenuClass={subMenuClass}
-                onNavigate={closeIfMobile}
-              />
-            </SidebarAccordionSection>
+          {canGudang ? renderSection("gudang", "Manajemen Gudang", GUDANG_NAV_ITEMS, isGudangSidebarPath(pathname)) : null}
+
+          {canBisnis ? renderSection("pos", "POS", POS_NAV_ITEMS, isPosSidebarPath(pathname)) : null}
+
+          {canManageHr ? renderSection("sdm", "SDM", SDM_NAV_ITEMS, isSdmSidebarPath(pathname)) : null}
+
+          {canBisnis ? (
+            <>
+              {renderSection("keuangan", "Keuangan", KEUANGAN_NAV_ITEMS, isKeuanganSidebarPath(pathname))}
+              {renderSection("laporan", "Laporan", LAPORAN_NAV_ITEMS, isLaporanSidebarPath(pathname))}
+              {renderSection("pengaturan", "Pengaturan", PENGATURAN_NAV_ITEMS, isPengaturanSidebarPath(pathname))}
+            </>
+          ) : canManageHr ? (
+            <>
+              {renderSection("laporan", "Laporan", LAPORAN_NAV_ITEMS_HR, isLaporanSidebarPath(pathname))}
+              {renderSection("pengaturan", "Pengaturan", PENGATURAN_NAV_ITEMS_HR, isPengaturanSidebarPath(pathname))}
+            </>
           ) : null}
         </nav>
 

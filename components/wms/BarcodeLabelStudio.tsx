@@ -1,17 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
+  BARCODE_SYMBOLOGY_OPTIONS,
   buildJob,
   downloadBarcodeLabels,
-  generateCode128DataUrl,
-  generateQrDataUrl,
+  generateBarcodeDataUrl,
   isCode128Safe,
+  isItfSafe,
+  isUpcASafe,
   normalizeEncodeValue,
+  parseSymbologyParam,
   printBarcodeLabels,
   productToLabelItem,
   SHEET_PAPERS,
   sheetGrid,
+  symbologyLabel,
   type BarcodeLabelItem,
   type BarcodeSymbology,
   type DownloadFormat,
@@ -50,6 +55,7 @@ const defaultManual = () => ({
 });
 
 export function BarcodeLabelStudio() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("product");
   const [q, setQ] = useState("");
   const [products, setProducts] = useState<InvProduct[]>([]);
@@ -71,6 +77,22 @@ export function BarcodeLabelStudio() {
   const [previewImg, setPreviewImg] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const pkg = searchParams.get("pkg")?.trim();
+    if (!pkg) return;
+    const order = searchParams.get("order")?.trim();
+    const sym = searchParams.get("sym");
+    setTab("manual");
+    setManual({
+      encodeValue: pkg,
+      title: order ?? "Package Code",
+    });
+    const parsedSym = parseSymbologyParam(sym);
+    setSymbology(parsedSym);
+    setShowTitle(true);
+    setShowCode(parsedSym !== "qr");
+  }, [searchParams]);
 
   const sizeOptions = useMemo(
     () => mergeLabelSizeOptions(customSizes),
@@ -142,12 +164,9 @@ export function BarcodeLabelStudio() {
     void (async () => {
       try {
         const v = normalizeEncodeValue(activeItem.encodeValue);
-        const img =
-          symbology === "code128"
-            ? await generateCode128DataUrl(v, {
-                barHeight: labelDims.heightMm <= 20 ? 32 : 40,
-              })
-            : await generateQrDataUrl(v, labelDims.heightMm <= 20 ? 120 : 160);
+        const img = await generateBarcodeDataUrl(v, symbology, {
+          barHeight: symbology === "qr" ? (labelDims.heightMm <= 20 ? 120 : 160) : labelDims.heightMm <= 20 ? 32 : 40,
+        });
         if (!cancelled) setPreviewImg(img);
       } catch {
         if (!cancelled) setPreviewImg("");
@@ -161,9 +180,15 @@ export function BarcodeLabelStudio() {
   }, [activeItem?.encodeValue, symbology, labelDims]);
 
   const validateItem = (item: BarcodeLabelItem) => {
-    normalizeEncodeValue(item.encodeValue);
-    if (symbology === "code128" && !isCode128Safe(item.encodeValue)) {
+    const v = normalizeEncodeValue(item.encodeValue);
+    if (symbology === "code128" && !isCode128Safe(v)) {
       throw new Error("Code128: gunakan huruf/angka standar tanpa aksen.");
+    }
+    if (symbology === "upca" && !isUpcASafe(v)) {
+      throw new Error("UPC-A harus tepat 12 digit angka.");
+    }
+    if (symbology === "itf" && !isItfSafe(v)) {
+      throw new Error("ITF: angka saja, panjang genap (mis. 10 atau 14 digit).");
     }
   };
 
@@ -546,26 +571,24 @@ export function BarcodeLabelStudio() {
 
             <fieldset>
               <legend className="mb-2 text-xs font-medium text-slate-500">Tipe kode (pilih satu)</legend>
-              <label className="mr-4 inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="sym"
-                  checked={symbology === "code128"}
-                  onChange={() => setSymbology("code128")}
-                />
-                <Barcode className="h-4 w-4" />
-                Code128
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="sym"
-                  checked={symbology === "qr"}
-                  onChange={() => setSymbology("qr")}
-                />
-                <QrCode className="h-4 w-4" />
-                QR Code
-              </label>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {BARCODE_SYMBOLOGY_OPTIONS.map((opt) => (
+                  <label key={opt.id} className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="sym"
+                      checked={symbology === opt.id}
+                      onChange={() => setSymbology(opt.id)}
+                    />
+                    {opt.id === "qr" ? (
+                      <QrCode className="h-4 w-4" />
+                    ) : (
+                      <Barcode className="h-4 w-4" />
+                    )}
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
             <label className="block">
@@ -619,7 +642,7 @@ export function BarcodeLabelStudio() {
           </div>
           <p className="mt-2 text-[10px] text-indigo-800">
             {paperLabel} · {labelDims.widthMm}×{labelDims.heightMm} mm ·{" "}
-            {symbology === "code128" ? "Code128" : "QR"}
+            {symbologyLabel(symbology)}
           </p>
         </div>
       </div>

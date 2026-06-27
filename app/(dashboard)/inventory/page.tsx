@@ -134,7 +134,7 @@ export default function InventoryDashboardPage() {
         <WmsCard>
           <h2 className="font-semibold text-slate-800">Alur bisnis</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Purchase & sales dikelola di modul ERP. Operasional gudang (receiving → QC → putaway → picking →
+            Purchase & sales dikelola di modul ERP. Operasional gudang (receiving → QC → picking →
             packing) di <Link href="/wms" className="font-medium text-indigo-600 hover:underline">WMS</Link>.
             Satu stock engine untuk semua mutasi.
           </p>

@@ -1,10 +1,7 @@
-import { enqueueOutboundFromSalesOrder } from "@/lib/wms/fulfillment";
 import {
   getOutboundStageFromSo,
-  OUTBOUND_STAGE_UI,
-  parseOutboundWorkflow,
+  WMS_STAGE_UI,
 } from "@/lib/wms/outbound-workflow";
-import { fetchSalesOrder, fetchSalesOrderLines, updateSalesOrder } from "./client";
 import type { SalesOrder, SalesOrderStatus, WarehouseProcessStatus } from "./types";
 
 export const SALES_WAREHOUSE_STATUS_UI: Record<
@@ -36,20 +33,21 @@ export function getSalesWmsDisplayStatus(
     SalesOrder,
     "send_to_warehouse_at" | "warehouse_process_status" | "status" | "outbound_workflow_json"
   >,
-): { label: string; cls: string } | null {
+): { badgeId: string; label: string; cls: string } | null {
   if (!so.send_to_warehouse_at && !so.warehouse_process_status) return null;
 
   if (so.outbound_workflow_json) {
     const stage = getOutboundStageFromSo(so);
-    return OUTBOUND_STAGE_UI[stage];
+    const ui = WMS_STAGE_UI[stage];
+    return { ...ui, badgeId: `stage_${stage}` };
   }
 
   const ship = SO_FULFILLMENT_UI[so.status];
-  if (ship) return ship;
+  if (ship) return { ...ship, badgeId: `so_${so.status}` };
 
   const wh = getSalesWarehouseStatus(so);
-  if (wh) return SALES_WAREHOUSE_STATUS_UI[wh];
-  return SALES_WAREHOUSE_STATUS_UI.pending;
+  if (wh) return { ...SALES_WAREHOUSE_STATUS_UI[wh], badgeId: `wh_${wh}` };
+  return { ...SALES_WAREHOUSE_STATUS_UI.pending, badgeId: "wh_pending" };
 }
 
 export function canSendSalesOrderToWarehouse(
@@ -99,32 +97,23 @@ export function invoiceBlockedReason(
   return null;
 }
 
-/** Admin bisnis: kirim SO ke antrean picking gudang. */
+/** Kirim SO ke antrean picking gudang (via API server). */
 export async function sendSalesOrderToWarehouse(
   soId: string,
-  userId: string,
+  _userId: string,
 ): Promise<SalesOrder> {
-  const so = await fetchSalesOrder(soId);
-  if (!canSendSalesOrderToWarehouse(so)) {
-    throw new Error("SO tidak bisa dikirim ke picking (sudah terkirim, dibatalkan, atau tanpa gudang).");
+  const res = await fetch(
+    `/api/bisnis/sales-orders/${encodeURIComponent(soId)}/send-to-warehouse`,
+    { method: "POST", credentials: "include" },
+  );
+  const data = (await res.json()) as { ok?: boolean; data?: SalesOrder; error?: string };
+  if (!res.ok || !data.ok || !data.data) {
+    throw new Error(data.error || "Gagal mengirim SO ke gudang.");
   }
-  const lines = await fetchSalesOrderLines(soId);
-  if (lines.length === 0) throw new Error("SO tidak punya item produk.");
-
-  let updated = so;
-  const now = new Date().toISOString();
-  try {
-    updated = await updateSalesOrder(soId, {
-      send_to_warehouse_at: now,
-      warehouse_process_status: "pending",
-    });
-  } catch {
-    // schema lama: field WMS SO belum tersedia, lanjut enqueue task
-  }
-  await enqueueOutboundFromSalesOrder(soId, userId);
-  return updated;
+  return data.data;
 }
 
+/** Filter PB kasar; antrean picking disaring lagi di UI (hanya stage pick_pending). */
 export function salesOrdersPickingPbFilter(): string {
   return (
     'send_to_warehouse_at != "" && warehouse_process_status != "complete" && ' +

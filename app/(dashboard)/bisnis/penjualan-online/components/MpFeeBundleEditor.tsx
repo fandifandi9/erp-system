@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2, X, Loader2, Sparkles, Package, CheckCircle2, Star } from "lucide-react";
+import { X, Loader2, Sparkles, Package, CheckCircle2 } from "lucide-react";
 import {
   getOrCreateTemplateForTier,
   fetchMpFeeTemplateLines,
@@ -17,16 +17,14 @@ import {
   parseMpFeeLineForm,
   type MpFeeLineFormState,
 } from "@/lib/bisnis/mp-template-client";
-import { formatIdDecimal, formatIdInteger, parseIdDecimal, parseIdInteger } from "@/lib/format-id-number";
-import type { MpFeeTemplate, MpFeeTemplateLine, MpSellerTier, MpTemplateLineGroup, SalesChannel } from "@/lib/bisnis/types";
+import type { MpFeeTemplate, MpFeeTemplateLine, MpSellerTier, SalesChannel } from "@/lib/bisnis/types";
 import ProductSkuFeeTable, { type ProductRow } from "./ProductSkuFeeTable";
 import { getErrorMessage } from "@/lib/errors";
+import { MpFeeLineFormFields } from "@/components/bisnis/MpFeeLineFormFields";
+import { MpFeeLineTable } from "@/components/bisnis/MpFeeLineTable";
 
 const INPUT_CLS =
   "w-full min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100";
-
-const fmt = (v: number) =>
-  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
 type Category = { id: string; name: string };
 
@@ -40,13 +38,6 @@ type Props = {
 };
 
 const EMPTY_LINE = mpFeeLineFormDefaults();
-
-function formatBlurText(mode: "integer" | "decimal", raw: string): string {
-  if (!raw.trim()) return "";
-  const n = mode === "integer" ? parseIdInteger(raw) : parseIdDecimal(raw);
-  if (!Number.isFinite(n)) return raw;
-  return mode === "integer" ? formatIdInteger(Math.round(n)) : formatIdDecimal(n);
-}
 
 export default function MpFeeBundleEditor({ channels, tiers, categories, products, feeTemplates, onChanged }: Props) {
   const [selectedTierId, setSelectedTierId] = useState("");
@@ -351,13 +342,21 @@ export default function MpFeeBundleEditor({ channels, tiers, categories, product
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => openAddFee({ label: "Gratis Ongkir", code: "free_shipping", line_group: "mp_fee", calc_type: "percent_cap", rate: 4, max_amount: 40000 })} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50">+ Gratis ongkir</button>
-            <button type="button" onClick={() => openAddFee({ label: "Cashback", code: "cashback", line_group: "mp_fee", calc_type: "percent_cap", rate: 4.5, max_amount: 60000 })} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50">+ Cashback</button>
-            <button type="button" onClick={() => openAddFee({ label: "Biaya Pemrosesan", code: "processing", line_group: "operational", calc_type: "fixed", fixed_amount: 1250 })} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50">+ Pemrosesan</button>
+            <button type="button" onClick={() => openAddFee({ label: "Gratis Ongkir", code: "free_shipping", line_group: "mp_fee", calc_type: "percent_cap", applies_to: "order", rate: 4, max_amount: 40000 })} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50">+ Gratis ongkir</button>
+            <button type="button" onClick={() => openAddFee({ label: "Cashback", code: "cashback", line_group: "mp_fee", calc_type: "percent_cap", applies_to: "order", rate: 4.5, max_amount: 60000 })} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50">+ Cashback</button>
+            <button type="button" onClick={() => openAddFee({ label: "Biaya Pemrosesan", code: "processing", line_group: "operational", calc_type: "fixed", applies_to: "order", fixed_amount: 1250 })} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50">+ Pemrosesan</button>
             <button type="button" onClick={() => openAddFee()} className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700">+ Biaya baru</button>
           </div>
 
-          <FeeTable title="Biaya Marketplace & Operasional" rows={[...mpFeeRows, ...opRows]} fmt={fmt} onAdd={() => openAddFee()} onEdit={openEditLine} onDelete={handleDeleteLine} onDefault={handleToggleDefault} />
+          <MpFeeLineTable
+            title="Biaya marketplace & operasional"
+            subtitle="Per pesanan = sekali per no. order · Per produk = ikut qty/nilai baris item"
+            rows={[...mpFeeRows, ...opRows]}
+            onAdd={() => openAddFee()}
+            onEdit={openEditLine}
+            onDelete={handleDeleteLine}
+            onDefault={handleToggleDefault}
+          />
 
           {templateId && selectedTier && platform && (
             <ProductSkuFeeTable
@@ -386,69 +385,7 @@ export default function MpFeeBundleEditor({ channels, tiers, categories, product
               <button type="button" onClick={() => setLineModal(null)}><X className="h-5 w-5 text-slate-400" /></button>
             </div>
             <form onSubmit={handleSaveLine} className="space-y-3">
-              <label className="block text-xs font-medium">Nama biaya<input required value={lineForm.label} onChange={(e) => setLineForm({ ...lineForm, label: e.target.value })} className={`mt-1 ${INPUT_CLS}`} placeholder="Promo Extra" /></label>
-              {lineForm.line_group === "category" ? (
-                <label className="block text-xs font-medium">Kategori produk SERBA *<select required value={lineForm.internal_category} onChange={(e) => setLineForm({ ...lineForm, internal_category: e.target.value })} className={`mt-1 ${INPUT_CLS}`}><option value="">— Pilih —</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-              ) : (
-                <label className="block text-xs font-medium">Grup<select value={lineForm.line_group} onChange={(e) => setLineForm({ ...lineForm, line_group: e.target.value as MpTemplateLineGroup, internal_category: "" })} className={`mt-1 ${INPUT_CLS}`}><option value="mp_fee">Biaya MP</option><option value="operational">Operasional</option></select></label>
-              )}
-              <label className="block text-xs font-medium">Cara hitung<select value={lineForm.calc_type} onChange={(e) => setLineForm({ ...lineForm, calc_type: e.target.value as MpFeeTemplateLine["calc_type"] })} className={`mt-1 ${INPUT_CLS}`}><option value="percent">Persen</option><option value="percent_cap">Persen + plafon</option><option value="fixed">Fix per order</option><option value="fixed_per_qty">Fix per qty</option></select></label>
-              {lineForm.calc_type.startsWith("percent") && (
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="block text-xs font-medium">
-                    Rate (%)
-                    <input
-                      value={lineForm.rateText}
-                      onChange={(e) => setLineForm({ ...lineForm, rateText: e.target.value })}
-                      onBlur={() =>
-                        setLineForm((f) => ({ ...f, rateText: formatBlurText("decimal", f.rateText) }))
-                      }
-                      placeholder="4,5"
-                      inputMode="decimal"
-                      className={`mt-1 ${INPUT_CLS}`}
-                    />
-                  </label>
-                  {lineForm.calc_type === "percent_cap" && (
-                    <label className="block text-xs font-medium">
-                      Max (Rp)
-                      <input
-                        value={lineForm.maxAmountText}
-                        onChange={(e) => setLineForm({ ...lineForm, maxAmountText: e.target.value })}
-                        onBlur={() =>
-                          setLineForm((f) => ({
-                            ...f,
-                            maxAmountText: formatBlurText("integer", f.maxAmountText),
-                          }))
-                        }
-                        placeholder="40.000"
-                        inputMode="numeric"
-                        className={`mt-1 ${INPUT_CLS}`}
-                      />
-                    </label>
-                  )}
-                </div>
-              )}
-              {(lineForm.calc_type === "fixed" || lineForm.calc_type === "fixed_per_qty") && (
-                <label className="block text-xs font-medium">
-                  Nominal (Rp)
-                  <input
-                    value={lineForm.fixedAmountText}
-                    onChange={(e) => setLineForm({ ...lineForm, fixedAmountText: e.target.value })}
-                    onBlur={() =>
-                      setLineForm((f) => ({
-                        ...f,
-                        fixedAmountText: formatBlurText("integer", f.fixedAmountText),
-                      }))
-                    }
-                    placeholder="1.250"
-                    inputMode="numeric"
-                    className={`mt-1 ${INPUT_CLS}`}
-                  />
-                </label>
-              )}
-              <p className="text-[11px] text-slate-400">
-                Tip: rate pakai koma (4,5). Nominal pakai titik ribuan (40.000 = Rp 40 ribu).
-              </p>
+              <MpFeeLineFormFields form={lineForm} onChange={setLineForm} categories={categories} />
               <button type="submit" disabled={saving} className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                 {saving ? "Menyimpan…" : "Simpan"}
               </button>
@@ -456,59 +393,6 @@ export default function MpFeeBundleEditor({ channels, tiers, categories, product
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function FeeTable({
-  title, rows, fmt, onAdd, onEdit, onDelete, onDefault, showCategory,
-}: {
-  title: string;
-  rows: MpFeeTemplateLine[];
-  fmt: (n: number) => string;
-  onAdd: () => void;
-  onEdit: (r: MpFeeTemplateLine) => void;
-  onDelete: (id: string) => void;
-  onDefault: (r: MpFeeTemplateLine) => void;
-  showCategory?: boolean;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b bg-slate-50 px-4 py-2">
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-        <button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" /> Tambah varian</button>
-      </div>
-      <table className="w-full text-sm">
-        <thead><tr className="border-b text-left text-xs text-slate-500"><th className="px-4 py-2">Biaya</th>{showCategory && <th>Kategori</th>}<th className="text-right">Rate / Nominal</th><th className="text-right">Max</th><th></th></tr></thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={showCategory ? 5 : 4} className="px-4 py-6 text-center text-xs text-slate-400">Belum ada varian — klik Tambah varian</td></tr>
-          ) : rows.map((r) => (
-            <tr key={r.id} className="border-b border-slate-50">
-              <td className="px-4 py-2">
-                <span className="font-medium">{r.label}</span>
-                {r.is_default && (
-                  <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Default</span>
-                )}
-              </td>
-              {showCategory && <td className="text-indigo-700">{r.expand?.internal_category?.name ?? "—"}</td>}
-              <td className="text-right tabular-nums">
-                {r.calc_type.startsWith("percent")
-                  ? `${formatIdDecimal(r.rate ?? 0)}%`
-                  : fmt(r.fixed_amount ?? 0)}
-              </td>
-              <td className="text-right tabular-nums">{r.max_amount ? fmt(r.max_amount) : "—"}</td>
-              <td className="px-2 text-right whitespace-nowrap">
-                <button type="button" title="Jadikan default" onClick={() => onDefault(r)} className={`p-1 ${r.is_default ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}>
-                  <Star className={`h-4 w-4 ${r.is_default ? "fill-current" : ""}`} />
-                </button>
-                <button type="button" onClick={() => onEdit(r)} className="p-1 text-slate-400 hover:text-indigo-600"><Pencil className="h-4 w-4" /></button>
-                <button type="button" onClick={() => onDelete(r.id)} className="p-1 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

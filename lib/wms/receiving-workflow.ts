@@ -3,12 +3,13 @@ import type { PurchaseOrderLine } from "@/lib/bisnis/types";
 export type ReceivingLineState = {
   qc_ok: boolean;
   qc_note?: string;
+  /** Qty rusak/cacat — dipindah ke gudang rusak saat komplit (sisanya ke gudang entitas). */
+  damaged_qty?: number;
   label_printed: boolean;
   label_print_qty: number;
-  putaway_done: boolean;
-  /** ID lokasi slot (untuk stok). */
+  /** @deprecated Tidak dipakai — stok per gudang saja, tanpa slot. */
+  putaway_done?: boolean;
   putaway_location_id?: string;
-  /** Kode rak induk — dipilih staff saat susun. */
   putaway_rack_code?: string;
   putaway_level?: string;
   putaway_slot?: string;
@@ -46,7 +47,6 @@ export function mergeWorkflowWithLines(
         qc_ok: false,
         label_printed: false,
         label_print_qty: defaultQtyByLine[id] ?? 1,
-        putaway_done: false,
       };
     } else if (!lines[id].label_print_qty) {
       lines[id].label_print_qty = defaultQtyByLine[id] ?? 1;
@@ -58,20 +58,19 @@ export function mergeWorkflowWithLines(
 export function countWorkflowProgress(
   lineIds: string[],
   wf: ReceivingWorkflow,
-): { qc: number; label: number; putaway: number; total: number } {
+): { qc: number; label: number; total: number } {
   const total = lineIds.length;
   let qc = 0;
   let label = 0;
-  let putaway = 0;
   for (const id of lineIds) {
     const s = wf.lines[id];
     if (s?.qc_ok) qc++;
     if (s?.label_printed) label++;
-    if (s?.putaway_done) putaway++;
   }
-  return { qc, label, putaway, total };
+  return { qc, label, total };
 }
 
+/** Selesai penerimaan: QC lulus semua item; qty rusak tidak melebihi qty PO. */
 export function validateReceivingWorkflowComplete(
   lines: PurchaseOrderLine[],
   wf: ReceivingWorkflow,
@@ -82,13 +81,17 @@ export function validateReceivingWorkflowComplete(
     if (!s?.qc_ok) {
       return `Centang QC untuk "${name}" sebelum menandai Komplit.`;
     }
-    if (!s?.putaway_done) {
-      return `Konfirmasi putaway untuk "${name}" sebelum menandai Komplit.`;
-    }
-    if (!s.putaway_location_id) {
-      return `Produk "${name}" belum punya ruangan (NEW). Atur penempatan di Daftar Produk / Lokasi Ruangan, lalu konfirmasi putaway.`;
+    const damagedQty = Math.max(0, Number(s.damaged_qty) || 0);
+    if (damagedQty > line.qty) {
+      return `Qty rusak "${name}" (${damagedQty}) melebihi qty PO (${line.qty}).`;
     }
   }
   if (lines.length === 0) return "PO tidak punya item.";
   return null;
+}
+
+export function isReceivingWorkflowReady(lineIds: string[], wf: ReceivingWorkflow): boolean {
+  if (lineIds.length === 0) return false;
+  const p = countWorkflowProgress(lineIds, wf);
+  return p.qc === p.total;
 }

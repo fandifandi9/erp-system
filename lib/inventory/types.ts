@@ -240,10 +240,13 @@ export type InvWarehouse = {
 export type InvProductPriceTier = {
   id: string;
   product: string;
-  label: string;
+  store?: string;
+  label?: string;
   min_qty: number;
+  max_qty?: number;
   price: number;
   is_active?: boolean;
+  expand?: { store?: { id: string; name: string; code?: string } };
 };
 
 export type InvProduct = {
@@ -257,9 +260,21 @@ export type InvProduct = {
   sell_price?: number;
   buy_price?: number;
   image?: string;
+  image_2?: string;
+  image_3?: string;
   is_active?: boolean;
+  /** simple | bundle — bundle fase 2 */
+  product_type?: "simple" | "bundle";
+  /** draft | active | inactive — master katalog */
+  lifecycle_status?: "draft" | "active" | "inactive";
+  commercial_ready_at?: string;
+  commercial_ready_by?: string;
+  created_by_role?: string;
+  /** Wajib input serial number saat picking / fulfillment. */
+  requires_serial?: boolean;
   category?: string;
   brand?: string;
+  /** @deprecated Pakai inv_product_placements per gudang */
   default_location?: string;
   collectionId?: string;
   created?: string;
@@ -267,6 +282,20 @@ export type InvProduct = {
   expand?: {
     category?: { id: string; name: string };
     brand?: { id: string; name: string };
+  };
+};
+
+/** Penempatan produk per gudang (multi-gudang — tidak menimpa gudang lain). */
+export type InvProductPlacement = {
+  id: string;
+  product: string;
+  warehouse: string;
+  location: string;
+  is_active?: boolean;
+  expand?: {
+    product?: Pick<InvProduct, "id" | "sku" | "name">;
+    warehouse?: InvWarehouse;
+    location?: InvLocation;
   };
 };
 
@@ -412,6 +441,8 @@ export const INV_COLLECTIONS = {
   productBarcodes: "inv_product_barcodes",
   productPriceTiers: "inv_product_price_tiers",
   locations: "inv_locations",
+  productPlacements: "inv_product_placements",
+  productBundleLines: "inv_product_bundle_lines",
   balances: "inv_stock_balances",
   movements: "inv_stock_movements",
   movementLines: "inv_stock_movement_lines",
@@ -433,7 +464,8 @@ export const INV_COLLECTIONS = {
 export const BARCODE_TYPES: { value: string; label: string }[] = [
   { value: "ean13", label: "EAN-13" },
   { value: "ean8", label: "EAN-8" },
-  { value: "upc", label: "UPC" },
+  { value: "upc", label: "UPC-A (12 digit)" },
+  { value: "itf", label: "ITF (Interleaved 2 of 5)" },
   { value: "code128", label: "Code 128" },
   { value: "qr", label: "QR" },
   { value: "internal", label: "Kode internal" },

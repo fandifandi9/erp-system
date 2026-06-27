@@ -1,7 +1,7 @@
 "use client";
 
 import { pb } from "@/lib/pocketbase";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   type UserRoleCode,
@@ -14,22 +14,12 @@ import {
 } from "@/lib/leave";
 import { getErrorMessage } from "@/lib/errors";
 import { createDefaultProfileForUser } from "@/lib/profile";
+import { useLocale } from "@/components/LocaleProvider";
 
-type RoleOption = {
-  label: string;
-  value: UserRoleCode;
-};
-
-const ROLE_OPTIONS: RoleOption[] = [
-  { label: "HR", value: "hr" },
-  { label: "Manager", value: "manager" },
-  { label: "Staff Dashboard", value: "staff" },
-  { label: "Staff Basic (No Dashboard)", value: "staff-basic" },
-  { label: "Security (No Dashboard)", value: "security" },
-  { label: "OB (No Dashboard)", value: "ob" },
-];
+const ROLE_CODES: UserRoleCode[] = ["hr", "manager", "staff", "staff-basic", "security", "ob"];
 
 export default function NewEmployeePage() {
+  const { t } = useLocale();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [name, setName] = useState("");
@@ -40,6 +30,15 @@ export default function NewEmployeePage() {
     getDefaultDashboardAccessForRole("staff")
   );
   const [loading, setLoading] = useState(false);
+
+  const roleOptions = useMemo(
+    () =>
+      ROLE_CODES.map((value) => ({
+        value,
+        label: t(`hr.employees.new.roles.${value}`),
+      })),
+    [t]
+  );
 
   useEffect(() => {
     const user = pb.authStore.model;
@@ -58,17 +57,19 @@ export default function NewEmployeePage() {
   const handleSubmit = async () => {
     const emailTrim = email.trim();
     if (!emailTrim || !password) {
-      alert("Email & password wajib diisi");
+      alert(t("hr.employees.new.errEmailPassword"));
       return;
     }
 
-    const displayName = (name.trim() || emailTrim.split("@")[0] || "Pengguna").trim();
+    const displayName = (
+      name.trim() ||
+      emailTrim.split("@")[0] ||
+      t("hr.employees.new.defaultUserName")
+    ).trim();
 
     setLoading(true);
     let createdUserId: string | null = null;
     try {
-      // Catatan produksi: jangan kirim field yang tidak ada di koleksi `users` PocketBase
-      // (mis. `joined_at`) — akan memicu 400 "Failed to create record".
       const user = await pb.collection("users").create({
         email: emailTrim,
         password,
@@ -82,8 +83,6 @@ export default function NewEmployeePage() {
       });
       createdUserId = user.id;
 
-      // Profil: payload sama seperti ensureProfile (shift, profile_status, office_id).
-      // Sebelumnya hanya user+name+email+kuota → di produksi sering gagal walau `users` sudah tercipta → UI "gagal" tapi akun tetap di PB.
       const profile = await createDefaultProfileForUser(user.id);
       try {
         await pb.collection("profiles").update(profile.id, {
@@ -93,7 +92,7 @@ export default function NewEmployeePage() {
         console.warn("leave_bookings_quota default tidak diset (field opsional di PB):", quotaErr);
       }
 
-      alert("User berhasil dibuat");
+      alert(t("hr.employees.new.created"));
       router.push("/hr/employees");
     } catch (err: unknown) {
       console.error("CREATE ERROR:", err);
@@ -104,35 +103,42 @@ export default function NewEmployeePage() {
           console.error("Rollback user after profile error:", delErr);
         }
       }
-      alert(getErrorMessage(err, "Gagal membuat user"));
+      alert(getErrorMessage(err, t("hr.employees.new.createFailed")));
     } finally {
       setLoading(false);
     }
   };
 
-  if (checking) return <div className="p-6 text-slate-500">Checking access...</div>;
+  if (checking) {
+    return <div className="p-6 text-slate-500">{t("hr.employees.new.checkingAccess")}</div>;
+  }
 
   return (
     <div className="max-w-xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Tambah Karyawan Baru</h1>
-        <p className="text-sm text-slate-500">Owner dapat membuat akun users + profile sekaligus.</p>
+        <h1 className="text-2xl font-semibold text-slate-800">{t("hr.employees.new.title")}</h1>
+        <p className="text-sm text-slate-500">{t("hr.employees.new.subtitle")}</p>
       </div>
 
       <div className="bg-white p-6 rounded-2xl border space-y-4 shadow-sm">
-        <Input label="Nama" value={name} onChange={setName} />
-        <Input label="Email" value={email} onChange={setEmail} />
-        <Input label="Password" type="password" value={password} onChange={setPassword} />
+        <Input label={t("hr.employees.new.name")} value={name} onChange={setName} />
+        <Input label={t("hr.employees.new.email")} value={email} onChange={setEmail} />
+        <Input
+          label={t("hr.employees.new.password")}
+          type="password"
+          value={password}
+          onChange={setPassword}
+        />
 
         <Select
-          label="Role User"
+          label={t("hr.employees.new.role")}
           value={roleCode}
           onChange={(value) => setRoleCode(value as UserRoleCode)}
-          options={ROLE_OPTIONS}
+          options={roleOptions}
         />
 
         <div className="rounded-xl border border-slate-200 p-4 space-y-2 bg-slate-50">
-          <p className="text-sm font-medium text-slate-700">Akses Dashboard</p>
+          <p className="text-sm font-medium text-slate-700">{t("hr.employees.new.dashboardAccess")}</p>
           <label className="inline-flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -140,7 +146,7 @@ export default function NewEmployeePage() {
               onChange={(e) => setDashboardAccess(e.target.checked)}
               className="rounded border-slate-300"
             />
-            User ini bisa mengakses dashboard
+            {t("hr.employees.new.dashboardAccessHint")}
           </label>
         </div>
 
@@ -150,13 +156,13 @@ export default function NewEmployeePage() {
             disabled={loading}
             className="flex-1 bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
           >
-            {loading ? "Menyimpan..." : "Buat User"}
+            {loading ? t("hr.common.saving") : t("hr.employees.new.createUser")}
           </button>
           <button
             onClick={() => router.push("/hr/employees")}
             className="px-4 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
           >
-            Batal
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -189,7 +195,7 @@ type SelectProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: RoleOption[];
+  options: { label: string; value: string }[];
 };
 
 function Select({ label, value, onChange, options }: SelectProps) {

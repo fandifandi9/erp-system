@@ -1,64 +1,79 @@
+import { IMPORT_TEMPLATE_COLUMNS } from "@/lib/bisnis/mp-import-schema";
+import { buildFullSampleImportRows } from "@/lib/export/mp-import-sample-rows";
 import { buildAndDownloadXlsx, buildStyledXlsxBuffer, downloadXlsxFile, type XlsxColumnDef } from "@/lib/export/xlsx";
+import ExcelJS from "exceljs";
 
-type TemplateRowKey =
-  | "mp_order_no"
-  | "order_date"
-  | "mp_buyer_name"
-  | "mp_sku"
-  | "product_name"
-  | "mp_category"
-  | "qty"
-  | "unit_price";
+export type MpImportTemplateOpts = {
+  storeName: string;
+  /** Nama pelanggan contoh — harus ada di master Kontak atau ganti saat isi. */
+  sampleCustomer?: string;
+};
 
-const TEMPLATE_COLUMNS: XlsxColumnDef<TemplateRowKey>[] = [
-  { header: "mp_order_no", key: "mp_order_no", width: 20, type: "text" },
-  { header: "order_date", key: "order_date", width: 14, type: "date" },
-  { header: "mp_buyer_name", key: "mp_buyer_name", width: 22, type: "text" },
-  { header: "mp_sku", key: "mp_sku", width: 18, type: "text" },
-  { header: "product_name", key: "product_name", width: 28, type: "text" },
-  { header: "mp_category", key: "mp_category", width: 16, type: "text" },
-  { header: "qty", key: "qty", width: 10, type: "integer" },
-  { header: "unit_price", key: "unit_price", width: 14, type: "currency_idr" },
-];
-
-const SAMPLE_ROWS: Array<Record<TemplateRowKey, unknown>> = [
-  {
-    mp_order_no: "ORD-20260528-001",
-    order_date: new Date(2026, 4, 28),
-    mp_buyer_name: "Budi Santoso",
-    mp_sku: "22344FGG56666",
-    product_name: "COSTA CT-6218 Tripod",
-    mp_category: "",
-    qty: 2,
-    unit_price: 250000,
-  },
-  {
-    mp_order_no: "ORD-20260528-002",
-    order_date: new Date(2026, 4, 28),
-    mp_buyer_name: "Siti Aminah",
-    mp_sku: "22344FGG56666",
-    product_name: "COSTA CT-6218 Tripod",
-    mp_category: "",
-    qty: 1,
-    unit_price: 250000,
-  },
-];
-
-export async function downloadMpImportTemplateXlsx(): Promise<void> {
-  await buildAndDownloadXlsx({
-    sheetName: "Penjualan",
-    filename: "template-import-penjualan-mp.xlsx",
-    columns: TEMPLATE_COLUMNS,
-    rows: SAMPLE_ROWS,
-  });
+function buildColumns(): XlsxColumnDef<string>[] {
+  return IMPORT_TEMPLATE_COLUMNS.map((c) => ({
+    header: c.header,
+    key: c.key,
+    width: c.width,
+    type:
+      c.key === "tgl_transaksi" || c.key === "jatuh_tempo"
+        ? "date"
+        : c.key === "qty" || c.key === "ppn_persen" || c.key === "diskon_baris_pct" || c.key === "diskon_order" || c.key === "materai" || c.key === "ongkir"
+          ? "integer"
+          : c.key === "harga_satuan"
+            ? "currency_idr"
+            : "text",
+  }));
 }
 
-export async function buildMpImportTemplateXlsxBuffer(): Promise<ArrayBuffer> {
-  return buildStyledXlsxBuffer({
+async function appendPetunjukSheet(wb: ExcelJS.Workbook): Promise<void> {
+  const ws = wb.addWorksheet("Petunjuk");
+  ws.columns = [
+    { header: "Langkah / Kolom", key: "a", width: 28 },
+    { header: "Keterangan", key: "b", width: 72 },
+  ];
+  const header = ws.getRow(1);
+  header.font = { bold: true };
+  const lines: [string, string][] = [
+    ["1. Pilih toko", "Saat upload di SERBA, pilih toko yang namanya sama dengan kolom toko (*)."],
+    ["2. Kontak", "Nama di kolom pelanggan (*) harus sudah ada di menu Kontak."],
+    ["3. SKU produk", "Kolom mp_sku (*) harus sama persis dengan SKU di Katalog Produk."],
+    ["4. Satu order = banyak baris", "Ulangi mp_order_no & header order; bedakan hanya baris produk."],
+    ["5. Posting", "Setelah upload: validasi batch → posting → SO & invoice terbentuk."],
+    ["", ""],
+    ["Kolom wajib (*)", "toko, pelanggan, tgl_transaksi, mp_order_no, mp_sku, qty, harga_satuan"],
+    ["lewat_wms T/Y", "Order masuk antrean gudang (WMS) dulu"],
+    ["lewat_wms F/N", "Langsung SO + invoice tanpa antrean WMS"],
+  ];
+  for (const [a, b] of lines) ws.addRow({ a, b });
+}
+
+export async function buildMpImportSampleXlsxBuffer(opts: MpImportTemplateOpts): Promise<ArrayBuffer> {
+  const columns = buildColumns();
+  const rows = buildFullSampleImportRows(opts.storeName.trim() || "COSTA");
+  const buffer = await buildStyledXlsxBuffer({
     sheetName: "Penjualan",
-    columns: TEMPLATE_COLUMNS,
-    rows: SAMPLE_ROWS,
+    columns,
+    rows,
   });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  await appendPetunjukSheet(wb);
+  return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
+}
+
+export async function downloadMpImportTemplateXlsx(opts: MpImportTemplateOpts): Promise<void> {
+  if (!opts.storeName.trim()) {
+    throw new Error("Pilih toko dulu sebelum unduh template Excel.");
+  }
+  const buffer = await buildMpImportSampleXlsxBuffer(opts);
+  downloadXlsxFile(
+    buffer,
+    `template-penjualan-${opts.storeName.trim().replace(/\s+/g, "-")}.xlsx`,
+  );
+}
+
+export async function buildMpImportTemplateXlsxBuffer(opts: MpImportTemplateOpts): Promise<ArrayBuffer> {
+  return buildMpImportSampleXlsxBuffer(opts);
 }
 
 export { downloadXlsxFile };

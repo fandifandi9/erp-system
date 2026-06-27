@@ -1,19 +1,17 @@
 "use client";
 
-import { InventoryGate } from "@/components/inventory/InventoryGate";
-import { InventoryShell } from "@/components/inventory/InventoryShell";
-import { BarcodeLabelStudio } from "@/components/wms/BarcodeLabelStudio";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export default function GudangBarcodePage() {
-  return (
-    <InventoryGate>
-      <InventoryShell
-        title="Barcode & Label"
-        subtitle="Code128 + QR untuk printer label termal — dari master produk atau kode manual."
-        module="wms"
-      >
-        <BarcodeLabelStudio />
-      </InventoryShell>
-    </InventoryGate>
-  );
+/** Alihkan ke modul barcode WMS terpusat. */
+export default function GudangBarcodeRedirectPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const qs = searchParams.toString();
+    router.replace(qs ? `/wms/barcode?${qs}` : "/wms/barcode");
+  }, [router, searchParams]);
+
+  return null;
 }

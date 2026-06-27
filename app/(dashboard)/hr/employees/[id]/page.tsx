@@ -17,9 +17,16 @@ import {
   PROFILE_SHIFT_START_SATURDAY_FIELD,
   PROFILE_SHIFT_START_SUNDAY_FIELD,
 } from "@/lib/profile";
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { coerceBrowserTimeToHm, formalizeTimeHmInput } from "@/lib/time-hm-input";
+import { useLocale } from "@/components/LocaleProvider";
+import {
+  HR_DEPARTMENT_LABELS_EN,
+  HR_DIVISION_LABELS_EN,
+  HR_POSITION_LABELS_EN,
+  localizeHrOptionLabel,
+} from "@/lib/i18n/hr-employee-option-labels-en";
 
 type EmployeeUser = {
   id: string;
@@ -160,13 +167,19 @@ function profileHmFromPb(v: unknown): string {
  * Jika field Sabtu/Minggu belum ada di schema `profiles`, PocketBase mengabaikan key tersebut
  * tanpa error — UI terlihat "sukses" padahal jam tidak tersimpan.
  */
+type WeekendShiftErrorKey =
+  | "weekendSaturday"
+  | "weekendSunday"
+  | "weekendClearSaturday"
+  | "weekendClearSunday";
+
 function weekendShiftRoundTripError(
   saved: Record<string, unknown>,
   satStart: string,
   satEnd: string,
   sunStart: string,
   sunEnd: string
-): string | null {
+): WeekendShiftErrorKey | null {
   const wantSat = Boolean(satStart && satEnd);
   const wantSun = Boolean(sunStart && sunEnd);
   const fs = formalizeTimeHmInput(satStart) || "";
@@ -179,14 +192,14 @@ function weekendShiftRoundTripError(
       profileHmFromPb(saved[PROFILE_SHIFT_START_SATURDAY_FIELD]) !== fs ||
       profileHmFromPb(saved[PROFILE_SHIFT_END_SATURDAY_FIELD]) !== fe
     ) {
-      return "Sabtu";
+      return "weekendSaturday";
     }
   } else {
     if (
       profileHmFromPb(saved[PROFILE_SHIFT_START_SATURDAY_FIELD]) !== "" ||
       profileHmFromPb(saved[PROFILE_SHIFT_END_SATURDAY_FIELD]) !== ""
     ) {
-      return "Sabtu (mengosongkan)";
+      return "weekendClearSaturday";
     }
   }
 
@@ -195,14 +208,14 @@ function weekendShiftRoundTripError(
       profileHmFromPb(saved[PROFILE_SHIFT_START_SUNDAY_FIELD]) !== us ||
       profileHmFromPb(saved[PROFILE_SHIFT_END_SUNDAY_FIELD]) !== ue
     ) {
-      return "Minggu";
+      return "weekendSunday";
     }
   } else {
     if (
       profileHmFromPb(saved[PROFILE_SHIFT_START_SUNDAY_FIELD]) !== "" ||
       profileHmFromPb(saved[PROFILE_SHIFT_END_SUNDAY_FIELD]) !== ""
     ) {
-      return "Minggu (mengosongkan)";
+      return "weekendClearSunday";
     }
   }
 
@@ -210,9 +223,37 @@ function weekendShiftRoundTripError(
 }
 
 export default function EmployeeDetailPage() {
+  const { t, locale } = useLocale();
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string;
+
+  const positionOptions = useMemo(
+    () =>
+      POSITION_OPTIONS.map((o) => ({
+        ...o,
+        label: localizeHrOptionLabel(o.value, locale, HR_POSITION_LABELS_EN),
+      })),
+    [locale]
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      DEPARTMENT_OPTIONS.map((o) => ({
+        ...o,
+        label: localizeHrOptionLabel(o.value, locale, HR_DEPARTMENT_LABELS_EN),
+      })),
+    [locale]
+  );
+
+  const divisionOptions = useMemo(
+    () =>
+      DIVISION_OPTIONS.map((o) => ({
+        ...o,
+        label: localizeHrOptionLabel(o.value, locale, HR_DIVISION_LABELS_EN),
+      })),
+    [locale]
+  );
 
   const [user, setUser] = useState<EmployeeUser | null>(null);
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
@@ -405,14 +446,14 @@ export default function EmployeeDetailPage() {
 
       } catch (e) {
         console.error("USER ERROR:", e);
-        alert("User tidak ditemukan");
+        alert(t("hr.employees.detail.userNotFound"));
         router.push("/hr/employees");
         return;
       }
     } finally {
       setLoading(false);
     }
-  }, [id, router]);
+  }, [id, router, t]);
 
   useEffect(() => {
     if (!id) return;
@@ -428,15 +469,13 @@ export default function EmployeeDetailPage() {
 
     // Validation
     if (!officeId) {
-      alert("Kantor / lokasi kerja wajib dipilih.");
+      alert(t("hr.employees.detail.errOfficeRequired"));
       return;
     }
 
     const salaryNum = salaryDigits ? Number(salaryDigits) : 0;
     if (!position || !department || !salaryDigits || salaryNum <= 0) {
-      alert(
-        "Posisi, Departemen, dan Gaji wajib diisi (gaji harus lebih dari 0)."
-      );
+      alert(t("hr.employees.detail.errRequiredFields"));
       return;
     }
 
@@ -457,11 +496,11 @@ export default function EmployeeDetailPage() {
       const satPartial = Boolean(satStart || satEnd) && !(satStart && satEnd);
       const sunPartial = Boolean(sunStart || sunEnd) && !(sunStart && sunEnd);
       if (satPartial) {
-        alert("Sabtu: isi jam masuk dan jam pulang keduanya, atau kosongkan keduanya (pakai Sen–Jum).");
+        alert(t("hr.employees.detail.errSaturdayPartial"));
         return;
       }
       if (sunPartial) {
-        alert("Minggu: isi jam masuk dan jam pulang keduanya, atau kosongkan keduanya (pakai Sen–Jum).");
+        alert(t("hr.employees.detail.errSundayPartial"));
         return;
       }
 
@@ -514,7 +553,7 @@ export default function EmployeeDetailPage() {
           ...shiftSatSunPayload,
         })) as unknown as Record<string, unknown>;
 
-        successMessage = "Profile berhasil dibuat!";
+        successMessage = t("hr.employees.detail.profileCreated");
       } else {
         savedRecord = (await pb.collection("profiles").update(profile.id, {
           name,
@@ -543,7 +582,7 @@ export default function EmployeeDetailPage() {
           ...shiftSatSunPayload,
         })) as unknown as Record<string, unknown>;
 
-        successMessage = "Data berhasil disimpan!";
+        successMessage = t("hr.employees.detail.saved");
       }
 
       const weekendErr = weekendShiftRoundTripError(
@@ -556,10 +595,9 @@ export default function EmployeeDetailPage() {
       if (weekendErr) {
         successMessage = null;
         alert(
-          `Jam kerja akhir pekan (${weekendErr}) tidak tersimpan di PocketBase. ` +
-            "Buka Admin → koleksi **profiles** → pastikan ada field teks (opsional): " +
-            "`shift_start_saturday`, `shift_end_saturday`, `shift_start_sunday`, `shift_end_sunday` " +
-            "(lihat `pocketbase_migration.json`, langkah 17). Tanpa field ini, API mengabaikan nilai jam Sabtu/Minggu."
+          t("hr.employees.detail.weekendNotSaved", {
+            day: t(`hr.employees.detail.${weekendErr}`),
+          })
         );
         return;
       }
@@ -571,7 +609,7 @@ export default function EmployeeDetailPage() {
 
       console.error("SAVE ERROR:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
-      alert("Gagal menyimpan: " + message);
+      alert(t("hr.employees.detail.saveFailed", { message }));
     } finally {
       setSaving(false);
     }
@@ -592,7 +630,7 @@ export default function EmployeeDetailPage() {
       <div className="p-6 flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-500">Loading data karyawan...</p>
+          <p className="text-slate-500">{t("hr.employees.detail.loading")}</p>
         </div>
       </div>
     );
@@ -610,10 +648,10 @@ export default function EmployeeDetailPage() {
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-slate-800 sm:text-2xl">
-            Detail Karyawan
+            {t("hr.employees.detail.title")}
           </h1>
           <p className="mt-1 break-words text-sm text-slate-500">
-            Kelola data akun & informasi HR
+            {t("hr.employees.detail.subtitle")}
           </p>
         </div>
 
@@ -621,31 +659,31 @@ export default function EmployeeDetailPage() {
           onClick={() => router.back()}
           className="shrink-0 self-start text-sm text-slate-500 transition hover:text-slate-800"
         >
-          ← Kembali
+          {t("hr.employees.detail.back")}
         </button>
       </div>
 
       {/* WARNING IF PROFILE DOESN'T EXIST */}
       {!profile && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
-          <p className="font-semibold">⚠️ Profile belum dibuat</p>
-          <p>Profile akan dibuat otomatis saat Anda menyimpan data.</p>
+          <p className="font-semibold">{t("hr.employees.detail.profileMissingTitle")}</p>
+          <p>{t("hr.employees.detail.profileMissingDesc")}</p>
         </div>
       )}
 
       {/* ACCOUNT INFO */}
       <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">
-          Informasi Akun
+          {t("hr.employees.detail.accountSection")}
         </h2>
 
         <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
 
-          <Input label="Nama" value={name} onChange={setName} />
-          <Input label="Email" value={user.email || ""} disabled />
-          <Input label="Role" value={user.role || ""} disabled />
+          <Input label={t("hr.employees.detail.name")} value={name} onChange={setName} />
+          <Input label={t("hr.employees.detail.email")} value={user.email || ""} disabled />
+          <Input label={t("hr.employees.detail.role")} value={user.role || ""} disabled />
           <Input
-            label="Status"
+            label={t("hr.employees.detail.status")}
             value={user.status || "active"}
             disabled
           />
@@ -656,68 +694,78 @@ export default function EmployeeDetailPage() {
       {/* HR DATA */}
       <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">
-          Data HR
+          {t("hr.employees.detail.hrSection")}
         </h2>
 
         <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
 
           <SelectField
-            label="Posisi / Jabatan *"
-            hint="Pilih jabatan yang paling sesuai dengan struktur perusahaan Anda."
+            label={t("hr.employees.detail.position")}
+            hint={t("hr.employees.detail.positionHint")}
             value={position}
             onChange={setPosition}
-            options={POSITION_OPTIONS}
-            placeholder="— Pilih posisi —"
+            options={positionOptions}
+            placeholder={t("hr.employees.detail.positionPlaceholder")}
+            legacySuffix={t("hr.employees.detail.legacyData")}
+            emptyOptional={t("hr.employees.detail.selectEmpty")}
+            emptyRequired={t("hr.employees.detail.selectChoose")}
           />
 
           <SelectField
-            label="Departemen *"
-            hint="Unit kerja atau bidang fungsi tempat karyawan bertugas sehari-hari."
+            label={t("hr.employees.detail.department")}
+            hint={t("hr.employees.detail.departmentHint")}
             value={department}
             onChange={setDepartment}
-            options={DEPARTMENT_OPTIONS}
-            placeholder="— Pilih departemen —"
+            options={departmentOptions}
+            placeholder={t("hr.employees.detail.departmentPlaceholder")}
+            legacySuffix={t("hr.employees.detail.legacyData")}
+            emptyOptional={t("hr.employees.detail.selectEmpty")}
+            emptyRequired={t("hr.employees.detail.selectChoose")}
           />
 
           <SalaryInput
-            label="Gaji Pokok *"
+            label={t("hr.employees.detail.salary")}
             digits={salaryDigits}
             onDigitsChange={setSalaryDigits}
-            placeholder="Ketik angka, contoh: 5000000"
+            placeholder={t("hr.employees.detail.salaryPlaceholder")}
+            formatHint={t("hr.employees.detail.salaryFormatHint")}
           />
 
-          <Input label="Nomor Telepon" value={phone} onChange={setPhone} />
-          <Input label="Alamat" value={address} onChange={setAddress} />
+          <Input label={t("hr.employees.detail.phone")} value={phone} onChange={setPhone} />
+          <Input label={t("hr.employees.detail.address")} value={address} onChange={setAddress} />
           <SelectField
-            label="Divisi"
-            hint="Kelompok organisasi yang lebih luas dari departemen (misalnya untuk pembagian wilayah atau kuota)."
+            label={t("hr.employees.detail.division")}
+            hint={t("hr.employees.detail.divisionHint")}
             value={division}
             onChange={setDivision}
-            options={DIVISION_OPTIONS}
-            placeholder="— Pilih divisi (opsional) —"
+            options={divisionOptions}
+            placeholder={t("hr.employees.detail.divisionPlaceholder")}
             optional
+            legacySuffix={t("hr.employees.detail.legacyData")}
+            emptyOptional={t("hr.employees.detail.selectEmpty")}
+            emptyRequired={t("hr.employees.detail.selectChoose")}
           />
           <Input
-            label="Kuota pengajuan cuti per bulan"
-            hint={`Maks. kali ambil cuti per bulan (mis. 3). Sisa kuota tidak dipakai = kredit gaji (× tarif/hari). Default ${getMaxBookingsPerMonth()}×.`}
+            label={t("hr.employees.detail.leaveQuota")}
+            hint={t("hr.employees.detail.leaveQuotaHint", { default: String(getMaxBookingsPerMonth()) })}
             type="number"
             value={leaveBookingsQuota}
             onChange={setLeaveBookingsQuota}
             placeholder={`${getMaxBookingsPerMonth()}`}
           />
           <IntegerDigitsInput
-            label="Nominal cuti per hari (Rp)"
-            hint="Contoh ketik 150000 → tampil 150.000. Kredit gaji jika kuota tidak dipakai."
+            label={t("hr.employees.detail.leaveDailyRate")}
+            hint={t("hr.employees.detail.leaveDailyRateHint")}
             digits={leaveDailyRate}
             onDigitsChange={setLeaveDailyRate}
-            placeholder="150000"
+            placeholder={t("hr.employees.detail.leaveDailyRatePlaceholder")}
           />
           <IntegerDigitsInput
-            label="Bonus extra per bulan (Rp)"
-            hint="Contoh ketik 500000 → tampil 500.000 jika syarat kehadiran terpenuhi."
+            label={t("hr.employees.detail.extraBonus")}
+            hint={t("hr.employees.detail.extraBonusHint")}
             digits={extraBonusAmount}
             onDigitsChange={setExtraBonusAmount}
-            placeholder="500000"
+            placeholder={t("hr.employees.detail.extraBonusPlaceholder")}
           />
           <label className="col-span-2 flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
             <input
@@ -726,30 +774,30 @@ export default function EmployeeDetailPage() {
               onChange={(e) => setExtraBonusEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-indigo-600"
             />
-            Aktifkan bonus extra untuk karyawan ini
+            {t("hr.employees.detail.extraBonusEnabled")}
           </label>
           <IntegerDigitsInput
-            label="Potongan telat (Rp per menit)"
-            hint="Kosongkan atau 0 = otomatis dari gaji pokok (gaji ÷ 30 ÷ 8 ÷ 60). Isi jika tarif khusus untuk orang ini."
+            label={t("hr.employees.detail.lateDeduction")}
+            hint={t("hr.employees.detail.lateDeductionHint")}
             digits={lateDeductionPerMinute}
             onDigitsChange={setLateDeductionPerMinute}
             placeholder="0"
           />
           <IntegerDigitsInput
-            label="Potongan tidak masuk / alpha (Rp per hari)"
-            hint="Kosongkan atau 0 = gaji pokok ÷ 30 per hari alpha. Isi jika HR menetapkan nominal khusus."
+            label={t("hr.employees.detail.absenceDeduction")}
+            hint={t("hr.employees.detail.absenceDeductionHint")}
             digits={absenceDeductionPerDay}
             onDigitsChange={setAbsenceDeductionPerDay}
             placeholder="0"
           />
-          <Input label="NIK" value={nik} onChange={setNik} />
-          <Input label="NPWP" value={npwp} onChange={setNpwp} />
-          <Input label="Kode Karyawan" value={employeeCode} onChange={setEmployeeCode} />
+          <Input label={t("hr.employees.detail.nik")} value={nik} onChange={setNik} />
+          <Input label={t("hr.employees.detail.npwp")} value={npwp} onChange={setNpwp} />
+          <Input label={t("hr.employees.detail.employeeCode")} value={employeeCode} onChange={setEmployeeCode} />
           
           {/* TANGGAL BERGABUNG */}
           <div className="min-w-0">
             <label className="mb-2 block text-sm font-medium text-slate-700">
-              Tanggal Bergabung
+              {t("hr.employees.detail.joinDate")}
             </label>
             <input
               type="date"
@@ -762,14 +810,14 @@ export default function EmployeeDetailPage() {
           {/* SHIFT */}
           <div className="col-span-2 mt-4 min-w-0">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">
-              Jam Kerja
+              {t("hr.employees.detail.workHours")}
             </h3>
 
-            <p className="mb-2 text-xs text-slate-500">Senin–Jumat (default)</p>
+            <p className="mb-2 text-xs text-slate-500">{t("hr.employees.detail.weekdayDefault")}</p>
               <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
                 <div className="min-w-0">
                   <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-                    Jam masuk (HH:mm)
+                    {t("hr.employees.detail.clockIn")}
                   </label>
                   <input
                     type="time"
@@ -783,7 +831,7 @@ export default function EmployeeDetailPage() {
 
                 <div className="min-w-0">
                   <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-                    Jam pulang (HH:mm)
+                    {t("hr.employees.detail.clockOut")}
                   </label>
                   <input
                     type="time"
@@ -797,12 +845,12 @@ export default function EmployeeDetailPage() {
                     </div>
 
             <p className="mt-4 mb-2 text-xs text-slate-500">
-              Sabtu (opsional — beda dari Sen–Jumat). Kosongkan jam masuk &amp; pulang jika sama dengan atas.
+              {t("hr.employees.detail.saturdayOptional")}
             </p>
             <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
               <div className="min-w-0">
                 <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-                  Jam masuk Sabtu
+                  {t("hr.employees.detail.saturdayIn")}
                 </label>
                 <input
                   type="time"
@@ -815,7 +863,7 @@ export default function EmployeeDetailPage() {
               </div>
               <div className="min-w-0">
                 <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-                  Jam pulang Sabtu
+                  {t("hr.employees.detail.saturdayOut")}
                 </label>
                 <input
                   type="time"
@@ -829,12 +877,12 @@ export default function EmployeeDetailPage() {
             </div>
 
             <p className="mt-4 mb-2 text-xs text-slate-500">
-              Minggu (opsional — bisa beda lagi dari Sabtu). Kosongkan keduanya jika ikut jam Sen–Jum.
+              {t("hr.employees.detail.sundayOptional")}
             </p>
             <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4">
               <div className="min-w-0">
                 <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-                  Jam masuk Minggu
+                  {t("hr.employees.detail.sundayIn")}
                 </label>
                 <input
                   type="time"
@@ -847,7 +895,7 @@ export default function EmployeeDetailPage() {
               </div>
               <div className="min-w-0">
                 <label className="text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-                  Jam pulang Minggu
+                  {t("hr.employees.detail.sundayOut")}
                 </label>
                 <input
                   type="time"
@@ -860,28 +908,28 @@ export default function EmployeeDetailPage() {
               </div>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Toleransi telat (field di bawah) berlaku sama untuk semua hari.
+              {t("hr.employees.detail.lateToleranceNote")}
             </p>
                     </div>
                     
                     {/* TOLERANSI — teks + inputMode numeric (type=number sering bermasalah saat diketik) */}
                     <Input
-                      label="Toleransi Telat (menit)"
+                      label={t("hr.employees.detail.lateTolerance")}
                       type="text"
                       inputMode="numeric"
                       autoComplete="off"
                       value={lateToleranceInput}
                       onChange={(val) => {
-                        const t = val.replace(/\D/g, "");
-                        if (t.length > 3) return;
-                        setLateToleranceInput(t);
+                        const digits = val.replace(/\D/g, "");
+                        if (digits.length > 3) return;
+                        setLateToleranceInput(digits);
                       }}
                       onBlur={() => {
                         const n = parseInt(lateToleranceInput || "0", 10);
                         const c = Number.isNaN(n) ? 0 : Math.min(999, Math.max(0, n));
                         setLateToleranceInput(String(c));
                       }}
-                      placeholder="0–999"
+                      placeholder={t("hr.employees.detail.lateTolerancePlaceholder")}
                     />
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 md:col-span-2">
@@ -893,11 +941,10 @@ export default function EmployeeDetailPage() {
             />
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-slate-800">
-                Wajibkan foto selfie saat check-in (audit HR)
+                {t("hr.employees.detail.selfieTitle")}
               </span>
               <span className="mt-1 block text-sm leading-relaxed text-slate-600">
-                Jika diaktifkan, pegawai harus mengunggah selfie di aplikasi mobile sebelum check-in
-                disimpan. HR dapat melihat foto di monitoring absensi.
+                {t("hr.employees.detail.selfieDesc")}
               </span>
             </span>
           </label>
@@ -905,10 +952,10 @@ export default function EmployeeDetailPage() {
           {/* OFFICE DROPDOWN */}
           <div className="min-w-0 md:col-span-2">
             <label className="text-sm text-slate-500 block mb-1">
-              Kantor / lokasi kerja * {!officeId && <span className="text-red-500">(wajib)</span>}
+              {t("hr.employees.detail.office")} {!officeId && <span className="text-red-500">{t("hr.employees.detail.officeRequired")}</span>}
             </label>
             <StyledSelect value={officeId} onChange={setOfficeId} placeholderTone>
-              <option value="">— Pilih kantor —</option>
+              <option value="">{t("hr.employees.detail.officePlaceholder")}</option>
               {offices.map((office) => (
                 <option key={office.id} value={office.id}>
                   {office.name}
@@ -917,7 +964,7 @@ export default function EmployeeDetailPage() {
             </StyledSelect>
             {offices.length === 0 && (
               <p className="text-xs text-red-500 mt-1">
-                Belum ada kantor aktif. Tambahkan di menu Pengaturan GPS terlebih dahulu.
+                {t("hr.employees.detail.noActiveOffice")}
               </p>
             )}
           </div>
@@ -930,25 +977,25 @@ export default function EmployeeDetailPage() {
             onClick={() => router.back()}
             className="px-6 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
           >
-            Batal
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !officeId}
             className="bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? "Menyimpan..." : "Simpan Perubahan"}
+            {saving ? t("hr.common.saving") : t("hr.employees.detail.saveChanges")}
           </button>
         </div>
       </div>
 
       {/* INFO */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700">
-        <p className="font-semibold mb-1">Catatan</p>
+        <p className="font-semibold mb-1">{t("hr.employees.detail.notesTitle")}</p>
         <ul className="list-disc list-inside space-y-1">
-          <li>Kolom bertanda * wajib diisi.</li>
-          <li>Kantor / lokasi kerja harus dipilih agar absensi berjalan.</li>
-          <li>Data profil disimpan di koleksi profiles.</li>
+          <li>{t("hr.employees.detail.noteRequired")}</li>
+          <li>{t("hr.employees.detail.noteOffice")}</li>
+          <li>{t("hr.employees.detail.noteProfiles")}</li>
         </ul>
       </div>
 
@@ -1012,6 +1059,9 @@ function SelectField({
   options,
   placeholder,
   optional = false,
+  legacySuffix = "(data tersimpan)",
+  emptyOptional = "— Kosongkan jika tidak dipakai —",
+  emptyRequired = "— Pilih —",
 }: {
   label: string;
   hint?: string;
@@ -1020,6 +1070,9 @@ function SelectField({
   options: SelectOption[];
   placeholder?: string;
   optional?: boolean;
+  legacySuffix?: string;
+  emptyOptional?: string;
+  emptyRequired?: string;
 }) {
   const known = optionValuesSet(options);
   const isLegacy = Boolean(value && !known.has(value));
@@ -1045,11 +1098,12 @@ function SelectField({
         placeholderTone
       >
         <option value="">
-          {placeholder ||
-            (optional ? "— Kosongkan jika tidak dipakai —" : "— Pilih —")}
+          {placeholder || (optional ? emptyOptional : emptyRequired)}
         </option>
         {isLegacy && (
-          <option value={value}>{value} (data tersimpan)</option>
+          <option value={value}>
+            {value} {legacySuffix}
+          </option>
         )}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -1165,11 +1219,13 @@ function SalaryInput({
   digits,
   onDigitsChange,
   placeholder,
+  formatHint,
 }: {
   label: string;
   digits: string;
   onDigitsChange: (next: string) => void;
   placeholder?: string;
+  formatHint?: string;
 }) {
   return (
     <div className="min-w-0">
@@ -1186,9 +1242,11 @@ function SalaryInput({
         }}
         className={`mt-1 overflow-x-auto ${FORM_CONTROL}`}
       />
-      <p className="mt-1 break-words text-xs leading-snug text-slate-500 sm:text-slate-400">
-        Ketik angka saja; pemisah ribuan (titik) mengikuti format Indonesia.
-      </p>
+      {formatHint ? (
+        <p className="mt-1 break-words text-xs leading-snug text-slate-500 sm:text-slate-400">
+          {formatHint}
+        </p>
+      ) : null}
     </div>
   );
 }

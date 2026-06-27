@@ -64,3 +64,13 @@ export function accountChannelNames(account?: StoreChannelAccount): {
     accountName: account?.account_name ?? "—",
   };
 }
+
+/** Label dropdown POS — platform + tier, tanpa nama toko. */
+export function mpAccountSelectLabel(account: StoreChannelAccount): string {
+  const platform = account.expand?.channel?.name ?? "Marketplace";
+  const tier = account.expand?.seller_tier?.label?.trim();
+  const base = tier ? `${platform} · ${tier}` : platform;
+  const shop = account.mp_shop_id?.trim();
+  if (shop) return `${base} (${shop})`;
+  return base;
+}

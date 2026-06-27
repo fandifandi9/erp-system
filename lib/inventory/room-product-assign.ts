@@ -4,8 +4,9 @@ import { stripProductFromLocationName } from "@/lib/inventory/slot-product";
 import {
   explainNotWarehouseRoom,
   isAssignableStorageLocation,
+  type RoomLoc,
 } from "@/lib/inventory/warehouse-rooms";
-import { setProductDefaultLocationOnPb } from "@/lib/inventory/product-default-location";
+import { setProductWarehousePlacement } from "@/lib/inventory/product-warehouse-placement";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 
 type LegacyLocRow = {
@@ -93,14 +94,14 @@ export async function assignProductToWarehouseRoom(
     fields: "id,warehouse,code,name,zone_type,level,bin,aisle,is_active",
   });
   if (room.warehouse !== warehouseId || room.is_active === false) {
-    throw new Error("Ruangan tidak valid untuk gudang ini.");
+    throw new Error("Slot tidak valid untuk gudang ini.");
   }
-  if (!isAssignableStorageLocation(room, whCode)) {
-    const why = explainNotWarehouseRoom(room, whCode) ?? "format lokasi tidak didukung";
-    throw new Error(`Ruangan tidak bisa dipakai untuk penempatan produk (${why}).`);
+  if (!isAssignableStorageLocation(room as unknown as RoomLoc, whCode)) {
+    const why = explainNotWarehouseRoom(room as unknown as RoomLoc, whCode) ?? "format lokasi tidak didukung";
+    throw new Error(`Slot tidak bisa dipakai untuk penempatan produk (${why}).`);
   }
 
-  await setProductDefaultLocationOnPb(pb, productId, roomId);
+  await setProductWarehousePlacement(pb, warehouseId, productId, roomId);
 
   await clearOtherLegacyRoomProductTags(pb, warehouseId, productId, roomId);
 }
@@ -110,23 +111,6 @@ export async function unassignProductFromWarehouseRoom(
   warehouseId: string,
   productId: string,
 ) {
-  const product = await pb.collection(INV_COLLECTIONS.products).getOne(productId, {
-    fields: "id,sku,name,default_location",
-  });
-
-  if (product.default_location) {
-    let loc: { warehouse?: string } | null = null;
-    try {
-      loc = await pb.collection(INV_COLLECTIONS.locations).getOne(product.default_location, {
-        fields: "id,warehouse",
-      });
-    } catch {
-      loc = null;
-    }
-    if (loc?.warehouse === warehouseId) {
-      await setProductDefaultLocationOnPb(pb, productId, null);
-    }
-  }
-
+  await setProductWarehousePlacement(pb, warehouseId, productId, null);
   await clearLegacyRoomProductTag(pb, warehouseId, productId);
 }

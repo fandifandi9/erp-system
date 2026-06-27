@@ -163,8 +163,8 @@ function LeaveMonthGrid(props: {
             fg = "#fff";
             sub = "HR";
           } else if (divisionFullD) {
-            bg = "#4f46e5";
-            border = "#4338ca";
+            bg = "#1a1a1a";
+            border = "#000000";
             fg = "#fff";
             sub = "penuh";
           } else if (partialFree) {
@@ -222,7 +222,7 @@ function LeaveMonthGrid(props: {
         <LegendRow color="#0f766e" border="#134e4a" label="Disetujui" dark />
         <LegendRow color="#0284c7" border="#075985" label="Menunggu HR" dark />
         {divisionHeatmap ? (
-          <LegendRow color="#4f46e5" border="#312e81" label="Penuh — kuota divisi/hari" dark />
+          <LegendRow color="#1a1a1a" border="#000000" label="Penuh — kuota divisi/hari" dark />
         ) : null}
       </View>
     </View>
@@ -1121,7 +1121,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(238, 242, 255, 0.85)",
   },
   hrBoxLbl: { fontSize: 10, fontWeight: "700", color: PWA.indigo700 },
-  hrBoxTxt: { marginTop: 4, fontSize: 13, color: "#1e1b4b" },
+  hrBoxTxt: { marginTop: 4, fontSize: 13, color: "#1a1a1a" },
   warnBox: {
     marginTop: 10,
     padding: 10,

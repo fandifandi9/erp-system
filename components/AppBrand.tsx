@@ -30,6 +30,7 @@ export function AppBrand({
         height={height}
         className="shrink-0 object-contain"
         priority
+        unoptimized
       />
       {showName ? (
         <span className={`truncate font-semibold tracking-tight ${nameClassName}`}>

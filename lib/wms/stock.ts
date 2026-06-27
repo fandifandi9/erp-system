@@ -21,14 +21,9 @@ export async function getWarehouseStockQty(
 }
 
 export function assertNonNegativeStock(
-  productLabel: string,
-  available: number,
-  requested: number,
+  _productLabel: string,
+  _available: number,
+  _requested: number,
 ): void {
-  if (requested <= 0) return;
-  if (available < requested) {
-    throw new Error(
-      `Stok tidak cukup untuk ${productLabel}: butuh ${requested}, tersedia ${available}.`,
-    );
-  }
+  // Stok boleh minus (backorder) — tidak diblok di picking maupun penjualan.
 }

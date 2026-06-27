@@ -24,9 +24,11 @@ export function getPurchaseOrderDocStatus(
 }
 
 export function getSalesOrderDocStatus(
-  so: Pick<SalesOrder, "status">,
+  so: Pick<SalesOrder, "status" | "send_to_warehouse_at">,
 ): OrderDocDisplayStatus {
   if (so.status === "cancelled") return "cancelled";
+  /** Proses gudang tanpa invoice — tetap draf di tab Pesanan. */
+  if (so.status === "processing" && so.send_to_warehouse_at) return "draft";
   if (SO_FINISHED.includes(so.status)) return "finished";
   return "draft";
 }
@@ -35,7 +37,9 @@ export function canEditPurchaseOrderDoc(po: Pick<PurchaseOrder, "status">): bool
   return getPurchaseOrderDocStatus(po) === "draft";
 }
 
-export function canEditSalesOrderDoc(so: Pick<SalesOrder, "status">): boolean {
+export function canEditSalesOrderDoc(
+  so: Pick<SalesOrder, "status" | "send_to_warehouse_at">,
+): boolean {
   return getSalesOrderDocStatus(so) === "draft";
 }
 
@@ -65,3 +69,34 @@ export const ORDER_DOC_STATUS_FILTER = [
   { value: "finished", label: "Selesai" },
   { value: "cancelled", label: "Dibatalkan" },
 ] as const;
+
+/** Filter tab Pesanan — hanya draf & dibatalkan (SO/PO yang sudah jadi invoice/bill disembunyikan). */
+export const OPEN_ORDER_DOC_STATUS_FILTER = [
+  { value: "all", label: "Semua" },
+  { value: "draft", label: "Draf" },
+  { value: "cancelled", label: "Dibatalkan" },
+] as const;
+
+/** SO masih terbuka: draf, proses gudang (belum invoice), atau dibatalkan. */
+const SO_OPEN_LIST =
+  '(status = "draft" || status = "processing" || status = "cancelled")';
+
+const PO_OPEN_DRAFT =
+  '(status = "draft" || status = "sent" || status = "confirmed" || status = "partial_received")';
+
+const PO_OPEN_LIST =
+  '(status = "draft" || status = "sent" || status = "confirmed" || status = "partial_received" || status = "cancelled")';
+
+/** Daftar SO di tab Pesanan — exclude yang sudah confirmed/delivered (sudah punya invoice). */
+export function openSalesOrdersListFilterToPb(filter: string): string | undefined {
+  if (filter === "draft") return '(status = "draft" || status = "processing")';
+  if (filter === "cancelled") return 'status = "cancelled"';
+  return SO_OPEN_LIST;
+}
+
+/** Daftar PO di tab Pesanan — exclude yang sudah received (sudah punya tagihan). */
+export function openPurchaseOrdersListFilterToPb(filter: string): string | undefined {
+  if (filter === "draft") return PO_OPEN_DRAFT;
+  if (filter === "cancelled") return 'status = "cancelled"';
+  return PO_OPEN_LIST;
+}

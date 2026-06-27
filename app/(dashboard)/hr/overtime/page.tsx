@@ -24,6 +24,7 @@ import {
 import { formatIntegerId, parseIntegerInput } from "@/lib/format-number";
 import { Loader2, Moon, User, CheckCircle, XCircle, Plus, Clock, Calendar } from "lucide-react";
 import Link from "next/link";
+import { useLocale } from "@/components/LocaleProvider";
 
 type HrRow = OvertimeRequest & {
   expand?: {
@@ -34,6 +35,7 @@ type HrRow = OvertimeRequest & {
 type PbUser = { id: string; name?: string; email?: string };
 
 export default function HrOvertimePage() {
+  const { t } = useLocale();
   const [rows, setRows] = useState<HrRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
@@ -219,7 +221,7 @@ export default function HrOvertimePage() {
   };
 
   if (!hasAccess) {
-    return <div className="p-6 text-red-600">Tidak punya akses.</div>;
+    return <div className="p-6 text-red-600">{t("hr.common.noAccess")}</div>;
   }
 
   const badge = (status: OvertimeStatus) => {
@@ -255,15 +257,13 @@ export default function HrOvertimePage() {
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Lembur</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Penunjukan lembur ke karyawan (staff terima/tolak), dan persetujuan pengajuan lembur dari staff.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-800">{t("hr.overtime.title")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("hr.overtime.subtitle")}</p>
           <Link
             href="/hr/compensation/settings"
             className="mt-2 inline-block text-sm font-medium text-indigo-600 hover:underline"
           >
-            Pengaturan tarif default →
+            {t("hr.overtime.compensationLink")}
           </Link>
         </div>
         <button
@@ -272,30 +272,30 @@ export default function HrOvertimePage() {
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700"
         >
           <Plus className="h-4 w-4" />
-          Penunjukan lembur
+          {t("hr.overtime.assign")}
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4">
-          <p className="text-xs font-medium text-amber-800">Menunggu staff</p>
+          <p className="text-xs font-medium text-amber-800">{t("hr.overtime.statWaitStaff")}</p>
           <p className="text-2xl font-bold text-amber-900">{stats.waitStaff}</p>
         </div>
         <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4">
-          <p className="text-xs font-medium text-blue-800">Menunggu ACC HR</p>
+          <p className="text-xs font-medium text-blue-800">{t("hr.overtime.statWaitHr")}</p>
           <p className="text-2xl font-bold text-blue-900">{stats.waitHr}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-medium text-slate-600">Filter</p>
+          <p className="text-xs font-medium text-slate-600">{t("hr.overtime.filter")}</p>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as typeof filter)}
             className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm"
           >
-            <option value="all">Semua</option>
-            <option value="wait_staff">Hanya: tunggu staff</option>
-            <option value="wait_hr">Hanya: tunggu HR</option>
-            <option value="done">Selesai (semua status akhir)</option>
+            <option value="all">{t("hr.overtime.filterAll")}</option>
+            <option value="wait_staff">{t("hr.overtime.filterWaitStaff")}</option>
+            <option value="wait_hr">{t("hr.overtime.filterWaitHr")}</option>
+            <option value="done">{t("hr.overtime.filterDone")}</option>
           </select>
         </div>
       </div>
@@ -305,17 +305,17 @@ export default function HrOvertimePage() {
           onSubmit={submitAssign}
           className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-6 shadow-sm"
         >
-          <h2 className="text-sm font-semibold text-indigo-900">Penunjukan lembur (HR → staff)</h2>
+          <h2 className="text-sm font-semibold text-indigo-900">{t("hr.overtime.assignFormTitle")}</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="text-xs font-medium text-slate-600">Karyawan *</label>
+              <label className="text-xs font-medium text-slate-600">{t("hr.overtime.employeeLabel")}</label>
               <select
                 required
                 value={assignUser}
                 onChange={(e) => setAssignUser(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               >
-                <option value="">— Pilih —</option>
+                <option value="">{t("hr.overtime.selectPlaceholder")}</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name || u.email || u.id}
@@ -324,7 +324,7 @@ export default function HrOvertimePage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Tanggal kerja lembur *</label>
+              <label className="text-xs font-medium text-slate-600">{t("hr.overtime.workDateLabel")}</label>
               <input
                 type="date"
                 required
@@ -334,7 +334,7 @@ export default function HrOvertimePage() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Jam mulai * (HH:mm)</label>
+              <label className="text-xs font-medium text-slate-600">{t("hr.overtime.startTimeLabel")}</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -349,7 +349,7 @@ export default function HrOvertimePage() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600">Jam selesai * (HH:mm)</label>
+              <label className="text-xs font-medium text-slate-600">{t("hr.overtime.endTimeLabel")}</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -365,7 +365,7 @@ export default function HrOvertimePage() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Tarif lembur per jam (Rp)</label>
+            <label className="text-xs font-medium text-slate-600">{t("hr.overtime.hourlyRateOvertime")}</label>
             <input
               type="text"
               inputMode="numeric"
@@ -376,28 +376,28 @@ export default function HrOvertimePage() {
             />
           </div>
           <p className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm text-slate-700">
-            <strong>{formatIdr(parseIntegerInput(assignHourly))}</strong>/jam ×{" "}
-            <strong>{assignHours.toFixed(2)}</strong> jam ={" "}
+            <strong>{formatIdr(parseIntegerInput(assignHourly))}</strong>{t("hr.overtime.perHour")} ×{" "}
+            <strong>{assignHours.toFixed(2)}</strong> {t("hr.overtime.hours")} ={" "}
             <strong className="text-indigo-700">{formatIdr(assignPreviewPay)}</strong>
           </p>
           <div>
-            <label className="text-xs font-medium text-slate-600">Keterangan untuk sistem *</label>
+            <label className="text-xs font-medium text-slate-600">{t("hr.overtime.systemReason")}</label>
             <textarea
               required
               rows={2}
               value={assignReason}
               onChange={(e) => setAssignReason(e.target.value)}
-              placeholder="Ringkas mengapa lembur diperlukan"
+              placeholder={t("hr.overtime.systemReasonPlaceholder")}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Catatan ke staff (opsional)</label>
+            <label className="text-xs font-medium text-slate-600">{t("hr.overtime.staffNote")}</label>
             <textarea
               rows={2}
               value={assignHrNote}
               onChange={(e) => setAssignHrNote(e.target.value)}
-              placeholder="Instruksi tambahan yang terbaca staff"
+              placeholder={t("hr.overtime.staffNotePlaceholder")}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -407,14 +407,14 @@ export default function HrOvertimePage() {
               disabled={assignBusy}
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
             >
-              {assignBusy ? "Menyimpan…" : "Kirim penunjukan"}
+              {assignBusy ? t("hr.common.saving") : t("hr.overtime.submitAssign")}
             </button>
             <button
               type="button"
               onClick={() => setShowForm(false)}
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700"
             >
-              Tutup
+              {t("hr.overtime.close")}
             </button>
           </div>
         </form>
@@ -427,7 +427,7 @@ export default function HrOvertimePage() {
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-slate-500">
           <Moon className="mx-auto mb-3 h-12 w-12 text-slate-300" />
-          Tidak ada data untuk filter ini.
+          {t("hr.overtime.filterEmpty")}
         </div>
       ) : (
         <div className="space-y-4">
@@ -447,11 +447,11 @@ export default function HrOvertimePage() {
                       {badge(row.status)}
                       {row.source === "hr_assignment" ? (
                         <span className="rounded bg-purple-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-purple-800">
-                          Penunjukan HR
+                          {t("hr.overtime.hrAssignment")}
                         </span>
                       ) : (
                         <span className="rounded bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-800">
-                          Pengajuan staff
+                          {t("hr.overtime.staffRequest")}
                         </span>
                       )}
                     </div>
@@ -462,31 +462,31 @@ export default function HrOvertimePage() {
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <Clock className="h-4 w-4" />
-                        {row.start_time} – {row.end_time} ({row.hours} jam)
+                        {row.start_time} – {row.end_time} ({row.hours} {t("hr.overtime.hours")})
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-slate-700">{row.reason}</p>
                     {row.hr_note ? (
                       <p className="mt-1 text-xs text-indigo-800">
-                        <strong>Catatan HR ke staff:</strong> {row.hr_note}
+                        <strong>{t("hr.overtime.hrNoteToStaff")}</strong> {row.hr_note}
                       </p>
                     ) : null}
                     {row.source === "staff_request" &&
                       row.status === "hr_rejected" &&
                       row.rejection_reason?.trim() && (
                         <p className="mt-2 rounded border border-red-100 bg-red-50 px-2 py-1 text-xs text-red-900">
-                          <strong>Alasan tolak:</strong> {row.rejection_reason}
+                          <strong>{t("hr.overtime.rejectReason")}</strong> {row.rejection_reason}
                         </p>
                       )}
                     {row.status === "staff_declined" && row.staff_decline_note && (
                       <p className="mt-2 text-xs text-orange-800">
-                        <strong>Staff menolak:</strong> {row.staff_decline_note}
+                        <strong>{t("hr.overtime.staffDeclined")}</strong> {row.staff_decline_note}
                       </p>
                     )}
                     {(row.pay_amount != null && row.pay_amount > 0) ||
                     (row.hourly_rate != null && row.hourly_rate > 0) ? (
                       <p className="mt-2 text-sm font-medium text-emerald-800">
-                        Bayaran:{" "}
+                        {t("hr.overtime.pay")}{" "}
                         {row.pay_amount != null && row.pay_amount > 0
                           ? formatIdr(row.pay_amount)
                           : formatIdr(
@@ -498,7 +498,7 @@ export default function HrOvertimePage() {
                             )}
                         {row.hourly_rate != null && row.hourly_rate > 0 ? (
                           <span className="ml-1 text-xs font-normal text-emerald-700">
-                            ({formatIdr(row.hourly_rate)}/jam × {row.hours} jam)
+                            ({formatIdr(row.hourly_rate)}{t("hr.overtime.perHour")} × {row.hours} {t("hr.overtime.hours")})
                           </span>
                         ) : null}
                       </p>
@@ -524,7 +524,7 @@ export default function HrOvertimePage() {
                       ) : (
                         <CheckCircle className="h-4 w-4" />
                       )}
-                      Setujui
+                      {t("hr.common.approve")}
                     </button>
                     <button
                       type="button"
@@ -536,7 +536,7 @@ export default function HrOvertimePage() {
                       className="inline-flex items-center gap-1 rounded-xl border-2 border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       <XCircle className="h-4 w-4" />
-                      Tolak
+                      {t("hr.common.reject")}
                     </button>
                   </div>
                 )}
@@ -552,14 +552,14 @@ export default function HrOvertimePage() {
             className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
             role="dialog"
           >
-            <h2 className="text-lg font-semibold text-slate-800">Setujui pengajuan lembur</h2>
+            <h2 className="text-lg font-semibold text-slate-800">{t("hr.overtime.approveModalTitle")}</h2>
             <p className="mt-1 text-sm text-slate-500">
               {approveRow
-                ? `${displayName(approveRow)} · ${approveRow.work_date} · ${approveRow.hours} jam`
-                : "Atur nominal lalu kirim ke staff untuk dikonfirmasi."}
+                ? `${displayName(approveRow)} · ${approveRow.work_date} · ${approveRow.hours} ${t("hr.overtime.hours")}`
+                : t("hr.overtime.approveModalHint")}
             </p>
             <div className="mt-4">
-              <label className="text-xs font-medium text-slate-600">Tarif lembur per jam (Rp)</label>
+              <label className="text-xs font-medium text-slate-600">{t("hr.overtime.hourlyRateOvertime")}</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -570,7 +570,7 @@ export default function HrOvertimePage() {
               />
             </div>
             <p className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              {formatIdr(parseIntegerInput(approveHourly))}/jam × {approveRow?.hours ?? 0} jam ={" "}
+              {formatIdr(parseIntegerInput(approveHourly))}{t("hr.overtime.perHour")} × {approveRow?.hours ?? 0} {t("hr.overtime.hours")} ={" "}
               <strong>{formatIdr(approvePreviewPay)}</strong>
             </p>
             <div className="mt-4 flex justify-end gap-2">
@@ -579,7 +579,7 @@ export default function HrOvertimePage() {
                 onClick={() => setApproveId(null)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm"
               >
-                Batal
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -587,7 +587,7 @@ export default function HrOvertimePage() {
                 onClick={() => void runApprove()}
                 className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {acting === approveId ? "Menyimpan…" : "Kirim ke staff"}
+                {acting === approveId ? t("hr.common.saving") : t("hr.overtime.sendToStaff")}
               </button>
             </div>
           </div>
@@ -600,14 +600,14 @@ export default function HrOvertimePage() {
             className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
             role="dialog"
           >
-            <h2 className="text-lg font-semibold text-slate-800">Tolak pengajuan lembur</h2>
-            <p className="mt-1 text-sm text-slate-500">Alasan tampil untuk staff (min. 5 karakter).</p>
+            <h2 className="text-lg font-semibold text-slate-800">{t("hr.overtime.rejectTitle")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("hr.overtime.rejectModalDesc")}</p>
             <textarea
               value={rejectDraft}
               onChange={(e) => setRejectDraft(e.target.value)}
               rows={4}
               className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Contoh: Tidak ada kebutuhan operasional / sudah ada jadwal lain."
+              placeholder={t("hr.overtime.rejectModalPlaceholder")}
             />
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -615,7 +615,7 @@ export default function HrOvertimePage() {
                 onClick={() => setRejectId(null)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm"
               >
-                Batal
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -623,7 +623,7 @@ export default function HrOvertimePage() {
                 onClick={() => void runReject()}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                Kirim penolakan
+                {t("hr.leave.sendRejection")}
               </button>
             </div>
           </div>
@@ -631,11 +631,8 @@ export default function HrOvertimePage() {
       )}
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-        <p className="font-medium text-slate-800">Setup PocketBase</p>
-        <p className="mt-1">
-          Buat koleksi <code className="rounded bg-white px-1">overtime_requests</code> sesuai file migrasi proyek. Tanpa
-          itu, halaman ini akan gagal memuat data.
-        </p>
+        <p className="font-medium text-slate-800">{t("hr.overtime.setupPb")}</p>
+        <p className="mt-1">{t("hr.overtime.setupPbDesc")}</p>
       </div>
     </div>
   );

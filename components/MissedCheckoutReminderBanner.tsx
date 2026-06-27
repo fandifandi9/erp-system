@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { fetchMissedCheckoutReminderRows, type MissedCheckoutRow } from "@/lib/missed-checkout-reminder";
+import { useLocale } from "@/components/LocaleProvider";
 
 const REFRESH_MS = 45_000;
 
 export function MissedCheckoutReminderBanner() {
+  const { t } = useLocale();
   const [rows, setRows] = useState<MissedCheckoutRow[]>([]);
 
   const load = useCallback(async () => {
@@ -21,8 +23,8 @@ export function MissedCheckoutReminderBanner() {
 
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), REFRESH_MS);
-    return () => clearInterval(t);
+    const timer = setInterval(() => void load(), REFRESH_MS);
+    return () => clearInterval(timer);
   }, [load]);
 
   if (rows.length === 0) return null;
@@ -37,9 +39,7 @@ export function MissedCheckoutReminderBanner() {
           <LogOut className="h-5 w-5 text-amber-900" aria-hidden />
         </div>
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-sm font-semibold leading-snug">
-            Karyawan masih check-in: melewati akhir shift + 30 menit (tanpa lembur HR-approved hari ini)
-          </p>
+          <p className="text-sm font-semibold leading-snug">{t("hr.banner.missedCheckout")}</p>
           <ul className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
             {rows.map((r) => (
               <li key={r.userId}>

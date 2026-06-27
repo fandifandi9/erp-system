@@ -1,5 +1,9 @@
+"use client";
+
 import { getWmsRouteBadge } from "@/lib/bisnis/wms-order-filters";
 import type { PurchaseOrder, SalesOrder } from "@/lib/bisnis/types";
+import { useLocale } from "@/components/LocaleProvider";
+import { translateWmsBadge } from "@/lib/i18n/wms-badge";
 
 type Props = {
   order?: Pick<
@@ -10,9 +14,11 @@ type Props = {
 };
 
 export function WmsRouteBadge({ order, kind }: Props) {
-  const { label, cls } = getWmsRouteBadge(order, kind);
+  const { locale } = useLocale();
+  const meta = getWmsRouteBadge(order, kind);
+  const label = translateWmsBadge(locale, meta);
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${meta.cls}`}>
       {label}
     </span>
   );

@@ -34,6 +34,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Pratinjau faktur/SO untuk pelanggan (link dari WA/email)
+  if (pathname.startsWith("/share")) {
+    return NextResponse.next();
+  }
+
   // 🔐 ambil cookie
   const authCookie = req.cookies.get("pb_auth");
 

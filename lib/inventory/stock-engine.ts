@@ -24,6 +24,9 @@ type MovementRow = {
   to_warehouse?: string;
   from_location?: string;
   to_location?: string;
+  reference_type?: string;
+  reference_no?: string;
+  notes?: string;
 };
 
 type LineRow = {
@@ -85,11 +88,6 @@ async function applyDelta(
 ): Promise<void> {
   const balance = await getOrCreateBalance(pb, warehouseId, locationId, productId);
   const onHand = Number(balance.qty_on_hand) + delta;
-  if (onHand < 0) {
-    throw new Error(
-      `Stok tidak cukup untuk produk ${productId} (butuh ${Math.abs(delta)}, tersedia ${balance.qty_on_hand}).`
-    );
-  }
   const reserved = Number(balance.qty_reserved) || 0;
   await pb.collection(INV_COLLECTIONS.balances).update(balance.id, {
     qty_on_hand: onHand,
@@ -187,6 +185,19 @@ export async function postStockMovement(
 
   if (lines.length === 0) {
     throw new Error("Movement tidak memiliki baris produk.");
+  }
+
+  if (
+    movement.movement_type === "TRANSFER" &&
+    movement.from_warehouse &&
+    movement.to_warehouse
+  ) {
+    const { assertDamagedTransferRules } = await import("@/lib/inventory/damaged-company-guard");
+    await assertDamagedTransferRules(pb, {
+      fromWarehouseId: movement.from_warehouse,
+      toWarehouseId: movement.to_warehouse,
+      referenceType: movement.reference_type,
+    });
   }
 
   const deltas: DeltaTarget[] = [];

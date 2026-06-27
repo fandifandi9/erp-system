@@ -71,10 +71,22 @@ export function isCashInvoice(
 
 /** Perbaiki invoice cash lama yang statusnya salah (overdue/unpaid) */
 export function shouldSyncCashInvoice(
-  inv: Pick<Invoice, "status" | "is_cash" | "issue_date" | "due_date">,
+  inv: Pick<Invoice, "status" | "is_cash" | "issue_date" | "due_date" | "remaining">,
 ): boolean {
   if (inv.status === "cancelled") return false;
   return isCashInvoice(inv) && inv.status !== "paid";
+}
+
+/** Tampilan list — tanpa write PB (sync DB hanya di detail). */
+export function applyCashInvoiceDisplaySync(inv: Invoice): Invoice {
+  if (!shouldSyncCashInvoice(inv)) return inv;
+  return {
+    ...inv,
+    status: "paid",
+    is_cash: true,
+    paid_amount: inv.total,
+    remaining: 0,
+  };
 }
 
 export function statusFilterToPb(filter: string): string | undefined {
@@ -82,15 +94,15 @@ export function statusFilterToPb(filter: string): string | undefined {
 }
 
 export function canEditInvoice(inv: Pick<Invoice, "status">): boolean {
-  return getInvoiceDisplayStatus(inv) !== "cancelled";
+  return inv.status !== "cancelled";
 }
 
 export function canCancelInvoice(inv: Pick<Invoice, "status">): boolean {
-  return getInvoiceDisplayStatus(inv) !== "cancelled";
+  return inv.status !== "cancelled";
 }
 
 /** Nilai untuk laporan laba rugi — dibatalkan tidak dihitung */
 export function invoiceAmountForPL(inv: Pick<Invoice, "status" | "total">): number {
-  if (getInvoiceDisplayStatus(inv) === "cancelled") return 0;
+  if (inv.status === "cancelled") return 0;
   return inv.total ?? 0;
 }
