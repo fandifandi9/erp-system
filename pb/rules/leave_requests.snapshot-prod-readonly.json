@@ -1,0 +1,57 @@
+{
+  "collection": "leave_requests",
+  "exported_at": "2026-08-12T05:45:56.730Z",
+  "environment": "production",
+  "host": "pb.serba.space",
+  "status": "READ_ONLY_SNAPSHOT_BASELINE_BEFORE_LOCK",
+  "note": "Production baseline BEFORE write-lock. Staging is locked separately. Production write-lock NOT applied — requires explicit human approval. No production mutations performed when this file was fetched.",
+  "rules": {
+    "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "createRule": "@request.auth.id != \"\" && @request.data.user = @request.auth.id",
+    "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+  },
+  "fields": [
+    {
+      "name": "user",
+      "type": "relation",
+      "required": false
+    },
+    {
+      "name": "date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "name": "devision",
+      "type": "text",
+      "required": false
+    },
+    {
+      "name": "status",
+      "type": "select",
+      "required": false
+    },
+    {
+      "name": "note",
+      "type": "text",
+      "required": false
+    },
+    {
+      "name": "hr_action_by",
+      "type": "text",
+      "required": false
+    },
+    {
+      "name": "hr_action_name",
+      "type": "text",
+      "required": false
+    },
+    {
+      "name": "hr_action_at",
+      "type": "date",
+      "required": false
+    }
+  ]
+}

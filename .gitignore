@@ -37,6 +37,22 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+.env.staging
+.env.staging.local
+
+# PocketBase data / local DB (never commit production or staging data)
+pb_data/
+**/pb_data/
+*.db
+*.db-shm
+*.db-wal
+backups/
+**/backups/
+storage/
+**/storage/
+
+# Staging deploy local overrides (secrets)
+deploy/staging/*.local
 
 # vercel
 .vercel
