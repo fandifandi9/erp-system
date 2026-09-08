@@ -212,12 +212,21 @@ function buildOvertimePayFields(
 }
 
 export async function fetchOvertimeForHr(): Promise<OvertimeRequest[]> {
-  const result = await pb.collection(COLLECTION).getFullList({
-    sort: "-created",
-    expand: "user",
-    requestKey: null,
+  // FLEX-ORG-05-FIX — scoped server API; do not use client getFullList.
+  const { hrApiAuthHeaders } = await import("@/lib/hr/hr-api-client");
+  const res = await fetch("/api/hr/overtime?forHrMonitor=1", {
+    credentials: "include",
+    headers: hrApiAuthHeaders(),
   });
-  return normalizeOvertimeFromPb(result as unknown[]);
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    items?: unknown[];
+  };
+  if (!res.ok || json.ok === false) {
+    throw new Error(json.error || "Gagal memuat lembur.");
+  }
+  return normalizeOvertimeFromPb(json.items ?? []);
 }
 
 export async function fetchOvertimeForUser(userId: string): Promise<OvertimeRequest[]> {
@@ -297,17 +306,24 @@ export async function createStaffOvertimeRequest(input: {
   if (hours <= 0) return { success: false, message: "Rentang jam tidak valid." };
 
   try {
-    await pb.collection(COLLECTION).create({
-      user: uid,
-      work_date: input.work_date.trim(),
-      start_time: input.start_time.trim(),
-      end_time: input.end_time.trim(),
-      hours,
-      source: "staff_request",
-      status: "waiting_hr",
-      reason,
-      created_by: String(uid),
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (pb.authStore.token) headers.Authorization = `Bearer ${pb.authStore.token}`;
+    const res = await fetch("/api/hr/overtime", {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({
+        work_date: input.work_date.trim(),
+        start_time: input.start_time.trim(),
+        end_time: input.end_time.trim(),
+        hours,
+        reason,
+      }),
     });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.message || json.error || "Gagal mengirim pengajuan lembur." };
+    }
     return { success: true, message: "Pengajuan lembur terkirim. Menunggu persetujuan HR." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal mengirim pengajuan lembur.") };
@@ -370,26 +386,22 @@ export async function staffDeclineAssignment(
 
 export async function hrApproveStaffRequest(
   requestId: string,
-  options?: { hourly_rate?: number; pay_amount?: number }
+  _options?: { hourly_rate?: number; pay_amount?: number }
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const rec = await pb.collection(COLLECTION).getOne(requestId);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.source) !== "staff_request" || String(raw.status) !== "waiting_hr") {
-      return { success: false, message: "Hanya pengajuan staff yang menunggu HR yang dapat disetujui." };
-    }
-    const hours = Number(raw.hours) || computeOvertimeHours(String(raw.start_time), String(raw.end_time));
-    const rates = await resolveOvertimeRates({ hourly_rate: options?.hourly_rate });
-    const payFields = buildOvertimePayFields(hours, rates, options?.pay_amount);
-    await pb.collection(COLLECTION).update(requestId, {
-      status: "waiting_staff",
-      ...hrActionPayload(),
-      ...payFields,
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (pb.authStore.token) headers.Authorization = `Bearer ${pb.authStore.token}`;
+    const res = await fetch(`/api/hr/overtime/${encodeURIComponent(requestId)}/approve`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: "{}",
     });
-    return {
-      success: true,
-      message: `Nominal ${payFields.pay_amount.toLocaleString("id-ID")} dikirim ke staff. Menunggu konfirmasi staff.`,
-    };
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.message || json.error || "Gagal menyetujui." };
+    }
+    return { success: true, message: json.message || "Pengajuan lembur disetujui." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyetujui.") };
   }
@@ -402,17 +414,19 @@ export async function hrRejectStaffRequest(
   const r = String(reason ?? "").trim();
   if (r.length < 5) return { success: false, message: "Alasan penolakan minimal 5 karakter." };
   try {
-    const rec = await pb.collection(COLLECTION).getOne(requestId);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.source) !== "staff_request" || String(raw.status) !== "waiting_hr") {
-      return { success: false, message: "Hanya pengajuan staff yang menunggu HR yang dapat ditolak." };
-    }
-    await pb.collection(COLLECTION).update(requestId, {
-      status: "hr_rejected",
-      rejection_reason: r,
-      ...hrActionPayload(),
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (pb.authStore.token) headers.Authorization = `Bearer ${pb.authStore.token}`;
+    const res = await fetch(`/api/hr/overtime/${encodeURIComponent(requestId)}/reject`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({ reason: r }),
     });
-    return { success: true, message: "Pengajuan ditolak. Staff dapat melihat alasan." };
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.message || json.error || "Gagal menolak." };
+    }
+    return { success: true, message: json.message || "Pengajuan ditolak." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menolak.") };
   }

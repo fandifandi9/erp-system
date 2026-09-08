@@ -1,16 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { pb } from "@/lib/pocketbase";
 import { useRouter, usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
-import { canAccess, getDefaultRouteForUser } from "@/lib/rbac";
+import { canAccess, getDefaultRouteForUser, getOperationalDashboardRoute } from "@/lib/rbac";
 import {
-  clearWebSessionNonce,
   shouldLogoutForSessionMismatch,
   syncWebSessionNonceFromUser,
 } from "@/lib/auth-session";
+import {
+  clearClientAuthSession,
+  restoreAuthFromHttpOnlyCookie,
+  syncAuthStoreFromPbRecord,
+} from "@/lib/pb-auth-cookie";
+import { resolveClientAccessUser } from "@/lib/access/context";
+import {
+  clientCanAccessPath,
+  refreshClientAccessSession,
+  shouldRefreshClientAccessSession,
+} from "@/lib/access/client-route-access";
 import {
   getErrorMessage,
   isPocketBaseAuthError,
@@ -19,12 +29,28 @@ import {
 import { AppVersionWatermark } from "@/components/AppVersionWatermark";
 import { WorkContextProvider } from "@/components/WorkContextProvider";
 import { LocaleProvider } from "@/components/LocaleProvider";
+import { ToastProvider } from "@/components/ui/toast";
 
 const SESSION_VERIFY_MS = 15_000;
 
-async function fetchFreshUser(userId: string) {
+/**
+ * Segarkan user sesi via authRefresh — bukan getOne.
+ * getOne sering 404 untuk HR/staff jika List/View rule koleksi `users` ketat
+ * (owner biasanya masih bisa baca, sehingga seolah hanya “HR yang bermasalah”).
+ */
+async function fetchFreshUser(): Promise<Record<string, unknown>> {
   return Promise.race([
-    pb.collection("users").getOne(userId, { requestKey: null }),
+    pb
+      .collection("users")
+      .authRefresh({ requestKey: null })
+      .then(async (auth) => {
+        if (!auth.token) return (auth.record ?? {}) as Record<string, unknown>;
+        return syncAuthStoreFromPbRecord(
+          pb,
+          auth.token,
+          auth.record as Record<string, unknown>,
+        );
+      }),
     new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("Verifikasi sesi timeout")), SESSION_VERIFY_MS);
     }),
@@ -42,7 +68,12 @@ export default function DashboardLayout({
   const [sessionUser, setSessionUser] = useState<Record<string, unknown> | null>(null);
   const [guardError, setGuardError] = useState("");
   const [guardRetry, setGuardRetry] = useState(0);
+  const [authVersion, setAuthVersion] = useState(0);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const readyOnceRef = useRef(false);
+  const routerRef = useRef(router);
+  const routeEnrichAttemptRef = useRef<Set<string>>(new Set());
+  routerRef.current = router;
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -67,45 +98,56 @@ export default function DashboardLayout({
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileNavOpen]);
 
-  // Verifikasi sesi — sekali per mount / retry (bukan tiap ganti pathname)
+  // Verifikasi sesi — sekali per mount / retry (bukan tiap ganti pathname / router identity)
   useEffect(() => {
     let cancelled = false;
 
     const verifySession = async () => {
-      setBooting(true);
+      // Jangan robohkan pohon UI yang sudah siap (hindari race setState saat remount).
+      if (!readyOnceRef.current) setBooting(true);
       setGuardError("");
-      const current = pb.authStore.model;
 
-      if (!current) {
-        router.replace("/login");
-        return;
+      // 1) Session lokal valid? Jika tidak → restore dari HttpOnly cookie (divalidasi server).
+      if (!pb.authStore.isValid || !pb.authStore.token || !pb.authStore.model) {
+        const restored = await restoreAuthFromHttpOnlyCookie(pb);
+        if (cancelled) return;
+        if (!restored) {
+          await clearClientAuthSession(pb);
+          if (cancelled) return;
+          routerRef.current.replace("/login");
+          return;
+        }
+        syncWebSessionNonceFromUser(
+          pb.authStore.model as { session_nonce?: unknown },
+        );
       }
 
+      // 2) Baru setelah auth state tersedia: refresh + cek status/nonce.
       try {
-        const freshUser = await fetchFreshUser(current.id);
+        const freshUser = await fetchFreshUser();
         if (cancelled) return;
 
         syncWebSessionNonceFromUser(freshUser as { session_nonce?: unknown });
 
         if (freshUser.status !== "active") {
-          clearWebSessionNonce();
-          pb.authStore.clear();
-          router.replace("/login");
+          await clearClientAuthSession(pb);
+          if (cancelled) return;
+          routerRef.current.replace("/login");
           return;
         }
 
         if (shouldLogoutForSessionMismatch(freshUser as { session_nonce?: unknown })) {
-          clearWebSessionNonce();
-          pb.authStore.clear();
-          router.replace("/login?reason=session");
+          await clearClientAuthSession(pb);
+          if (cancelled) return;
+          routerRef.current.replace("/login?reason=session");
           return;
         }
 
         setSessionUser(freshUser as Record<string, unknown>);
+        readyOnceRef.current = true;
         setBooting(false);
       } catch (err) {
         if (cancelled) return;
-        console.error("GUARD ERROR:", err);
 
         const timeout =
           err instanceof Error && /timeout/i.test(err.message);
@@ -122,13 +164,15 @@ export default function DashboardLayout({
           return;
         }
 
+        // 401/403: sesi expired/invalid — expected state, bukan application crash.
         if (isPocketBaseAuthError(err)) {
-          clearWebSessionNonce();
-          pb.authStore.clear();
-          router.replace("/login");
+          await clearClientAuthSession(pb);
+          if (cancelled) return;
+          routerRef.current.replace("/login");
           return;
         }
 
+        console.error("GUARD ERROR:", err);
         setGuardError(getErrorMessage(err, "Gagal memverifikasi sesi."));
         setBooting(false);
       }
@@ -139,15 +183,57 @@ export default function DashboardLayout({
     return () => {
       cancelled = true;
     };
-  }, [router, guardRetry]);
+  }, [guardRetry]);
 
-  // Cek akses rute — tanpa layar penuh "Memverifikasi akses..."
+  useEffect(() => {
+    return pb.authStore.onChange(() => setAuthVersion((n) => n + 1));
+  }, []);
+
+  // Cek akses rute — refresh enrichment dari server sebelum redirect prematur.
   useEffect(() => {
     if (booting || !sessionUser) return;
-    if (!canAccess(sessionUser, pathname)) {
-      router.replace(getDefaultRouteForUser(sessionUser));
-    }
-  }, [booting, sessionUser, pathname, router]);
+
+    let cancelled = false;
+
+    const verifyRouteAccess = async () => {
+      const storeModel = pb.authStore.model as Record<string, unknown> | null;
+      let effectiveSession = sessionUser;
+
+      if (clientCanAccessPath(storeModel, effectiveSession, pathname)) {
+        return;
+      }
+
+      if (
+        shouldRefreshClientAccessSession(storeModel, effectiveSession, pathname) &&
+        !routeEnrichAttemptRef.current.has(pathname)
+      ) {
+        routeEnrichAttemptRef.current.add(pathname);
+        const refreshed = await refreshClientAccessSession(pb);
+        if (cancelled) return;
+        if (refreshed) {
+          effectiveSession = refreshed;
+          setSessionUser(refreshed);
+          if (clientCanAccessPath(pb.authStore.model as Record<string, unknown>, refreshed, pathname)) {
+            return;
+          }
+        }
+      }
+
+      const accessUser = resolveClientAccessUser(
+        pb.authStore.model as Record<string, unknown> | null,
+        effectiveSession,
+      );
+      if (!accessUser || !canAccess(accessUser, pathname)) {
+        routerRef.current.replace(getDefaultRouteForUser(accessUser ?? effectiveSession));
+      }
+    };
+
+    void verifyRouteAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [booting, sessionUser, pathname, router, authVersion]);
 
   if (booting) {
     return (
@@ -179,9 +265,9 @@ export default function DashboardLayout({
             type="button"
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
             onClick={() => {
-              clearWebSessionNonce();
-              pb.authStore.clear();
-              router.replace("/login");
+              void clearClientAuthSession(pb).then(() => {
+                router.replace("/login");
+              });
             }}
           >
             Keluar & login ulang
@@ -199,10 +285,19 @@ export default function DashboardLayout({
     );
   }
 
+  const isStaffShell =
+    getOperationalDashboardRoute(pb.authStore.model as Record<string, unknown> | null) ===
+      "/dashboard-staff" &&
+    (pathname === "/dashboard-staff" || pathname.startsWith("/dashboard-staff/"));
+  const isHrShell =
+    getOperationalDashboardRoute(pb.authStore.model as Record<string, unknown> | null) === "/hr";
+  const useCompactMain = isStaffShell && !isHrShell;
+
   return (
     <LocaleProvider>
+      <ToastProvider>
       <WorkContextProvider>
-        <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-slate-50 overflow-hidden">
+        <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] bg-erp-bg overflow-hidden">
         <Sidebar
           mobileOpen={mobileNavOpen}
           onMobileClose={() => setMobileNavOpen(false)}
@@ -215,13 +310,21 @@ export default function DashboardLayout({
             mobileNavOpen={mobileNavOpen}
           />
 
-          <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 md:p-6">
+          <main
+            className={
+              "min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-[max(1rem,env(safe-area-inset-bottom))] " +
+              (useCompactMain
+                ? "px-3 pt-2 sm:px-4 sm:pt-2"
+                : "p-4 sm:p-5 md:p-6")
+            }
+          >
             {children}
           </main>
         </div>
       </div>
       <AppVersionWatermark variant="dashboard" />
       </WorkContextProvider>
+      </ToastProvider>
     </LocaleProvider>
   );
 }

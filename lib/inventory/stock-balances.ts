@@ -25,6 +25,12 @@ function sumBalancesToMap(
   return map;
 }
 
+function buildProductFilter(productIds: string[]): string | null {
+  const unique = [...new Set(productIds.filter(Boolean))];
+  if (unique.length === 0) return null;
+  return unique.map((id) => `product = "${id.replace(/"/g, '\\"')}"`).join(" || ");
+}
+
 export async function fetchStockMapByWarehouse(
   warehouseId: string,
 ): Promise<Record<string, number>> {
@@ -32,7 +38,30 @@ export async function fetchStockMapByWarehouse(
 
   const client = await resolveStockPb();
   const balances = await client.collection(INV_COLLECTIONS.balances).getFullList({
-    filter: `warehouse = "${warehouseId}"`,
+    filter: `warehouse = "${warehouseId.replace(/"/g, '\\"')}"`,
+    fields: "product,qty_on_hand,qty_available",
+    requestKey: null,
+  });
+
+  return sumBalancesToMap(
+    balances as { product?: string; qty_on_hand?: number; qty_available?: number }[],
+  );
+}
+
+/** Stok hanya untuk produk yang diminta (picking / validasi). */
+export async function fetchStockMapForProducts(
+  warehouseId: string,
+  productIds: string[],
+): Promise<Record<string, number>> {
+  if (!warehouseId) return {};
+
+  const productFilter = buildProductFilter(productIds);
+  if (!productFilter) return {};
+
+  const client = await resolveStockPb();
+  const filter = `warehouse = "${warehouseId.replace(/"/g, '\\"')}" && (${productFilter})`;
+  const balances = await client.collection(INV_COLLECTIONS.balances).getFullList({
+    filter,
     fields: "product,qty_on_hand,qty_available",
     requestKey: null,
   });

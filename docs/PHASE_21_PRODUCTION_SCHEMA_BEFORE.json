@@ -1,0 +1,6221 @@
+{
+  "captured_at": "2026-08-28T06:18:30.529Z",
+  "prod_url": "https://pb.serba.space",
+  "collection_count": 93,
+  "collections": [
+    {
+      "id": "_pb_users_auth_",
+      "name": "users",
+      "type": "auth",
+      "field_count": 18,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "session_nonce",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_checked_in",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "shift_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "web_access",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "last_checkin",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "last_checkout",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "inventory_role",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "inventory_warehouses",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "default_store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "default_warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "active_store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "active_warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "locale",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "active_company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "default_company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (\n  (\n    id = @request.auth.id\n    && (@request.data.role:isset = false || @request.data.role = role)\n    && (@request.data.status:isset = false || @request.data.status = status)\n  )\n  || @request.auth.role = \"hr\"\n  || @request.auth.role_code = \"hr\"\n  || @request.auth.role = \"owner\"\n  || @request.auth.role_code = \"owner\"\n  || @request.auth.account_type = \"owner\"\n)",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    },
+    {
+      "id": "5vsvc4h42g1461r",
+      "name": "profiles",
+      "type": "base",
+      "field_count": 37,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "position",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "salary",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "employee_code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "shift_start",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "shift_end",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "division",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "office_id",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "profile_status",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "npwp",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "nik",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": false
+        },
+        {
+          "name": "work_start",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "work_end",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "grace_minutes",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "date_of_birth",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "bio",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "join_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "late_tolerance",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_bookings_quota",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "require_checkin_selfie",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "leave_daily_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "extra_bonus_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "extra_bonus_enabled",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "late_deduction_rupiah_per_minute",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "absence_deduction_rupiah_per_day",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "shift_start_saturday",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "shift_end_saturday",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "shift_start_sunday",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "shift_end_sunday",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "inventory_role",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "default_warehouse",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.data.user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    },
+    {
+      "id": "nmwioaxlgic6bxj",
+      "name": "logs",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "target",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "ywlhx7ox5451sfe",
+      "name": "attendance",
+      "type": "base",
+      "field_count": 6,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "check_in",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "check_out",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "work_hours",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "9yud2f1n6sxcab7",
+      "name": "leave_requests",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "devision",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_by",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_at",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "ylsmeh8msa4ak69",
+      "name": "settings_hr",
+      "type": "base",
+      "field_count": 2,
+      "fields": [
+        {
+          "name": "leave_per_month",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "max_leave_per_day_per_divisio",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "1nhyegqhld9ujte",
+      "name": "offices",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "lat",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "lng",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "radius",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "max_checkin_distance",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "mshg2ykv6u7g0aq",
+      "name": "attendance_logs",
+      "type": "base",
+      "field_count": 12,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "check_in",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "check_out",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "lat",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "lng",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "distance_meter",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "late_minutes",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "work_hours",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_suspicious",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "check_in_selfie",
+          "type": "file",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && user = @request.auth.id",
+      "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "mw4ca7a500ggz3d",
+      "name": "attendance_settings",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "max_late_minutes",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "allow_remote",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "gps_required",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "zcjc3p226vs3654",
+      "name": "division_quotas",
+      "type": "base",
+      "field_count": 2,
+      "fields": [
+        {
+          "name": "division",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "max_people_per_day",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    },
+    {
+      "id": "y7w4tgdb6o2xahw",
+      "name": "overtime_requests",
+      "type": "base",
+      "field_count": 16,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "work_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "start_time",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "end_time",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hours",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "source",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "staff_decline_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_by",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "leave_requests",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && @request.data.user = @request.auth.id",
+      "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\")"
+    },
+    {
+      "id": "lzjjb4ao7byu872",
+      "name": "field_activity_requests",
+      "type": "base",
+      "field_count": 11,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "activity_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "destination",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_by",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_action_at",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && @request.data.user = @request.auth.id",
+      "updateRule": "@request.auth.id != \"\" && ((user = @request.auth.id && status = \"pending_hr\") || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\")"
+    },
+    {
+      "id": "j2ermg0o1uks707",
+      "name": "payroll_settings",
+      "type": "base",
+      "field_count": 20,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "payroll_cycle",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "cutoff_start_day",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "cutoff_end_day",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "payday_day",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "prorate_method",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "attendance_bonus_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "attendance_bonus_enabled",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "approved_leave_counts_as_presence",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "approved_field_activity_counts_as_presence_",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "max_unexcused_absence",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "late_policy_enabled",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "max_late_days",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "max_late_minutes_total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_enabled",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_cycle",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "fieldmax_encashable_days_per_cycle",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "min_tenure_months_for_encashment",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"owner\""
+    },
+    {
+      "id": "ernqdzmqlpjgwi6",
+      "name": "payroll_periods",
+      "type": "base",
+      "field_count": 12,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "period_key",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "pay_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "settings",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "locked_at",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"owner\""
+    },
+    {
+      "id": "z6nfwzxg6qe09jd",
+      "name": "payroll_items",
+      "type": "base",
+      "field_count": 28,
+      "fields": [
+        {
+          "name": "period",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "profile",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "division",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "position",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "base_salary",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fixed_allowance",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "overtime_amount",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bonus_amount",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "attendance_bonus_eligible",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "attendance_bonus_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "attendance_bonus_reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_days",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_encashment_reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "late_deduction",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "absence_deduction",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "loan_deduction",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "other_deduction",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "gross_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total_deduction",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "net_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "is_overridden",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "override_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "leave_quota_credit",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "extra_bonus",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"owner\""
+    },
+    {
+      "id": "nznel5bs91ll8g1",
+      "name": "payroll_adjustments",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "payroll_item",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "adjustment_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "component",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"owner\""
+    },
+    {
+      "id": "njfvnchwn3zyt99",
+      "name": "leave_balances",
+      "type": "base",
+      "field_count": 6,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "year",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "entitled_days",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "used_days",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "remaining_days",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "encashed_days",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "j4mf3ncrf6bhujv",
+      "name": "hr_compensation_settings",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "overtime_hourly_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "overtime_multiplier",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "leave_daily_compensation_rate",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.account_type = \"owner\")"
+    },
+    {
+      "id": "lsw1fevb7sy7m8f",
+      "name": "work_calendar_settings",
+      "type": "base",
+      "field_count": 9,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_sunday",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_monday",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_tuesday",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_wednesday",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_thursday",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_friday",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "work_saturday",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "0moxej5h9c8twda",
+      "name": "office_holidays",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "id": "3rwygisooikv1pb",
+      "name": "inv_warehouses",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse_role",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "is_primary",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "lem74o6ym10ko8w",
+      "name": "inv_categories",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"\n",
+      "viewRule": "@request.auth.id != \"\"\n",
+      "createRule": "@request.auth.id != \"\"\n",
+      "updateRule": "@request.auth.id != \"\"\n",
+      "deleteRule": "@request.auth.id != \"\"\n"
+    },
+    {
+      "id": "ew9dvwlfhuyvldm",
+      "name": "inv_brands",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"\n",
+      "viewRule": "@request.auth.id != \"\"\n",
+      "createRule": "@request.auth.id != \"\"\n",
+      "updateRule": "@request.auth.id != \"\"\n",
+      "deleteRule": "@request.auth.id != \"\"\n"
+    },
+    {
+      "id": "cityr9zwqe314jm",
+      "name": "inv_cctv_cameras",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "nvr_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "channel",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "playback_hint_url",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "updateRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "gbvk2rtcf2357p6",
+      "name": "inv_locations",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "zone_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "updateRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "gfml2w3jl72n1ho",
+      "name": "inv_zones",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "zone_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "qr_payload",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "cctv_cameras",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "updateRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "crkfe24hc8u7fc0",
+      "name": "inv_packing_stations",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "zone",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "qr_payload",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": null,
+      "viewRule": null,
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "qccopbajbfa0075",
+      "name": "inv_products",
+      "type": "base",
+      "field_count": 22,
+      "fields": [
+        {
+          "name": "sku",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "barcode",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "brand",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "default_location",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "min_stock",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "sell_price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "buy_price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "image",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "requires_serial",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "product_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "lifecycle_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "commercial_ready_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "commercial_ready_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "created_by_role",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "image_2",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "image_3",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "catalog_updated_at",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "65wpnylmx2ss9p4",
+      "name": "inv_product_barcodes",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "barcode",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_primary",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "updateRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "deleteRule": "@request.auth.role = \"owner\""
+    },
+    {
+      "id": "ss4lwjb1ksc45ex",
+      "name": "inv_stock_balances",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "qty_on_hand",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "qty_reserved",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "qty_available",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": "@request.auth.role = \"owner\""
+    },
+    {
+      "id": "dm2rmxerm5d041v",
+      "name": "inv_stock_movements",
+      "type": "base",
+      "field_count": 21,
+      "fields": [
+        {
+          "name": "movement_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "movement_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "from_warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "to_warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "from_location",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "to_location",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "reference_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "reference_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "posted_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "posted_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "device_platform",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "zone",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "zone_session",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "cctv_snapshot",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "parent_movement",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  (\n    @request.auth.inventory_role = \"staff\" &&\n    (\n      created_by = @request.auth.id ||\n      posted_by = @request.auth.id\n    )\n  )\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  (\n    @request.auth.inventory_role = \"staff\" &&\n    (\n      created_by = @request.auth.id ||\n      posted_by = @request.auth.id\n    )\n  )\n)",
+      "createRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\" &&\n@request.data.status = \"draft\" &&\n@request.data.created_by = @request.auth.id",
+      "updateRule": "@request.auth.id != \"\" &&\n@request.data.status = \"draft\" &&\n(\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  (@request.auth.inventory_role = \"staff\" && created_by = @request.auth.id)\n)",
+      "deleteRule": "@request.auth.id != \"\" &&\nstatus = \"draft\" &&\n(\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\"\n)"
+    },
+    {
+      "id": "depjp9mv4h79oa6",
+      "name": "inv_stock_movement_lines",
+      "type": "base",
+      "field_count": 6,
+      "fields": [
+        {
+          "name": "movement",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "unit_cost",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "batch_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "serial_no",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\"",
+      "updateRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\"",
+      "deleteRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\""
+    },
+    {
+      "id": "auc4p69h5qytrd3",
+      "name": "inv_zone_sessions",
+      "type": "base",
+      "field_count": 10,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "zone",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "check_in_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "check_out_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "device_platform",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "cctv_snapshot",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "activity_summary",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  user = @request.auth.id\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  user = @request.auth.id\n)",
+      "createRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  user = @request.auth.id\n)",
+      "updateRule": "@request.auth.id != \"\" && (\n  user = @request.auth.id ||\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n)",
+      "deleteRule": "@request.auth.role = \"owner\""
+    },
+    {
+      "id": "x9y83kginxjtek8",
+      "name": "inv_staff_activities",
+      "type": "base",
+      "field_count": 10,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "zone_session",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "zone",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "activity_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "payload",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  user = @request.auth.id\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  user = @request.auth.id\n)",
+      "createRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\" &&\n@request.data.user = @request.auth.id",
+      "updateRule": null,
+      "deleteRule": "@request.auth.role = \"owner\""
+    },
+    {
+      "id": "ii5q1uzvx0672dv",
+      "name": "inv_packing_sessions",
+      "type": "base",
+      "field_count": 10,
+      "fields": [
+        {
+          "name": "packing_station",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "zone_session",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "order_ref",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "fieldstarted_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "completed_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "packed_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "movement",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  packed_by = @request.auth.id\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  packed_by = @request.auth.id\n)",
+      "createRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\" &&\n@request.data.packed_by = @request.auth.id &&\n(@request.data.status = \"open\" || @request.data.status = \"in_progress\")",
+      "updateRule": "@request.auth.id != \"\" && (\n  packed_by = @request.auth.id ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.role = \"owner\"\n)",
+      "deleteRule": "@request.auth.role = \"owner\" ||\n@request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "robj1pkqbu9e20t",
+      "name": "inv_packing_checklist_lines",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "packing_session",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "expected_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "scanned_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_complete",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  @request.auth.inventory_role = \"staff\"\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  @request.auth.inventory_role = \"staff\"\n)",
+      "createRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\" &&\n@request.data.packing_session != \"\"",
+      "updateRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  @request.auth.inventory_role = \"staff\"\n)",
+      "deleteRule": "@request.auth.role = \"owner\" ||\n@request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "6r9u4e8sr151u9h",
+      "name": "inv_media_files",
+      "type": "base",
+      "field_count": 10,
+      "fields": [
+        {
+          "name": "storage_root",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "relative_path",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sha256",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "mime_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "size_bytes",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "captured_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "uploaded_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  uploaded_by = @request.auth.id\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  uploaded_by = @request.auth.id\n)",
+      "createRule": "@request.auth.id != \"\" &&\n@request.auth.inventory_role != \"none\" &&\n@request.data.uploaded_by = @request.auth.id",
+      "updateRule": "@request.auth.role = \"owner\" ||\n@request.auth.inventory_role = \"admin\" ||\n@request.auth.inventory_role = \"supervisor\"",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "ukvzr03p5daqfhk",
+      "name": "inv_stock_opname_sessions",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "opname_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "started_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "count_started_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "count_ended_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  @request.auth.inventory_role = \"staff\"\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  @request.auth.inventory_role = \"staff\"\n)",
+      "createRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n)",
+      "updateRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\" ||\n  (\n    @request.auth.inventory_role = \"staff\" &&\n    (@request.data.status = \"counting\" || status = \"counting\")\n  )\n)",
+      "deleteRule": "@request.auth.role = \"owner\" ||\n(@request.auth.inventory_role = \"admin\" && status = \"draft\")"
+    },
+    {
+      "id": "52547e3rgin0t93",
+      "name": "inv_stock_opname_lines",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "fieldsession",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "system_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "counted_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "variance_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "scanned_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "scanned_by",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "viewRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "createRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "updateRule": "@request.auth.id != \"\" && @request.auth.inventory_role != \"none\"",
+      "deleteRule": "@request.auth.role = \"owner\" ||\n@request.auth.inventory_role = \"admin\" ||\n@request.auth.inventory_role = \"supervisor\""
+    },
+    {
+      "id": "te5qqhq5j93lqii",
+      "name": "inv_stock_opname_adjustments",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "session",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "movement",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "supervisor_note",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n)",
+      "createRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n) &&\n@request.data.approved_by = @request.auth.id",
+      "updateRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "xyl6hiv1vna8grr",
+      "name": "inv_audit_log",
+      "type": "base",
+      "field_count": 9,
+      "fields": [
+        {
+          "name": "action",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "before",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "after",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "ip_address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  @request.auth.inventory_role = \"supervisor\"\n)",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "y0uttfb27ntcddw",
+      "name": "inv_sync_outbox",
+      "type": "base",
+      "field_count": 9,
+      "fields": [
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "operation",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "payload",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "client_created_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "synced_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "server_record_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && user = @request.auth.id",
+      "viewRule": "@request.auth.id != \"\" && user = @request.auth.id",
+      "createRule": "@request.auth.id != \"\" &&\n@request.data.user = @request.auth.id",
+      "updateRule": "@request.auth.id != \"\" && user = @request.auth.id",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "yet558dc7pdkj9z",
+      "name": "request_auth_role_owner",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "is_default",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "can_count",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "can_pack",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "can_receive",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "can_adjust",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  user = @request.auth.id\n)",
+      "viewRule": "@request.auth.id != \"\" && (\n  @request.auth.role = \"owner\" ||\n  @request.auth.inventory_role = \"admin\" ||\n  user = @request.auth.id\n)",
+      "createRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "updateRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\"",
+      "deleteRule": "@request.auth.role = \"owner\" || @request.auth.inventory_role = \"admin\""
+    },
+    {
+      "id": "so2dku1bkrcddqs",
+      "name": "biz_customers",
+      "type": "base",
+      "field_count": 11,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "credit_limit",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "outstanding_balance",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "customer_type",
+          "type": "select",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "saib1xne9c9wqos",
+      "name": "biz_suppliers",
+      "type": "base",
+      "field_count": 12,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "contact_person",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bank_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bank_account",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "tax_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "6bowujxp42ohynf",
+      "name": "biz_sales_orders",
+      "type": "base",
+      "field_count": 34,
+      "fields": [
+        {
+          "name": "order_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "customer",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "payment_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "payment_method",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "order_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "shipped_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "subtotal",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "discount_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "tax_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "materai_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "send_to_warehouse_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "warehouse_process_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "warehouse_processed_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse_processed_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "warehouse_hold_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "outbound_workflow_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_booking_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "awb_label",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "awb_ready_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "awb_source",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "pk_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "business_channel",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "sale_mode",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "platform_source",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "share_token",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "bpuxybe83sloy1n",
+      "name": "biz_sales_order_lines",
+      "type": "base",
+      "field_count": 11,
+      "fields": [
+        {
+          "name": "sales_order",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "sku_snapshot",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name_snapshot",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "unit_price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "discount_percent",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "discount_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "tax_percent",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "line_total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "serial_numbers_json",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "ccsxs0hwegfp4yg",
+      "name": "biz_invoices",
+      "type": "base",
+      "field_count": 29,
+      "fields": [
+        {
+          "name": "invoice_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sales_order",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "customer",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "subtotal",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "tax_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "paid_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "remaining",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "materai_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_cash",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "cancel_reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "source",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "mp_order_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sales_channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store_channel_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "expected_net",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "mp_fees_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "share_token",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "identity_snapshot_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "business_channel",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "sale_mode",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "platform_source",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "i773ak5cdvs1c51",
+      "name": "biz_payments",
+      "type": "base",
+      "field_count": 11,
+      "fields": [
+        {
+          "name": "invoice",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "payment_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "reference_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "payment_method",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "payment_kind",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "cash_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "fee_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "kn0hje86v6947ur",
+      "name": "biz_purchase_orders",
+      "type": "base",
+      "field_count": 35,
+      "fields": [
+        {
+          "name": "po_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "supplier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "order_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "expected_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "subtotal",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "tax_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "send_to_warehouse_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "warehouse_process_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "warehouse_received_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "warehouse_processed_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse_processed_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "warehouse_process_mode",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "warehouse_hold_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "surat_jalan_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "surat_jalan_verified",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "receiving_warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "receiving_workflow_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "discount_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "materai_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "receiving_photos",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "receiving_business_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "receiving_discrepancy",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "unboxing_video_path",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "reminder_due_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "exception_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "receiving_auto_proceeded_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "qc_exception_summary",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "share_token",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "e7j1xgtv45f84sf",
+      "name": "biz_purchase_order_lines",
+      "type": "base",
+      "field_count": 6,
+      "fields": [
+        {
+          "name": "purchase_order",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "received_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "unit_cost",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "line_total",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "rs6e99xqdgm6y50",
+      "name": "biz_returs",
+      "type": "base",
+      "field_count": 49,
+      "fields": [
+        {
+          "name": "retur_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "reference_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "customer",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "supplier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "sales_order",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "invoice",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "damaged_warehouse",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "mp_claim_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "shipping_reimb_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "completed_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "purchase_order",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "purchase_bill",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_receive_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "wms_received_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "workflow_phase",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "unboxing_video_path",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "reminder_due_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "exception_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "stock_posted_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "settled_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "settlement_estimate_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_exception_summary",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "return_method",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "return_courier",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "return_tracking_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes_for_wms",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "platform_retur_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_claim_decision",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "wms_dispute_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_process_started_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_process_completed_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_processed_by",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "wms_processed_by_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "business_process_started_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "business_process_completed_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "business_processed_by",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "business_processed_by_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "business_resolution",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "resend_pickup_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "resend_method",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "resend_shipping_json",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "zwm2irnb6uj0il8",
+      "name": "biz_retur_lines",
+      "type": "base",
+      "field_count": 13,
+      "fields": [
+        {
+          "name": "retur",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "unit_price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "line_total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "condition",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "sales_order_line",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "purchase_order_line",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "expected_condition",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "expected_warehouse",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "actual_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "actual_condition",
+          "type": "select",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "ywtzjeydrusexai",
+      "name": "biz_product_prices",
+      "type": "base",
+      "field_count": 9,
+      "fields": [
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "price_level",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sell_price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "min_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "customer_group",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "valid_from",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "valid_to",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "ef1fldovckimo8a",
+      "name": "biz_expenses",
+      "type": "base",
+      "field_count": 18,
+      "fields": [
+        {
+          "name": "expense_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "tax_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "expense_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "payment_method",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "supplier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "reference_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "approved_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "cash_account",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "rshot60jlgi0wyn",
+      "name": "biz_purchase_bills",
+      "type": "base",
+      "field_count": 14,
+      "fields": [
+        {
+          "name": "bill_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "purchase_order",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "supplier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bill_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "subtotal",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "tax_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "paid_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "remaining",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "qtge0i30gk1zawc",
+      "name": "biz_bill_payments",
+      "type": "base",
+      "field_count": 9,
+      "fields": [
+        {
+          "name": "purchase_bill",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "payment_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "payment_method",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "reference_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "cash_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "6qziufnjmg9gi37",
+      "name": "inv_product_price_tiers",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "min_qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "max_qty",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "xtsnhr20lc3atrb",
+      "name": "biz_stores",
+      "type": "base",
+      "field_count": 16,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "default_warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "logo",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "bank_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bank_account_number",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bank_account_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": false
+        },
+        {
+          "name": "email_from_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email_from_address",
+          "type": "email",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "npwp_display",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "is_primary",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "4wu6d6d8zd49s62",
+      "name": "biz_tax_rates",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_default",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "da6w7drrl8x6lfs",
+      "name": "biz_payment_terms",
+      "type": "base",
+      "field_count": 4,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "days",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_default",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "jprg0y5xa98pd8k",
+      "name": "biz_payment_conditions",
+      "type": "base",
+      "field_count": 4,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "mxbspmwy1ghiif4",
+      "name": "biz_payment_methods",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "0v0u3av9vmcawsn",
+      "name": "biz_sales_channels",
+      "type": "base",
+      "field_count": 4,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "0tlge2ev6xpdo1d",
+      "name": "request_auth_id_",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "5205cp51n3hiev2",
+      "name": "biz_store_channel_accounts",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "seller_tier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "account_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "mp_shop_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "default_customer",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "ro1kqa043d2vt7r",
+      "name": "biz_mp_seller_tiers",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "nfwmdhjam4juqjh",
+      "name": "biz_mp_fee_rules",
+      "type": "base",
+      "field_count": 19,
+      "fields": [
+        {
+          "name": "fee_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "calc_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "applies_to",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store_channel_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "seller_tier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "internal_category",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "scope_product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "mp_category",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "max_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fixed_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "priority",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "valid_to",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "valid_from",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "line_group",
+          "type": "select",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "7z255eznsq5fi5u",
+      "name": "biz_mp_product_mappings",
+      "type": "base",
+      "field_count": 6,
+      "fields": [
+        {
+          "name": "store_channel_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "mp_sku",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "mp_product_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "or3aubbfng9wx46",
+      "name": "biz_sales_import_batches",
+      "type": "base",
+      "field_count": 14,
+      "fields": [
+        {
+          "name": "batch_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "store_channel_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "period_from",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "period_to",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "total_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "valid_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "error_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "posted_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "source_filename",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "posted_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "fee_template",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "0k2s2if9o7ai7id",
+      "name": "biz_sales_import_lines",
+      "type": "base",
+      "field_count": 23,
+      "fields": [
+        {
+          "name": "batch",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "row_no",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "mp_order_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "order_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "mp_sku",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "product_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "mp_category",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "unit_price",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "gross_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "fee_category",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fee_free_shipping",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fee_cashback",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fee_mall",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fee_processing",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fee_affiliate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "total_fees",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "expected_net",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fee_override_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "validation_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "invoice",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "6mk8iigaikeucug",
+      "name": "biz_mp_fee_templates",
+      "type": "base",
+      "field_count": 8,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "seller_tier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store_channel_account",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "u21ltft3v7ogxrg",
+      "name": "biz_mp_fee_template_lines",
+      "type": "base",
+      "field_count": 15,
+      "fields": [
+        {
+          "name": "template",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "line_group",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "calc_type",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "max_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "fixed_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "applies_to",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "internal_category",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_default",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "scope_product",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "iooyhqicz5kqvy2",
+      "name": "inv_product_placements",
+      "type": "base",
+      "field_count": 4,
+      "fields": [
+        {
+          "name": "product",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "location",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "cuceg6c0rdz3msd",
+      "name": "wms_workstation_sessions",
+      "type": "base",
+      "field_count": 15,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "workstation_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "workstation_code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "workstation_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "workstation_location",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "workstation_cctv",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "channel",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bonus_eligible",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "via_qr",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "check_in_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "check_out_at",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "closed_reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bound_at",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "guqtwss75si50ni",
+      "name": "biz_payment_import_batches",
+      "type": "base",
+      "field_count": 10,
+      "fields": [
+        {
+          "name": "batch_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "total_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "valid_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "error_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "posted_rows",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "source_filename",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "posted_at",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "42qfjl2qvpqwbme",
+      "name": "biz_payment_import_lines",
+      "type": "base",
+      "field_count": 14,
+      "fields": [
+        {
+          "name": "batch",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "row_no",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "invoice_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "invoice",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "payment_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "payment_method_label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "payment_method",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "reference_no",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "lunas_penuh",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "validation_status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "payment",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "rrcarcidnc1vwe9",
+      "name": "biz_pos_registers",
+      "type": "base",
+      "field_count": 10,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "responsible_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "responsible_phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "default_store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "default_warehouse",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "15j4y8a1623g5nm",
+      "name": "biz_couriers",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "logo",
+          "type": "file",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "5fn06mtegv6zeoy",
+      "name": "biz_courier_services",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "courier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": null,
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": "@request.auth.id != \"\""
+    },
+    {
+      "id": "f8g2pa8aty43x1z",
+      "name": "inv_product_bundle_lines",
+      "type": "base",
+      "field_count": 5,
+      "fields": [
+        {
+          "name": "bundle_product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "component_product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": null,
+      "viewRule": null,
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "pmyumqmdy5mes66",
+      "name": "biz_cash_accounts",
+      "type": "base",
+      "field_count": 13,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "bank_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bank_account_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "bank_account_number",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "opening_balance",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "is_central",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "is_primary",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "ng1qd0w3umrv9ul",
+      "name": "biz_cash_transfers",
+      "type": "base",
+      "field_count": 11,
+      "fields": [
+        {
+          "name": "transfer_no",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "from_account",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "to_account",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "transfer_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "transfer_kind",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "from_company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "to_company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "initiated_company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "zfapg6iq2gkyfmu",
+      "name": "biz_company_profile",
+      "type": "base",
+      "field_count": 12,
+      "fields": [
+        {
+          "name": "company_name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "legal_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "npwp",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "website",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "show_npwp_on_documents",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "npwp_display_mode",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "d5b9xgokfyvag40",
+      "name": "biz_cash_reconciliations",
+      "type": "base",
+      "field_count": 7,
+      "fields": [
+        {
+          "name": "cash_account",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "statement_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "statement_balance",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "book_balance",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "difference",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": true
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "33c6rqkg13mpd0r",
+      "name": "biz_activity_events",
+      "type": "base",
+      "field_count": 13,
+      "fields": [
+        {
+          "name": "event_code",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "severity",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "module",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "actor",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "payload_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "occurred_at",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "dedupe_key",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "lb7elytzzo6tyb1",
+      "name": "sys_audit_log",
+      "type": "base",
+      "field_count": 15,
+      "fields": [
+        {
+          "name": "occurred_at",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "actor",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "actor_ip",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "actor_device",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "module",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "entity_label",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "changes_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "store",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "warehouse",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    },
+    {
+      "id": "d7mahqgrboytsnk",
+      "name": "biz_mp_tier_defaults",
+      "type": "base",
+      "field_count": 12,
+      "fields": [
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "seller_tier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "mp_calc_type",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "mp_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "mp_max_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "mp_fixed_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aff_calc_type",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "aff_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aff_max_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aff_fixed_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "apc7l0z3ko93kcr",
+      "name": "biz_mp_product_fees",
+      "type": "base",
+      "field_count": 13,
+      "fields": [
+        {
+          "name": "channel",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "seller_tier",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "product",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "mp_calc_type",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "mp_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "mp_max_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "mp_fixed_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aff_calc_type",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "aff_rate",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aff_max_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aff_fixed_amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "bzqmc8nglknubz3",
+      "name": "biz_product_tags",
+      "type": "base",
+      "field_count": 4,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "products",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "mz8xweym8u3df0r",
+      "name": "biz_credit_notes",
+      "type": "base",
+      "field_count": 13,
+      "fields": [
+        {
+          "name": "cn_no",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "retur",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "invoice",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "sales_order",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "cn_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "applied_to_receivable",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "refunded",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\"",
+      "updateRule": "@request.auth.id != \"\"",
+      "deleteRule": null
+    },
+    {
+      "id": "akx91sa121b2gg8",
+      "name": "biz_user_companies",
+      "type": "base",
+      "field_count": 3,
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "company",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != ''",
+      "viewRule": "@request.auth.id != ''",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    {
+      "id": "9uubk1qxo9n3yu4",
+      "name": "wms_workstations",
+      "type": "base",
+      "field_count": 6,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "cctv",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "qr_payload",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "",
+      "viewRule": "",
+      "createRule": "",
+      "updateRule": "",
+      "deleteRule": ""
+    }
+  ]
+}

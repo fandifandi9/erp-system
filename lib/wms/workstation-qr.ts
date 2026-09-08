@@ -2,8 +2,19 @@
 
 const PREFIX = "serba:ws";
 
+/** Kode meja: huruf/angka/hyphen/underscore, 2–32 karakter. */
+const CODE_RE = /^[A-Z0-9][A-Z0-9_-]{1,31}$/i;
+
+export function normalizeWorkstationCode(code: string): string {
+  return code.trim().toUpperCase().replace(/\s+/g, "-");
+}
+
+export function isValidWorkstationCode(code: string): boolean {
+  return CODE_RE.test(normalizeWorkstationCode(code));
+}
+
 export function buildWorkstationQrPayload(code: string): string {
-  const c = code.trim().toUpperCase();
+  const c = normalizeWorkstationCode(code);
   return `${PREFIX}:${c}`;
 }
 
@@ -13,17 +24,15 @@ export function parseWorkstationQrPayload(raw: string): { code: string } | null 
   const parts = s.split(":");
   if (parts.length < 3) return null;
   const code = parts.slice(2).join(":").trim();
-  if (!code) return null;
-  return { code: code.toUpperCase() };
+  if (!code || !isValidWorkstationCode(code)) return null;
+  return { code: normalizeWorkstationCode(code) };
 }
 
 export function isWorkstationQrPayload(raw: string): boolean {
   return parseWorkstationQrPayload(raw) !== null;
 }
 
-const SHORT_CODE = /^VALIDATOR-\d+$/i;
-
-/** Terima paste QR penuh atau kode singkat VALIDATOR-01 */
+/** Terima paste QR penuh atau kode singkat (VALIDATOR-01, PACK-A, …). */
 export function normalizeWorkstationCheckInInput(raw: string): {
   qr_payload?: string;
   workstation_code?: string;
@@ -36,12 +45,8 @@ export function normalizeWorkstationCheckInInput(raw: string): {
     return { qr_payload: buildWorkstationQrPayload(parsed.code) };
   }
 
-  const upper = t.toUpperCase();
-  if (SHORT_CODE.test(upper)) {
-    return { workstation_code: upper };
-  }
-
-  if (upper.startsWith("VALIDATOR-")) {
+  const upper = normalizeWorkstationCode(t);
+  if (isValidWorkstationCode(upper)) {
     return { workstation_code: upper };
   }
 
@@ -52,7 +57,6 @@ export function isValidWorkstationCheckInInput(raw: string): boolean {
   const t = raw.trim();
   if (!t) return false;
   if (parseWorkstationQrPayload(t)) return true;
-  if (SHORT_CODE.test(t)) return true;
-  if (t.toUpperCase().startsWith("VALIDATOR-")) return true;
+  if (isValidWorkstationCode(t)) return true;
   return false;
 }

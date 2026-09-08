@@ -21,7 +21,16 @@ import { warehousesForStore } from "@/lib/tenant/warehouses-for-store";
 
 type CompanyRow = { id: string; name: string; code?: string };
 type StoreRow = { id: string; name: string; code: string; company?: string; default_warehouse?: string };
-type WarehouseRow = { id: string; name: string; code: string; store?: string; company?: string };
+type WarehouseRow = {
+  id: string;
+  name: string;
+  code: string;
+  store?: string;
+  company?: string;
+  warehouse_role?: string;
+  is_active?: boolean;
+  is_primary?: boolean;
+};
 
 type WorkContextValue = {
   context: WorkContext | null;
@@ -70,6 +79,38 @@ function filterWarehousesForCompany(companyId: string, stores: StoreRow[], wareh
   );
 }
 
+function buildWorkContext(
+  nextCompanyId: string,
+  storeId: string,
+  warehouseId: string,
+  companyList: CompanyRow[],
+  storeList: StoreRow[],
+  whList: WarehouseRow[],
+): WorkContext | null {
+  const company = companyList.find((c) => c.id === nextCompanyId);
+  const scopedStores = storeList.filter((s) => s.company === nextCompanyId);
+  const store = scopedStores.find((s) => s.id === storeId) ?? scopedStores[0];
+  if (!company || !store) return null;
+  const scopedWh = warehousesForStore(
+    store.id,
+    scopedStores,
+    filterWarehousesForCompany(nextCompanyId, storeList, whList),
+  );
+  const wh = scopedWh.find((w) => w.id === warehouseId) ?? scopedWh[0];
+  if (!wh) return null;
+  return {
+    companyId: company.id,
+    companyName: company.name,
+    companyCode: company.code,
+    storeId: store.id,
+    storeName: store.name,
+    storeCode: store.code,
+    warehouseId: wh.id,
+    warehouseName: wh.name,
+    warehouseCode: wh.code,
+  };
+}
+
 export function WorkContextProvider({ children }: { children: ReactNode }) {
   const [context, setContextState] = useState<WorkContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,37 +138,24 @@ export function WorkContextProvider({ children }: { children: ReactNode }) {
       nextCompanyId: string,
       storeId: string,
       warehouseId: string,
-      companyList = companies,
-      storeList = stores,
-      whList = warehouses,
+      companyList: CompanyRow[],
+      storeList: StoreRow[],
+      whList: WarehouseRow[],
     ) => {
-      const company = companyList.find((c) => c.id === nextCompanyId);
-      const scopedStores = storeList.filter((s) => s.company === nextCompanyId);
-      const store = scopedStores.find((s) => s.id === storeId) ?? scopedStores[0];
-      if (!company || !store) return null;
-      const scopedWh = warehousesForStore(
-        store.id,
-        scopedStores,
-        filterWarehousesForCompany(nextCompanyId, storeList, whList),
+      const ctx = buildWorkContext(
+        nextCompanyId,
+        storeId,
+        warehouseId,
+        companyList,
+        storeList,
+        whList,
       );
-      const wh = scopedWh.find((w) => w.id === warehouseId) ?? scopedWh[0];
-      if (!wh) return null;
-      const ctx: WorkContext = {
-        companyId: company.id,
-        companyName: company.name,
-        companyCode: company.code,
-        storeId: store.id,
-        storeName: store.name,
-        storeCode: store.code,
-        warehouseId: wh.id,
-        warehouseName: wh.name,
-        warehouseCode: wh.code,
-      };
+      if (!ctx) return null;
       setContextState(ctx);
       saveWorkContextToStorage(ctx);
       return ctx;
     },
-    [companies, stores, warehouses],
+    [],
   );
 
   useEffect(() => {
@@ -142,6 +170,7 @@ export function WorkContextProvider({ children }: { children: ReactNode }) {
           pb.collection(INV_COLLECTIONS.warehouses).getFullList<WarehouseRow>({
             sort: "name",
             filter: "is_active = true",
+            fields: "id,name,code,store,company,warehouse_role,is_active,is_primary",
             requestKey: null,
           }),
           fetch("/api/tenant/work-context", { credentials: "include" }).then((r) =>
@@ -169,8 +198,11 @@ export function WorkContextProvider({ children }: { children: ReactNode }) {
           id: x.id,
           name: x.name,
           code: x.code,
-          store: (x as WarehouseRow).store,
-          company: (x as WarehouseRow).company,
+          store: x.store,
+          company: x.company,
+          warehouse_role: x.warehouse_role,
+          is_active: x.is_active,
+          is_primary: x.is_primary,
         }));
 
         setCompanies(companyList);
@@ -218,17 +250,50 @@ export function WorkContextProvider({ children }: { children: ReactNode }) {
           scopedWh[0]?.id;
 
         if (companyIdInit && storeId && warehouseId) {
-          applyContext(companyIdInit, storeId, warehouseId, companyList, storeList, whList);
+          const ctx = buildWorkContext(
+            companyIdInit,
+            storeId,
+            warehouseId,
+            companyList,
+            storeList,
+            whList,
+          );
+          if (ctx) {
+            setContextState(ctx);
+            saveWorkContextToStorage(ctx);
+          }
         } else {
           const local = loadWorkContextFromStorage();
           const localCompanyOk =
             local && (allowedCompanyIds.size === 0 || allowedCompanyIds.has(local.companyId));
           if (local && localCompanyOk && storeList.some((st) => st.id === local.storeId)) {
-            applyContext(local.companyId, local.storeId, local.warehouseId, companyList, storeList, whList);
+            const ctx = buildWorkContext(
+              local.companyId,
+              local.storeId,
+              local.warehouseId,
+              companyList,
+              storeList,
+              whList,
+            );
+            if (ctx) {
+              setContextState(ctx);
+              saveWorkContextToStorage(ctx);
+            }
           } else if (companyList.length === 0 && storeList[0] && whList[0]) {
             const fbCompany = storeList[0].company ?? "";
             if (fbCompany) {
-              applyContext(fbCompany, storeList[0].id, whList[0].id, companyList, storeList, whList);
+              const ctx = buildWorkContext(
+                fbCompany,
+                storeList[0].id,
+                whList[0].id,
+                companyList,
+                storeList,
+                whList,
+              );
+              if (ctx) {
+                setContextState(ctx);
+                saveWorkContextToStorage(ctx);
+              }
             }
           }
         }
@@ -243,7 +308,8 @@ export function WorkContextProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [applyContext]);
+    // Hanya sekali saat mount — jangan pakai applyContext di deps (memicu loop API).
+  }, []);
 
   const setContext = useCallback(
     async (
@@ -276,7 +342,14 @@ export function WorkContextProvider({ children }: { children: ReactNode }) {
       }
       if (!warehouseId) return;
 
-      const next = applyContext(nextCompanyId, storeId, warehouseId, companies, scopedStores, warehouses);
+      const next = applyContext(
+        nextCompanyId,
+        storeId,
+        warehouseId,
+        companies,
+        scopedStores,
+        filterWarehousesForCompany(nextCompanyId, allStores, allWarehouses),
+      );
       if (!next) return;
       try {
         await fetch("/api/tenant/work-context", {

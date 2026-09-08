@@ -231,7 +231,7 @@ export default function PackingScreen() {
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.btnTxt}>Mulai sesi packing</Text>
+                  <Text style={styles.btnTxt}>Mulai sesi kemasan</Text>
                 )}
               </Pressable>
             </>
@@ -257,7 +257,7 @@ export default function PackingScreen() {
             disabled={busy}
             onPress={() => void finish()}
           >
-            <Text style={styles.btnTxt}>Selesai packing</Text>
+            <Text style={styles.btnTxt}>Selesai kemasan</Text>
           </Pressable>
         </>
       )}

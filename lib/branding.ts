@@ -1,8 +1,8 @@
 /** Nama & path logo tunggal — web (Next.js), selaras dengan mobile. */
 export const APP_DISPLAY_NAME = "SERBA System";
 
-/** Logo horizontal SDI (navbar, login). Query `v` = cache-buster saat logo diganti. */
-export const SYSTEM_LOGO_WIDE_PATH = "/systemLogoWide.png?v=5";
+/** Logo horizontal SERBA System (navbar, login). Query `v` = cache-buster saat logo diganti. */
+export const SYSTEM_LOGO_WIDE_PATH = "/systemLogoWide.png?v=6";
 
 /** Logo persegi untuk favicon / ikon launcher (latar putih). */
 export const SYSTEM_LOGO_PATH = "/systemLogo.png";

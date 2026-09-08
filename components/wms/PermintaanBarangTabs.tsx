@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { CheckCircle2, ShieldCheck, ShoppingCart, Truck } from "lucide-react";
 import { PERMINTAAN_BARANG } from "@/lib/wms/permintaan-barang-routes";
 import { useLocale } from "@/components/LocaleProvider";
+import { ValidatorDeskToolbar } from "@/components/wms/ValidatorDeskToolbar";
+import { PickingModeToolbar } from "@/components/wms/PickingModeToolbar";
 
 const TAB_KEYS = [
   { href: PERMINTAAN_BARANG.picking, key: "wms.permintaan.tabPicking", icon: ShoppingCart },
@@ -16,28 +18,36 @@ const TAB_KEYS = [
 export function PermintaanBarangTabs() {
   const { t } = useLocale();
   const pathname = usePathname();
+  const onValidasi =
+    pathname === PERMINTAAN_BARANG.validasi || pathname.startsWith(`${PERMINTAAN_BARANG.validasi}/`);
+  const onPicking =
+    pathname === PERMINTAAN_BARANG.picking || pathname.startsWith(`${PERMINTAAN_BARANG.picking}/`);
 
   return (
-    <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-      {TAB_KEYS.map((tab) => {
-        const Icon = tab.icon;
-        const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={
-              "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition " +
-              (active
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-800")
-            }
-          >
-            <Icon className="h-4 w-4" />
-            {t(tab.key)}
-          </Link>
-        );
-      })}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap gap-2">
+        {TAB_KEYS.map((tab) => {
+          const Icon = tab.icon;
+          const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition " +
+                (active
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-800")
+              }
+            >
+              <Icon className="h-4 w-4" />
+              {t(tab.key)}
+            </Link>
+          );
+        })}
+      </div>
+      {onPicking ? <PickingModeToolbar /> : null}
+      {onValidasi ? <ValidatorDeskToolbar /> : null}
     </div>
   );
 }

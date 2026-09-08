@@ -52,7 +52,7 @@ import {
 
   getWarehouseProcessStatus,
 
-  updateWarehouseProcess,
+  updateWarehouseProcessApi,
 
   updatePurchaseOrderWithFiles,
 
@@ -79,6 +79,8 @@ import type { InvWarehouse } from "@/lib/inventory/types";
 
 import { getErrorMessage } from "@/lib/errors";
 
+import { useLocale } from "@/components/LocaleProvider";
+
 
 
 const fmtNum = (v: number) => new Intl.NumberFormat("id-ID").format(v);
@@ -90,6 +92,8 @@ export default function GudangPenerimaanDetailPage() {
   const { id } = useParams<{ id: string }>();
 
   const router = useRouter();
+
+  const { t } = useLocale();
 
   const [po, setPo] = useState<PurchaseOrder | null>(null);
 
@@ -259,7 +263,7 @@ export default function GudangPenerimaanDetailPage() {
 
     try {
 
-      await updateWarehouseProcess(id, userId, action, {
+      await updateWarehouseProcessApi(id, action, {
 
         surat_jalan_no: suratJalanNo.trim() || undefined,
 
@@ -378,7 +382,7 @@ export default function GudangPenerimaanDetailPage() {
 
         title={po.po_no}
 
-        subtitle={`Penerimaan dari ${po.expand?.supplier?.name ?? "supplier"}`}
+        subtitle={t("inventory.receivingDetail.subtitle", { name: po.expand?.supplier?.name ?? "supplier" })}
 
         module="wms"
 
@@ -392,7 +396,7 @@ export default function GudangPenerimaanDetailPage() {
 
         >
 
-          <ArrowLeft className="h-3.5 w-3.5" /> Daftar penerimaan
+          <ArrowLeft className="h-3.5 w-3.5" /> {t("inventory.receivingDetail.backToList")}
 
         </Link>
 
@@ -424,7 +428,7 @@ export default function GudangPenerimaanDetailPage() {
 
             >
 
-              Gudang: {st.label}
+              {t("inventory.receivingDetail.warehouseBadge", { status: t(st.labelKey) })}
 
             </WmsBadge>
 
@@ -478,7 +482,7 @@ export default function GudangPenerimaanDetailPage() {
 
                 <div>
 
-                  <dt className="text-slate-500">Gudang tujuan</dt>
+                  <dt className="text-slate-500">{t("inventory.receivingDetail.destinationWarehouse")}</dt>
 
                   <dd className="font-medium">{po.expand?.warehouse?.name ?? "—"}</dd>
 
@@ -570,7 +574,7 @@ export default function GudangPenerimaanDetailPage() {
 
               <WmsCard>
 
-                <WmsSectionTitle title="Verifikasi surat jalan" />
+                <WmsSectionTitle title={t("inventory.receivingDetail.verifyDeliveryNote")} />
 
                 <div className="mt-4 space-y-4">
 
@@ -818,7 +822,7 @@ export default function GudangPenerimaanDetailPage() {
 
                   >
 
-                    {saving ? "Menyimpan…" : "Mulai cek surat jalan"}
+                    {saving ? t("inventory.receivingDetail.saving") : "Mulai cek surat jalan"}
 
                   </WmsPrimaryButton>
 
@@ -864,7 +868,7 @@ export default function GudangPenerimaanDetailPage() {
 
                     <CheckCircle2 className="mr-1.5 inline h-4 w-4" />
 
-                    {saving ? "Menyimpan…" : "Tandai Komplit"}
+                    {saving ? t("inventory.receivingDetail.saving") : "Tandai Komplit"}
 
                   </WmsPrimaryButton>
 
@@ -906,7 +910,7 @@ export default function GudangPenerimaanDetailPage() {
 
                   >
 
-                    <option value="">— Pilih —</option>
+                    <option value="">{t("inventory.receivingDetail.selectOption")}</option>
 
                     {warehouses
                       .filter(
@@ -966,7 +970,7 @@ export default function GudangPenerimaanDetailPage() {
 
                     <PauseCircle className="h-4 w-4" />
 
-                    {saving ? "Menyimpan…" : "Simpan Hold"}
+                    {saving ? t("inventory.receivingDetail.saving") : t("inventory.receivingDetail.saveHold")}
 
                   </button>
 
@@ -1002,7 +1006,7 @@ export default function GudangPenerimaanDetailPage() {
 
                     <CheckCircle2 className="mr-1.5 inline h-4 w-4" />
 
-                    {saving ? "Menyimpan…" : "Selesai — Tandai Komplit"}
+                    {saving ? t("inventory.receivingDetail.saving") : "Selesai — Tandai Komplit"}
 
                   </WmsPrimaryButton>
 

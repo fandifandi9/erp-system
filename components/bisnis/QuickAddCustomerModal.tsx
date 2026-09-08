@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { createCustomer } from "@/lib/bisnis/client";
 import {
@@ -8,7 +8,10 @@ import {
   validateQuickCustomerInput,
   type QuickCustomerValidationError,
 } from "@/lib/bisnis/customer-quick-add";
-import { findCustomerByPhone } from "@/lib/bisnis/customer-lookup";
+import {
+  findCustomerByExactName,
+  findCustomerByPhone,
+} from "@/lib/bisnis/customer-lookup";
 import type { Customer } from "@/lib/bisnis/types";
 import { getErrorMessage } from "@/lib/errors";
 import { useLocale } from "@/components/LocaleProvider";
@@ -18,7 +21,6 @@ const EMPTY = { name: "", phone: "", email: "" };
 const VALIDATION_KEYS: Record<QuickCustomerValidationError, string> = {
   name: "sales.customerQuick.errName",
   phone: "sales.customerQuick.errPhone",
-  email: "sales.customerQuick.errEmail",
   emailFormat: "sales.customerQuick.errEmailFormat",
 };
 
@@ -26,13 +28,21 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onCreated: (customer: Customer) => void;
+  /** Prefill nama dari pencarian (mis. "dudung gendut") — nama exact harus belum ada. */
+  initialName?: string;
 };
 
-export function QuickAddCustomerModal({ open, onClose, onCreated }: Props) {
+export function QuickAddCustomerModal({ open, onClose, onCreated, initialName }: Props) {
   const { t } = useLocale();
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm({ ...EMPTY, name: initialName?.trim() ?? "" });
+    setError(null);
+  }, [open, initialName]);
 
   if (!open) return null;
 
@@ -52,17 +62,25 @@ export function QuickAddCustomerModal({ open, onClose, onCreated }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      const existing = await findCustomerByPhone(form.phone);
-      if (existing) {
-        setForm(EMPTY);
-        onCreated(existing);
+      const nameTaken = await findCustomerByExactName(form.name);
+      if (nameTaken) {
+        setError(t("sales.customerQuick.errNameExists", { name: form.name.trim() }));
         return;
+      }
+      const phone = form.phone.trim();
+      if (phone) {
+        const existing = await findCustomerByPhone(phone);
+        if (existing) {
+          setForm(EMPTY);
+          onCreated(existing);
+          return;
+        }
       }
       const created = await createCustomer({
         code: buildQuickCustomerCode(form.name),
         name: form.name.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
+        phone: phone || undefined,
+        email: form.email.trim() || undefined,
         customer_type: "regular",
         is_active: true,
       });
@@ -113,10 +131,9 @@ export function QuickAddCustomerModal({ open, onClose, onCreated }: Props) {
             </div>
             <div>
               <label className="mb-0.5 block text-xs font-medium text-slate-600">
-                {t("sales.customerQuick.phone")} <span className="text-red-500">*</span>
+                {t("sales.customerQuick.phone")}
               </label>
               <input
-                required
                 type="tel"
                 inputMode="tel"
                 value={form.phone}
@@ -127,10 +144,9 @@ export function QuickAddCustomerModal({ open, onClose, onCreated }: Props) {
             </div>
             <div>
               <label className="mb-0.5 block text-xs font-medium text-slate-600">
-                {t("sales.create.email")} <span className="text-red-500">*</span>
+                {t("sales.create.email")}
               </label>
               <input
-                required
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
@@ -150,7 +166,7 @@ export function QuickAddCustomerModal({ open, onClose, onCreated }: Props) {
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("sales.customerQuick.saveSelect")}

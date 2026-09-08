@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { MapPinned, Warehouse } from "lucide-react";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
@@ -16,8 +15,10 @@ import {
 import { fetchLocations, fetchWarehouses, fetchZones } from "@/lib/inventory/client";
 import { formatWarehouseLabel, formatZoneLabel } from "@/lib/inventory/display";
 import type { InvLocation, InvWarehouse, InvZone } from "@/lib/inventory/types";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function WmsPutawayPage() {
+  const { t } = useLocale();
   const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [zones, setZones] = useState<InvZone[]>([]);
@@ -51,8 +52,8 @@ export default function WmsPutawayPage() {
   return (
     <InventoryGate>
       <InventoryShell
-        title="Putaway"
-        subtitle="Visual hierarki gudang → zona → rak → bin. Mutasi transfer ke lokasi via mutasi stok."
+        title={t("inventory.putaway.title")}
+        subtitle={t("inventory.putaway.subtitle")}
         module="wms"
       >
         <WmsCard className="overflow-hidden p-0">
@@ -60,7 +61,7 @@ export default function WmsPutawayPage() {
             <div className="flex items-center gap-3">
               <Warehouse className="h-8 w-8 text-indigo-300" />
               <div>
-                <p className="text-xs uppercase tracking-wider text-indigo-300">Gudang</p>
+                <p className="text-xs uppercase tracking-wider text-indigo-300">{t("inventory.common.warehouse")}</p>
                 <p className="text-lg font-bold">{wh ? formatWarehouseLabel(wh) : "—"}</p>
               </div>
             </div>
@@ -84,7 +85,7 @@ export default function WmsPutawayPage() {
           <WmsLoading />
         ) : (
           <>
-            <WmsSectionTitle title="Zona" subtitle="Pilih zona untuk filter rak" />
+            <WmsSectionTitle title={t("inventory.common.selectZone")} />
             <div className="flex flex-wrap gap-2">
               {zones.map((z) => (
                 <WmsChip key={z.id} active={zoneFilter === z.id} onClick={() => setZoneFilter(z.id)}>
@@ -98,11 +99,7 @@ export default function WmsPutawayPage() {
               {filteredLoc.length === 0 ? (
                 <WmsCard className="sm:col-span-2 lg:col-span-3">
                   <p className="text-sm text-slate-500">
-                    Belum ada lokasi. Kelola di{" "}
-                    <Link href="/inventory/locations" className="text-indigo-600 hover:underline">
-                      Lokasi rak
-                    </Link>
-                    .
+                    {t("inventory.putaway.emptyLocations")}
                   </p>
                 </WmsCard>
               ) : (

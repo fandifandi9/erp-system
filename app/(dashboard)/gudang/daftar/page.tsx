@@ -2,16 +2,14 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { fetchWarehouseDirectory } from "@/lib/inventory/client";
+import type { InvWarehouse } from "@/lib/inventory/types";
 import { pb } from "@/lib/pocketbase";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
-import type { InvWarehouse } from "@/lib/inventory/types";
-import { Loader2, Plus, Pencil, Trash2, Warehouse, X, Store, ArrowRightLeft, PackageOpen, AlertTriangle } from "lucide-react";
+import { Loader2, Pencil, Warehouse, X, Store, ArrowRightLeft, PackageOpen, AlertTriangle } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import { useWorkContext } from "@/components/WorkContextProvider";
-import { fetchCompanyProfiles } from "@/lib/bisnis/company-client";
-import { fetchStores } from "@/lib/bisnis/client";
 import type { CompanyProfile, Store as BizStore } from "@/lib/bisnis/types";
-import { assertSingleEntityWarehouse, assertSingleTransitWarehouse, assertSingleDamagedWarehouse } from "@/lib/bisnis/entity-modules";
 import {
   resolveWarehouseKind,
   warehouseKindToRole,
@@ -21,6 +19,8 @@ import {
   type WarehouseKind,
 } from "@/lib/bisnis/warehouse-categories";
 import { EntityScopeFilter } from "@/components/bisnis/EntityScopeFilter";
+import { filterWarehousesForCompany } from "@/lib/inventory/transfer-suggest";
+import { useLocale } from "@/components/LocaleProvider";
 
 type WarehouseRow = InvWarehouse & {
   address?: string;
@@ -80,18 +80,8 @@ function modalHintStyles(kind: WarehouseKind) {
   return styles[kind];
 }
 
-function modalTitle(editId: string | null, kind: WarehouseKind) {
-  if (editId) return "Edit Gudang";
-  const titles: Record<WarehouseKind, string> = {
-    entity: "Gudang Entitas Baru",
-    sales: "Gudang Penjualan Baru",
-    transit: "Gudang Sementara Baru",
-    damaged: "Gudang Rusak Baru",
-  };
-  return titles[kind];
-}
-
 export default function DaftarGudangPage() {
+  const { t } = useLocale();
   const { context: workCtx } = useWorkContext();
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
   const [stores, setStores] = useState<BizStore[]>([]);
@@ -101,32 +91,53 @@ export default function DaftarGudangPage() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
   const [allItems, setAllItems] = useState<WarehouseRow[]>([]);
   const [scopeCompanyId, setScopeCompanyId] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     setLoading(true);
     try {
-      const [res, co, st] = await Promise.all([
-        pb.collection(INV_COLLECTIONS.warehouses).getFullList<WarehouseRow>({
-          sort: "code",
-          requestKey: null,
-        }),
-        fetchCompanyProfiles(true).catch(() => [] as CompanyProfile[]),
-        fetchStores(false).catch(() => [] as BizStore[]),
-      ]);
-      setAllItems(res);
-      setCompanies(co);
-      setStores(st);
+      const res = await fetchWarehouseDirectory(fresh);
+      setAllItems(res.warehouses as WarehouseRow[]);
+      setCompanies(
+        res.companies.map(
+          (c) =>
+            ({
+              id: c.id,
+              company_name: c.company_name,
+              code: c.code,
+            }) as CompanyProfile,
+        ),
+      );
+      setStores(
+        res.stores.map(
+          (s) =>
+            ({
+              id: s.id,
+              name: s.name,
+              code: s.code,
+              company: s.company,
+              is_active: s.is_active,
+            }) as BizStore,
+        ),
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const items = scopeCompanyId
-    ? allItems.filter((w) => w.company === scopeCompanyId)
-    : allItems;
+  const storeRows = useMemo(
+    () => stores.map((s) => ({ id: s.id, name: s.name, company: s.company })),
+    [stores],
+  );
+
+  const items = useMemo(
+    () =>
+      scopeCompanyId
+        ? filterWarehousesForCompany(allItems, scopeCompanyId, storeRows)
+        : allItems,
+    [allItems, scopeCompanyId, storeRows],
+  );
 
   const entityItems = useMemo(
     () => items.filter((w) => resolveWarehouseKind(w) === "entity"),
@@ -196,23 +207,6 @@ export default function DaftarGudangPage() {
     void load();
   }, [load]);
 
-  const openNew = (kind: WarehouseKind) => {
-    const defaultCompany = workCtx?.companyId ?? companies[0]?.id ?? "";
-    setEditId(null);
-    setForm({
-      ...EMPTY,
-      kind,
-      name: WAREHOUSE_KIND_DEFAULT_NAMES[kind],
-      company: defaultCompany,
-      store:
-        kind === "sales"
-          ? (stores.find((s) => s.company === defaultCompany)?.id ?? "")
-          : "",
-    });
-    setError("");
-    setModal(true);
-  };
-
   const openEdit = (w: WarehouseRow) => {
     const kind = resolveWarehouseKind(w);
     setEditId(w.id);
@@ -244,15 +238,6 @@ export default function DaftarGudangPage() {
         setSaving(false);
         return;
       }
-      if (form.kind === "entity" && !editId) {
-        await assertSingleEntityWarehouse(form.company);
-      }
-      if (form.kind === "transit" && !editId) {
-        await assertSingleTransitWarehouse(form.company);
-      }
-      if (form.kind === "damaged" && !editId) {
-        await assertSingleDamagedWarehouse(form.company);
-      }
       const role = warehouseKindToRole(form.kind);
       if (editId) {
         await pb.collection(INV_COLLECTIONS.warehouses).update(editId, {
@@ -265,45 +250,13 @@ export default function DaftarGudangPage() {
           is_active: form.is_active,
           timezone: "Asia/Jakarta",
         });
-      } else {
-        const res = await fetch("/api/inventory/warehouses", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: form.name.trim(),
-            code: form.code.trim() || undefined,
-            address: form.address.trim(),
-            company: form.company,
-            store: form.kind === "sales" ? form.store : undefined,
-            warehouse_role: role,
-            is_primary: form.kind === "entity",
-          }),
-        });
-        const json = (await res.json()) as { ok?: boolean; error?: string };
-        if (!res.ok || json.ok === false) {
-          throw new Error(json.error || "Gagal membuat gudang");
-        }
       }
       setModal(false);
-      await load();
+      await load(true);
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Gagal menyimpan"));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Hapus gudang ini?")) return;
-    setDeleting(id);
-    try {
-      await pb.collection(INV_COLLECTIONS.warehouses).delete(id);
-      await load();
-    } catch (err: unknown) {
-      alert(getErrorMessage(err, "Gagal menghapus"));
-    } finally {
-      setDeleting(null);
     }
   };
 
@@ -360,17 +313,13 @@ export default function DaftarGudangPage() {
             onClick={() => openEdit(w)}
             className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
           >
-            <Pencil className="h-3 w-3" /> Edit
+            <Pencil className="h-3 w-3" /> {t("inventory.common.edit")}
           </button>
-          <button
-            type="button"
-            onClick={() => void handleDelete(w.id)}
-            disabled={deleting === w.id}
-            className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-          >
-            {deleting === w.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}{" "}
-            Hapus
-          </button>
+          {kind !== "sales" ? (
+            <span className="inline-flex items-center rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-[10px] font-medium text-slate-500">
+              Terkunci entitas
+            </span>
+          ) : null}
         </div>
       </div>
     );
@@ -381,47 +330,11 @@ export default function DaftarGudangPage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-            <Warehouse className="h-6 w-6 text-indigo-600" /> Daftar Gudang
+            <Warehouse className="h-6 w-6 text-indigo-600" /> {t("inventory.daftar.title")}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-slate-500">
-            <strong>Gudang entitas</strong> (satu per PT/CV) hanya untuk penerimaan pembelian — stok ke toko via{" "}
-            <Link href="/inventory/movements/new" className="font-medium text-indigo-600 hover:underline">
-              Transfer Gudang
-            </Link>
-            . <strong>Gudang penjualan</strong> terikat toko untuk SO, POS, dan online.{" "}
-            <strong>Gudang sementara</strong> menampung barang belum QC atau retur belum disortir;{" "}
-            <strong>gudang rusak</strong> untuk karantina barang cacat (masing-masing satu per entitas).
+            {t("inventory.daftar.subtitle")}
           </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openNew("entity")}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700"
-          >
-            <Plus className="h-4 w-4" /> Gudang Entitas
-          </button>
-          <button
-            type="button"
-            onClick={() => openNew("sales")}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
-          >
-            <Plus className="h-4 w-4" /> Gudang Penjualan
-          </button>
-          <button
-            type="button"
-            onClick={() => openNew("transit")}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700"
-          >
-            <Plus className="h-4 w-4" /> Gudang Sementara
-          </button>
-          <button
-            type="button"
-            onClick={() => openNew("damaged")}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700"
-          >
-            <Plus className="h-4 w-4" /> Gudang Rusak
-          </button>
         </div>
       </div>
 
@@ -444,7 +357,7 @@ export default function DaftarGudangPage() {
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
           <Warehouse className="mx-auto h-10 w-10 text-slate-300" />
           <p className="mt-3 text-sm text-slate-500">
-            Belum ada gudang. Tambahkan gudang entitas, penjualan, sementara, atau rusak sesuai kebutuhan entitas.
+            {t("inventory.daftar.empty")}
           </p>
         </div>
       ) : (
@@ -452,7 +365,7 @@ export default function DaftarGudangPage() {
           <section>
             <div className="mb-3 flex items-center gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-violet-800">
-                Gudang Entitas
+                {t("inventory.daftar.typeEntity")}
               </h2>
               <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
                 {entityItems.length}
@@ -461,7 +374,11 @@ export default function DaftarGudangPage() {
             <p className="mb-3 text-xs text-slate-500">{WAREHOUSE_KIND_DESCRIPTIONS.entity}</p>
             {entityItems.length === 0 ? (
               <p className="rounded-lg border border-dashed border-violet-200 bg-violet-50/50 px-4 py-3 text-sm text-violet-800">
-                Belum ada gudang entitas untuk filter ini. Buat lewat Pengaturan → Perusahaan atau tombol di atas.
+                Belum ada gudang entitas — buat entitas baru di{" "}
+                <Link href="/pengaturan/perusahaan" className="font-semibold underline">
+                  Pengaturan → Perusahaan
+                </Link>
+                .
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">{entityItems.map(renderCard)}</div>
@@ -470,7 +387,7 @@ export default function DaftarGudangPage() {
 
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-800">Gudang Penjualan</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-800">{t("inventory.daftar.typeRetail")}</h2>
               <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700">
                 {salesItems.length}
               </span>
@@ -478,7 +395,11 @@ export default function DaftarGudangPage() {
             <p className="mb-3 text-xs text-slate-500">{WAREHOUSE_KIND_DESCRIPTIONS.sales}</p>
             {salesItems.length === 0 ? (
               <p className="rounded-lg border border-dashed border-cyan-200 bg-cyan-50/50 px-4 py-3 text-sm text-cyan-900">
-                Belum ada gudang penjualan. Buat gudang penjualan dan tautkan ke toko (mis. online vs POS per kota).
+                Belum ada gudang penjualan. Buat lewat{" "}
+                <Link href="/bisnis/store" className="font-semibold underline">
+                  Pengaturan → Toko
+                </Link>{" "}
+                (opsi &quot;+ Buat gudang penjualan baru&quot; saat tambah toko).
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">{salesItems.map(renderCard)}</div>
@@ -488,7 +409,7 @@ export default function DaftarGudangPage() {
           <section>
             <div className="mb-3 flex items-center gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-800">
-                Gudang Sementara
+                {t("inventory.daftar.typeTransit")}
               </h2>
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                 {transitItems.length}
@@ -497,8 +418,11 @@ export default function DaftarGudangPage() {
             <p className="mb-3 text-xs text-slate-500">{WAREHOUSE_KIND_DESCRIPTIONS.transit}</p>
             {transitItems.length === 0 ? (
               <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/50 px-4 py-3 text-sm text-amber-900">
-                Belum ada gudang sementara. Buat satu per entitas untuk penampung QC penerimaan dan retur belum
-                disortir.
+                Belum ada gudang sementara — dibuat otomatis saat entitas disetup di{" "}
+                <Link href="/pengaturan/perusahaan" className="font-semibold underline">
+                  Pengaturan → Perusahaan
+                </Link>
+                .
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">{transitItems.map(renderCard)}</div>
@@ -507,7 +431,7 @@ export default function DaftarGudangPage() {
 
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-rose-800">Gudang Rusak</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-rose-800">{t("inventory.daftar.typeDamaged")}</h2>
               <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
                 {damagedItems.length}
               </span>
@@ -515,8 +439,11 @@ export default function DaftarGudangPage() {
             <p className="mb-3 text-xs text-slate-500">{WAREHOUSE_KIND_DESCRIPTIONS.damaged}</p>
             {damagedItems.length === 0 ? (
               <p className="rounded-lg border border-dashed border-rose-200 bg-rose-50/50 px-4 py-3 text-sm text-rose-900">
-                Belum ada gudang rusak. Buat satu per entitas untuk karantina barang cacat sebelum kanibal atau
-                pembuangan.
+                Belum ada gudang rusak — dibuat otomatis saat entitas disetup di{" "}
+                <Link href="/pengaturan/perusahaan" className="font-semibold underline">
+                  Pengaturan → Perusahaan
+                </Link>
+                .
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">{damagedItems.map(renderCard)}</div>
@@ -532,7 +459,9 @@ export default function DaftarGudangPage() {
             className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">{modalTitle(editId, form.kind)}</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {editId ? t("inventory.daftar.edit") : t("inventory.daftar.add")}
+              </h3>
               <button type="button" onClick={() => setModal(false)} className="rounded-lg p-1 text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
@@ -545,7 +474,7 @@ export default function DaftarGudangPage() {
 
               {companies.length > 0 && (
                 <label className="block text-sm font-medium text-slate-700">
-                  Entitas (PT/CV) <span className="text-red-500">*</span>
+                  {t("inventory.common.entity")} <span className="text-red-500">*</span>
                   {editId ? (
                     <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                       {companies.find((c) => c.id === form.company)?.company_name ?? "—"}
@@ -564,7 +493,7 @@ export default function DaftarGudangPage() {
                       }
                       className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     >
-                      <option value="">Pilih entitas</option>
+                      <option value="">{t("inventory.common.selectEntity")}</option>
                       {companies.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.code ? `${c.code} — ` : ""}
@@ -623,7 +552,7 @@ export default function DaftarGudangPage() {
               ) : null}
 
               <label className="block text-sm font-medium text-slate-700">
-                Nama Gudang <span className="text-red-500">*</span>
+                {t("inventory.common.name")} <span className="text-red-500">*</span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={form.name}
@@ -637,7 +566,7 @@ export default function DaftarGudangPage() {
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">
-                Kode Gudang <span className="font-normal text-slate-400">(opsional)</span>
+                {t("inventory.common.code")} <span className="font-normal text-slate-400">(opsional)</span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase"
                   value={form.code}
@@ -662,7 +591,7 @@ export default function DaftarGudangPage() {
                     onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
                     className="h-4 w-4 rounded border-slate-300"
                   />
-                  Aktif
+                  {t("inventory.common.active")}
                 </label>
               ) : null}
               {form.kind === "entity" || form.kind === "transit" || form.kind === "damaged" ? (
@@ -681,7 +610,7 @@ export default function DaftarGudangPage() {
                 onClick={() => setModal(false)}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Batal
+                {t("inventory.common.cancel")}
               </button>
               <button
                 type="submit"
@@ -694,7 +623,7 @@ export default function DaftarGudangPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {editId ? "Simpan" : "Tambah"}
+                {editId ? t("inventory.common.save") : t("inventory.common.add")}
               </button>
             </div>
           </form>

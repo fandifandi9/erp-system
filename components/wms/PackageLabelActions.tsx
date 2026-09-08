@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2, Printer, QrCode } from "lucide-react";
 import { getPkIdentityView } from "@/lib/wms/pk-identity";
+import { pkCodeBody } from "@/lib/wms/pk-number";
 import { printPkForSalesOrder } from "@/lib/wms/print-pk-for-order";
 import { getErrorMessage } from "@/lib/errors";
 import type { SalesOrder } from "@/lib/bisnis/types";
@@ -51,7 +52,10 @@ export function PackageLabelActions({
   return (
     <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-sm">
       <p className="font-semibold text-violet-950">{t("wms.pkLabel.title")}</p>
-      <p className="mt-1 font-mono text-2xl font-bold tracking-wide text-indigo-700">PK {pk.pkNo}</p>
+      <p className="mt-1 flex items-baseline gap-1.5 font-mono text-2xl font-bold tracking-wide text-indigo-700">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700">PK</span>
+        <span>{pkCodeBody(pk.pkNo)}</span>
+      </p>
       <p className="text-xs text-violet-800">
         {autoPrintEnabled ? t("wms.pkLabel.autoPrintHint") : t("wms.pkLabel.manualPrintHint")}
       </p>

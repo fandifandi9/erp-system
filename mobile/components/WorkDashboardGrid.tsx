@@ -28,7 +28,11 @@ export function WorkDashboardGrid({ tiles, locked = false }: Props) {
             </Text>
             <View style={styles.badge}>
               <Ionicons name="flash-outline" size={11} color={PWA.indigo700} />
-              <Text style={styles.badgeTxt}>Antrean HR</Text>
+              <Text style={styles.badgeTxt}>
+                {typeof tile.badgeCount === "number" && tile.badgeCount > 0
+                  ? String(tile.badgeCount)
+                  : "Aksi"}
+              </Text>
             </View>
           </View>
         );

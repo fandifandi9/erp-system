@@ -26,6 +26,7 @@ import type {
   RetailWarehouseOption,
 } from "@/lib/inventory/damaged-disposition";
 import type { DamagedIntakeRef } from "@/lib/inventory/damaged-intake-refs";
+import { getCachedWarehouses } from "@/lib/bisnis/master-data-cache";
 
 async function readInvJson(res: Response) {
   const data = await res.json().catch(() => ({}));
@@ -119,12 +120,61 @@ export async function postDamagedReassign(input: {
 }
 
 export async function fetchWarehouses(activeOnly = true) {
-  const filter = activeOnly ? "is_active = true" : "";
-  const res = await pb.collection(INV_COLLECTIONS.warehouses).getList(1, 100, {
-    sort: "code",
-    filter: filter || undefined,
+  return getCachedWarehouses(async () => {
+    const filter = activeOnly ? "is_active = true" : "";
+    const res = await pb.collection(INV_COLLECTIONS.warehouses).getList(1, 500, {
+      sort: "code",
+      filter: filter || undefined,
+      fields: "id,code,name,store,company,is_active,warehouse_role",
+    });
+    return res.items as unknown as InvWarehouse[];
   });
-  return res.items as unknown as InvWarehouse[];
+}
+
+export type WarehouseStockListResponse = {
+  ok: boolean;
+  items: InvStockBalance[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  perPage: number;
+  draftCount: number;
+};
+
+export async function fetchWarehouseStockList(params: {
+  warehouseId: string;
+  page?: number;
+  perPage?: number;
+  q?: string;
+}): Promise<WarehouseStockListResponse> {
+  const sp = new URLSearchParams();
+  sp.set("warehouse", params.warehouseId);
+  if (params.page) sp.set("page", String(params.page));
+  if (params.perPage) sp.set("perPage", String(params.perPage));
+  if (params.q?.trim()) sp.set("q", params.q.trim());
+  const res = await fetch(`/api/inventory/stock?${sp}`, { cache: "no-store" });
+  return readInvJson(res);
+}
+
+export type WarehouseDirectoryResponse = {
+  ok: boolean;
+  warehouses: Array<
+    InvWarehouse & {
+      address?: string;
+      company?: string;
+      store?: string;
+      warehouse_role?: string;
+      is_primary?: boolean;
+    }
+  >;
+  companies: Array<{ id: string; company_name?: string; code?: string }>;
+  stores: Array<{ id: string; name?: string; code?: string; company?: string; is_active?: boolean }>;
+};
+
+export async function fetchWarehouseDirectory(fresh = false): Promise<WarehouseDirectoryResponse> {
+  const qs = fresh ? "?fresh=1" : "";
+  const res = await fetch(`/api/inventory/warehouses/directory${qs}`, { cache: "no-store" });
+  return readInvJson(res);
 }
 
 /** Gudang penjualan retail (role retail / terikat toko) — untuk preview stok jual bundle. */
@@ -200,23 +250,35 @@ export async function fetchBalances(warehouseId?: string, productId?: string) {
 }
 
 async function enrichMovementTotals(items: InvMovement[]): Promise<InvMovement[]> {
-  return Promise.all(
-    items.map(async (m) => {
-      if ((m.total_qty ?? 0) > 0) return m;
-      try {
-        const lines = (await pb.collection(INV_COLLECTIONS.movementLines).getFullList({
-          filter: `movement = "${m.id}"`,
-        })) as unknown as InvMovementLine[];
-        const total_qty = lines.reduce(
-          (s, l) => s + Math.abs(Number(l.qty) || 0),
-          0
-        );
-        return { ...m, total_qty, line_count: lines.length };
-      } catch {
-        return m;
-      }
-    })
-  );
+  const missing = items.filter((m) => !(Number(m.total_qty) > 0));
+  if (missing.length === 0) return items;
+
+  const totalsByMovement = new Map<string, { total_qty: number; line_count: number }>();
+  try {
+    const filter = missing.map((m) => `movement = "${m.id.replace(/"/g, '\\"')}"`).join(" || ");
+    const lines = (await pb.collection(INV_COLLECTIONS.movementLines).getFullList({
+      filter,
+      fields: "movement,qty",
+      requestKey: null,
+    })) as unknown as InvMovementLine[];
+
+    for (const line of lines) {
+      const movementId = String(line.movement ?? "");
+      if (!movementId) continue;
+      const cur = totalsByMovement.get(movementId) ?? { total_qty: 0, line_count: 0 };
+      cur.total_qty += Math.abs(Number(line.qty) || 0);
+      cur.line_count += 1;
+      totalsByMovement.set(movementId, cur);
+    }
+  } catch {
+    return items;
+  }
+
+  return items.map((m) => {
+    const agg = totalsByMovement.get(m.id);
+    if (!agg) return m;
+    return { ...m, total_qty: agg.total_qty, line_count: agg.line_count };
+  });
 }
 
 export async function fetchMovements(params?: {
@@ -316,7 +378,11 @@ export async function createMovementDraft(input: {
     credentials: "include",
     body: JSON.stringify(input),
   });
-  const json = (await res.json()) as { ok: boolean; data?: { id: string }; error?: string };
+  const json = (await res.json()) as {
+    ok: boolean;
+    data?: { id: string; movement_no?: string; status?: "posted" | "draft" };
+    error?: string;
+  };
   if (!res.ok || !json.ok) throw new Error(json.error || "Gagal membuat movement.");
   return json.data!;
 }
@@ -380,7 +446,6 @@ export async function fetchStaffActivities(params?: {
   userId?: string;
   page?: number;
 }) {
-  const { enrichStaffActivities } = await import("@/lib/inventory/display");
   const parts: string[] = [];
   if (params?.warehouseId) parts.push(`warehouse = "${params.warehouseId}"`);
   if (params?.userId) parts.push(`user = "${params.userId}"`);
@@ -389,13 +454,7 @@ export async function fetchStaffActivities(params?: {
     filter: parts.length ? parts.join(" && ") : undefined,
     expand: "user,zone,warehouse",
   });
-  const items = res.items as unknown as InvStaffActivity[];
-
-  const [warehouses, zones] = await Promise.all([fetchWarehouses(false), fetchZones()]);
-  const whById = Object.fromEntries(warehouses.map((w) => [w.id, w]));
-  const zoneById = Object.fromEntries(zones.map((z) => [z.id, z]));
-
-  return enrichStaffActivities(items, whById, zoneById);
+  return res.items as unknown as InvStaffActivity[];
 }
 
 export async function postMovement(id: string) {

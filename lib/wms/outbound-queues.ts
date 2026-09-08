@@ -44,25 +44,44 @@ function isActiveInWms(so: SalesOrder): boolean {
 export async function fetchOutboundOrdersForQueues(
   mode: "active" | "completed",
 ): Promise<SalesOrder[]> {
+  const now = Date.now();
+  if (mode === "active" && activeQueueCache && now - activeQueueCache.at < ACTIVE_QUEUE_CACHE_MS) {
+    return activeQueueCache.data;
+  }
+
   const filter = mode === "completed" ? salesOrdersCompletedPbFilter() : salesOrdersOutboundPbFilter();
   try {
     const res = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getList<SalesOrder>(1, 100, {
       filter,
       sort: "-created",
-      expand: "warehouse,customer",
+      expand: "warehouse,customer,store",
       requestKey: null,
     });
     const items = mode === "active" ? res.items.filter(isActiveInWms) : res.items;
+    if (mode === "active") {
+      activeQueueCache = { at: now, data: items };
+    }
     return items;
   } catch {
     const res = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getList<SalesOrder>(1, 100, {
       filter: 'send_to_warehouse_at != "" && status != "cancelled"',
       sort: "-created",
-      expand: "warehouse,customer",
+      expand: "warehouse,customer,store",
       requestKey: null,
     });
-    return mode === "active" ? res.items.filter(isActiveInWms) : res.items;
+    const items = mode === "active" ? res.items.filter(isActiveInWms) : res.items;
+    if (mode === "active") {
+      activeQueueCache = { at: now, data: items };
+    }
+    return items;
   }
+}
+
+const ACTIVE_QUEUE_CACHE_MS = 20_000;
+let activeQueueCache: { at: number; data: SalesOrder[] } | null = null;
+
+export function invalidateOutboundQueueCache(): void {
+  activeQueueCache = null;
 }
 
 export function queueLabelForStage(stage: WmsOrderStage): string {
@@ -71,6 +90,11 @@ export function queueLabelForStage(stage: WmsOrderStage): string {
 
 export function sortQueueOrders(orders: SalesOrder[]): SalesOrder[] {
   return [...orders].sort((a, b) => {
+    const deskA =
+      parseOutboundWorkflow(a.outbound_workflow_json).desk_request?.status === "pending" ? 0 : 1;
+    const deskB =
+      parseOutboundWorkflow(b.outbound_workflow_json).desk_request?.status === "pending" ? 0 : 1;
+    if (deskA !== deskB) return deskA - deskB;
     const ta = a.warehouse_processed_at || a.created || "";
     const tb = b.warehouse_processed_at || b.created || "";
     return tb.localeCompare(ta);
@@ -123,29 +147,42 @@ export function describeOrderForQueue(
   stage: WmsOrderStage;
   pkNo: string;
   orderNo: string;
+  /** Invoice jika sudah digenerate (setelah picking); kosong = masih SO. */
+  invoiceNo: string;
   packageCode: string;
   packageCodeType: "awb" | "internal";
-  warehouseName: string;
+  storeName: string;
   stageWaitLine: string;
   pickupGate: PickupGate | null;
   pickupGateLabel: string | null;
+  pkPrinted: boolean;
+  deskRequestPending: boolean;
+  deskRequesterName: string | null;
 } {
   const pkg = getPackageIdentityView(so);
   const pk = getPkIdentityView(so);
   const wf = parseOutboundWorkflow(so.outbound_workflow_json);
   const gate = getPickupGateFromWorkflow(wf);
+  const deskPending = wf.desk_request?.status === "pending";
   return {
     stage: getOutboundStageFromSo(so),
     pkNo: pk.pkNo,
     orderNo: so.order_no,
+    invoiceNo: wf.order_meta?.invoice_no?.trim() || "",
     packageCode: pkg.code,
     packageCodeType: pkg.type,
-    warehouseName: so.expand?.warehouse?.name ?? "—",
+    storeName:
+      wf.order_meta?.store_name?.trim() ||
+      so.expand?.store?.name?.trim() ||
+      "—",
     stageWaitLine: formatWmsStageWaitLine(so, {
       nowMs: opts?.nowMs,
       mode: opts?.timeMode,
     }),
     pickupGate: gate,
     pickupGateLabel: gate ? PICKUP_GATE_UI[gate].label : null,
+    pkPrinted: !!wf.pk_printed_at,
+    deskRequestPending: deskPending,
+    deskRequesterName: deskPending ? wf.desk_request?.requester_name?.trim() || null : null,
   };
 }

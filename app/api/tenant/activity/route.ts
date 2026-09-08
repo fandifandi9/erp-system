@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cachedFetch } from "@/lib/catalog/stock-cache";
 import { getApiAuthUser } from "@/lib/inventory/api-auth";
 import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import { emitBusinessEventServer } from "@/lib/tenant/activity-server";
@@ -23,23 +24,32 @@ export async function GET(req: Request) {
     if (since) parts.push(`occurred_at >= "${since}"`);
 
     const adminPb = await getInventoryAdminPb();
-    const fetchLimit = forMe ? Math.min(perPage * 4, 100) : perPage;
-    const res = await adminPb.collection(TENANT_COLLECTIONS.activityEvents).getList(1, fetchLimit, {
-      sort: "-occurred_at",
-      filter: parts.length ? parts.join(" && ") : undefined,
-      expand: "actor,store,warehouse",
-    });
-    let items = res.items;
-    if (forMe) {
-      items = items.filter((ev) =>
-        activityEventForUser(
-          (ev as { payload_json?: string }).payload_json,
-          ctx.userId,
-        ),
-      );
-      items = items.slice(0, perPage);
-    }
-    return NextResponse.json({ items, total: forMe ? items.length : res.totalItems });
+    const cacheKey = `tenant:activity:${ctx.userId}:${storeId ?? ""}:${module ?? ""}:${since ?? ""}:${forMe ? "me" : "all"}:${perPage}`;
+    const payload = await cachedFetch(
+      cacheKey,
+      async () => {
+        const fetchLimit = forMe ? Math.min(perPage * 4, 100) : perPage;
+        const res = await adminPb.collection(TENANT_COLLECTIONS.activityEvents).getList(1, fetchLimit, {
+          sort: "-occurred_at",
+          filter: parts.length ? parts.join(" && ") : undefined,
+          expand: "actor,store,warehouse",
+          requestKey: null,
+        });
+        let items = res.items;
+        if (forMe) {
+          items = items.filter((ev) =>
+            activityEventForUser(
+              (ev as { payload_json?: string }).payload_json,
+              ctx.userId,
+            ),
+          );
+          items = items.slice(0, perPage);
+        }
+        return { items, total: forMe ? items.length : res.totalItems };
+      },
+      20_000,
+    );
+    return NextResponse.json(payload);
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Gagal memuat aktivitas" },

@@ -4,12 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   PackageOpen,
-  ShieldCheck,
   ShoppingCart,
   PackageCheck,
   ClipboardCheck,
   Activity,
-  QrCode,
   AlertTriangle,
   Package,
   Boxes,
@@ -25,16 +23,9 @@ import {
   WmsLoading,
 } from "@/components/wms/ui";
 import { WMS_FLOW_STEPS, WMS_OUTBOUND_FLOW } from "@/lib/wms/navigation";
-import { fetchBalances } from "@/lib/inventory/client";
-import {
-  fetchPurchaseOrders,
-  fetchReturs,
-  purchaseOrdersReceivingPbFilter,
-} from "@/lib/bisnis/client";
-import { loadOutboundQueueStats } from "@/lib/wms/outbound-queues";
-import { salesReturnsReceivingPbFilter } from "@/lib/wms/sales-return-receive";
+import { fetchWmsDashboardStats } from "@/lib/wms/dashboard-stats-client";
+import type { WmsDashboardStockPreview } from "@/lib/wms/dashboard-stats-server";
 import { formatIntegerId } from "@/lib/format-number";
-import type { InvStockBalance } from "@/lib/inventory/types";
 import { useLocale } from "@/components/LocaleProvider";
 
 export default function WmsDashboardPage() {
@@ -50,61 +41,30 @@ export default function WmsDashboardPage() {
     outboundPickup: 0,
     productSkus: 0,
   });
-  const [stockPreview, setStockPreview] = useState<InvStockBalance[]>([]);
+  const [stockPreview, setStockPreview] = useState<WmsDashboardStockPreview[]>([]);
 
   useEffect(() => {
     void (async () => {
       setLoadError("");
       try {
-        const [balancesRes, inboundPoRes, inboundReturRes, outboundRes] = await Promise.allSettled([
-          fetchBalances(),
-          fetchPurchaseOrders({ page: 1, perPage: 1, filter: purchaseOrdersReceivingPbFilter() }),
-          fetchReturs({ page: 1, perPage: 1, filter: salesReturnsReceivingPbFilter() }),
-          loadOutboundQueueStats(),
-        ]);
-
-        const balances = balancesRes.status === "fulfilled" ? balancesRes.value : [];
-        const inboundPo =
-          inboundPoRes.status === "fulfilled" ? inboundPoRes.value : { totalItems: 0 };
-        const inboundRetur =
-          inboundReturRes.status === "fulfilled" ? inboundReturRes.value : { totalItems: 0 };
-        const outbound =
-          outboundRes.status === "fulfilled"
-            ? outboundRes.value
-            : { picking: 0, validate: 0, pickup: 0, total: 0 };
-
-        if (
-          balancesRes.status === "rejected" &&
-          inboundPoRes.status === "rejected" &&
-          outboundRes.status === "rejected"
-        ) {
-          setLoadError(t("wms.hub.errLoad"));
-        }
-
-        const low = balances.filter((b) => {
-          const p = b.expand?.product;
-          const min = p?.min_stock ?? 0;
-          return min > 0 && (b.qty_on_hand ?? 0) < min;
-        });
-
-        const withStock = balances.filter((b) => (b.qty_on_hand ?? 0) > 0);
-        const uniqueProducts = new Set(withStock.map((b) => b.product));
-
+        const data = await fetchWmsDashboardStats();
         setStats({
-          inboundQueue: (inboundPo.totalItems ?? 0) + (inboundRetur.totalItems ?? 0),
-          lowStock: low.length,
-          outboundTotal: outbound.total,
-          outboundPicking: outbound.picking,
-          outboundValidate: outbound.validate,
-          outboundPickup: outbound.pickup,
-          productSkus: uniqueProducts.size,
+          inboundQueue: data.inboundQueue,
+          lowStock: data.lowStock,
+          outboundTotal: data.outbound.total,
+          outboundPicking: data.outbound.picking,
+          outboundValidate: data.outbound.validate,
+          outboundPickup: data.outbound.pickup,
+          productSkus: data.productSkus,
         });
-        setStockPreview(withStock.slice(0, 12));
+        setStockPreview(data.stockPreview);
+      } catch {
+        setLoadError(t("wms.hub.errLoad"));
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [t]);
 
   return (
     <InventoryGate>
@@ -194,9 +154,9 @@ export default function WmsDashboardPage() {
                 <tbody>
                   {stockPreview.map((b) => (
                     <tr key={b.id} className="border-t border-slate-100">
-                      <td className="py-2 font-mono text-xs">{b.expand?.product?.sku || "—"}</td>
-                      <td className="py-2">{b.expand?.product?.name || b.product}</td>
-                      <td className="py-2 text-slate-600">{b.expand?.warehouse?.name || "—"}</td>
+                      <td className="py-2 font-mono text-xs">{b.product?.sku || "—"}</td>
+                      <td className="py-2">{b.product?.name || "—"}</td>
+                      <td className="py-2 text-slate-600">{b.warehouse?.name || "—"}</td>
                       <td className="py-2 text-right font-semibold">
                         {formatIntegerId(b.qty_on_hand)}
                       </td>
@@ -238,12 +198,6 @@ export default function WmsDashboardPage() {
               accent="emerald"
             />
             <WmsNavTile
-              href="/gudang/qc"
-              label="QC"
-              icon={ShieldCheck}
-              accent="amber"
-            />
-            <WmsNavTile
               href="/wms/permintaan-barang"
               label={t("wms.hub.tileRequest")}
               description={t("wms.hub.tileRequestDesc")}
@@ -254,12 +208,6 @@ export default function WmsDashboardPage() {
               href="/gudang/stok"
               label={t("wms.hub.tileGlobalStock")}
               icon={Boxes}
-              accent="emerald"
-            />
-            <WmsNavTile
-              href="/gudang/scanner"
-              label={t("wms.hub.tileScanner")}
-              icon={QrCode}
               accent="emerald"
             />
             <WmsNavTile

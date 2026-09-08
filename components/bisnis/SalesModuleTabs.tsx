@@ -24,7 +24,7 @@ export function SalesModuleTabs({ embedded }: { embedded?: boolean } = {}) {
       className={
         embedded
           ? "mr-2 flex shrink-0 flex-wrap gap-1 border-r border-slate-200 pr-3"
-          : "mb-4 flex flex-wrap gap-1 border-b border-slate-200"
+          : "flex flex-wrap gap-1 border-b border-slate-200"
       }
     >
       {TABS.map((tab) => {
@@ -37,7 +37,7 @@ export function SalesModuleTabs({ embedded }: { embedded?: boolean } = {}) {
             className={
               "inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition -mb-px " +
               (active
-                ? "border-indigo-600 text-indigo-700"
+                ? "border-slate-900 text-slate-900"
                 : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800")
             }
           >

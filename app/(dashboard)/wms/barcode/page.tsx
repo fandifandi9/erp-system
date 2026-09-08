@@ -3,13 +3,15 @@
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
 import { BarcodeLabelStudio } from "@/components/wms/BarcodeLabelStudio";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function WmsBarcodePage() {
+  const { t } = useLocale();
   return (
     <InventoryGate>
       <InventoryShell
-        title="Barcode & Label"
-        subtitle="Code128, UPC-A, ITF, QR — cetak label termal atau unduh dari master produk / kode manual."
+        title={t("inventory.barcode.title")}
+        subtitle={t("inventory.barcode.subtitle")}
         module="wms"
       >
         <BarcodeLabelStudio />

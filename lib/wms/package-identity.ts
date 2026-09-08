@@ -3,7 +3,7 @@ import { BISNIS_COLLECTIONS, type SalesOrder } from "@/lib/bisnis/types";
 import { parseNotesWithShipping } from "@/lib/bisnis/shipping-notes";
 import { parsePosNotes } from "@/lib/pos/meta";
 import { getPkFromSo } from "./pk-identity";
-import { formatPkDisplay } from "./pk-number";
+import { pkCodeBody } from "./pk-number";
 import {
   buildPackageQrPayload,
   parsePackageScanPayload,
@@ -120,7 +120,7 @@ export function getPackageIdentityView(
 
   const pkFromSo = getPkFromSo(so);
   if (pkFromSo) {
-    const code = formatPkDisplay(pkFromSo);
+    const code = pkCodeBody(pkFromSo);
     return {
       type: "internal",
       code,
@@ -233,7 +233,7 @@ export async function resolveAndAssignPackageIdentity(
 
   const pkFromSo = getPkFromSo(so);
   if (pkFromSo) {
-    const code = formatPkDisplay(pkFromSo);
+    const code = pkCodeBody(pkFromSo);
     const identity: PackageIdentityState = {
       type: "internal",
       code,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -14,11 +16,20 @@ import { useAuth } from "@/context/auth";
 import { fetchStaffPayrollSlips, type StaffPayrollSlip } from "@/lib/payroll";
 import {
   downloadSerbaPayrollSlipPdf,
+  formatPeriodMonthYear,
   type PayrollSlipEmployeeMeta,
 } from "@/lib/payroll-slip-document";
 import { ensureAndSyncProfileMobile } from "@/lib/profileEnsure";
 import { canAccess } from "@/lib/rbac";
 import { PWA } from "@/constants/pwaTheme";
+import { AccountVerificationModal } from "@/components/AccountVerificationModal";
+import {
+  assertAccountVerifiedMobile,
+  bumpAccountVerificationActivity,
+  enterSensitiveModuleMobile,
+  leaveSensitiveModuleMobile,
+  onAccountVerificationRevoked,
+} from "@/lib/account-verification";
 
 function money(n: number): string {
   return new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
@@ -32,28 +43,17 @@ const PERIOD_STATUS_LABEL: Record<string, string> = {
 
 function SlipCard({
   slip,
-  employeeMeta,
+  onRequestDownload,
+  downloading,
 }: {
   slip: StaffPayrollSlip;
-  employeeMeta: PayrollSlipEmployeeMeta;
+  onRequestDownload: (slip: StaffPayrollSlip) => void;
+  downloading: boolean;
 }) {
-  const [downloading, setDownloading] = useState(false);
-
-  async function onDownload() {
-    setDownloading(true);
-    try {
-      await downloadSerbaPayrollSlipPdf(slip, employeeMeta);
-    } catch {
-      /* alert sudah di helper */
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
-        <Text style={styles.periodKey}>{slip.period_key}</Text>
+        <Text style={styles.periodKey}>{formatPeriodMonthYear(slip.period_key)}</Text>
         <Text style={styles.periodRange}>
           {slip.period_start} — {slip.period_end}
           {slip.pay_date ? ` · Bayar: ${slip.pay_date}` : ""}
@@ -94,7 +94,7 @@ function SlipCard({
         </View>
         <Pressable
           style={[styles.downloadBtn, downloading && styles.downloadBtnDis]}
-          onPress={() => void onDownload()}
+          onPress={() => onRequestDownload(slip)}
           disabled={downloading}
         >
           {downloading ? (
@@ -144,6 +144,9 @@ export function PayrollStaffPanel({ embedded = false }: { embedded?: boolean }) 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [profileMeta, setProfileMeta] = useState<PayrollSlipEmployeeMeta | null>(null);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [pendingSlip, setPendingSlip] = useState<StaffPayrollSlip | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const employeeMeta = useMemo((): PayrollSlipEmployeeMeta => {
     if (profileMeta) return profileMeta;
@@ -186,18 +189,64 @@ export function PayrollStaffPanel({ embedded = false }: { embedded?: boolean }) 
 
   useFocusEffect(
     useCallback(() => {
+      void enterSensitiveModuleMobile("payslip");
+      bumpAccountVerificationActivity();
       void load();
+      return () => {
+        void leaveSensitiveModuleMobile("payslip");
+      };
     }, [load])
   );
 
+  useEffect(() => {
+    return onAccountVerificationRevoked(() => {
+      setVerifyOpen(false);
+      setPendingSlip(null);
+      setDownloadingId(null);
+    });
+  }, []);
+
+  const runDownload = useCallback(
+    async (slip: StaffPayrollSlip) => {
+      setDownloadingId(slip.id);
+      try {
+        await assertAccountVerifiedMobile();
+        bumpAccountVerificationActivity();
+        await downloadSerbaPayrollSlipPdf(slip, employeeMeta);
+      } catch (e) {
+        const err = e as Error & { code?: string };
+        if (err.code === "ACCOUNT_VERIFICATION_REQUIRED") {
+          setPendingSlip(slip);
+          setVerifyOpen(true);
+          return;
+        }
+      } finally {
+        setDownloadingId(null);
+      }
+    },
+    [employeeMeta]
+  );
+
+  const handleVerified = () => {
+    setVerifyOpen(false);
+    const slip = pendingSlip;
+    setPendingSlip(null);
+    if (slip) void runDownload(slip);
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    bumpAccountVerificationActivity();
     try {
       await load();
     } finally {
       setRefreshing(false);
     }
   }, [load]);
+
+  const onScroll = (_e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    bumpAccountVerificationActivity();
+  };
 
   if (!hasAccess) {
     return (
@@ -224,7 +273,8 @@ export function PayrollStaffPanel({ embedded = false }: { embedded?: boolean }) 
             <Text style={styles.h1}>Slip gaji</Text>
           </View>
           <Text style={styles.sub}>
-            Hanya periode yang sudah disetujui atau dibayar oleh HR — sama seperti di web ERP.
+            Hanya periode yang sudah disetujui atau dibayar oleh HR — unduh PDF memerlukan verifikasi
+            akun (15 menit).
           </Text>
         </>
       ) : (
@@ -234,7 +284,7 @@ export function PayrollStaffPanel({ embedded = false }: { embedded?: boolean }) 
             <Text style={styles.embeddedTitle}>Slip gaji</Text>
           </View>
           <Text style={styles.embeddedSub}>
-            Periode disetujui/dibayar HR · unduh PDF resmi atas nama SERBA
+            Periode disetujui/dibayar HR · unduh PDF perlu verifikasi akun
           </Text>
         </View>
       )}
@@ -251,8 +301,25 @@ export function PayrollStaffPanel({ embedded = false }: { embedded?: boolean }) 
           </Text>
         </View>
       ) : (
-        slips.map((s) => <SlipCard key={s.id} slip={s} employeeMeta={employeeMeta} />)
+        slips.map((s) => (
+          <SlipCard
+            key={s.id}
+            slip={s}
+            downloading={downloadingId === s.id}
+            onRequestDownload={(slip) => void runDownload(slip)}
+          />
+        ))
       )}
+
+      <AccountVerificationModal
+        open={verifyOpen}
+        context="payslip"
+        onClose={() => {
+          setVerifyOpen(false);
+          setPendingSlip(null);
+        }}
+        onVerified={handleVerified}
+      />
     </>
   );
 
@@ -264,6 +331,8 @@ export function PayrollStaffPanel({ embedded = false }: { embedded?: boolean }) 
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onScroll={onScroll}
+      scrollEventThrottle={400}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {body}

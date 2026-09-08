@@ -18,5 +18,6 @@ export const STAFF_ACTIVITY_TO_BUSINESS: Record<string, string | undefined> = {
   "wms.validate_pack_complete": "wms.packing.completed",
   "wms.pack_complete": "wms.packing.completed",
   "wms.pickup_complete": "wms.pickup.completed",
+  "wms.desk_request": "wms.desk.request",
   "wms.receive_complete": "warehouse.receiving.completed",
 };

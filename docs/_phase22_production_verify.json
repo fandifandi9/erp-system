@@ -1,0 +1,1026 @@
+{
+  "verified_at": "2026-08-29T04:30:57.422Z",
+  "prod_url": "https://pb.serba.space",
+  "checks": [
+    {
+      "label": "users count = 23",
+      "status": "PASS",
+      "detail": "actual: 23"
+    },
+    {
+      "label": "leave_requests count = 34",
+      "status": "PASS",
+      "detail": "actual: 34"
+    },
+    {
+      "label": "profiles count = 23",
+      "status": "PASS",
+      "detail": "actual: 23"
+    },
+    {
+      "label": "hr_rating_periods exists",
+      "status": "PASS",
+      "detail": "6 fields"
+    },
+    {
+      "label": "hr_rating_aspects exists",
+      "status": "PASS",
+      "detail": "7 fields"
+    },
+    {
+      "label": "hr_rating_assignments exists",
+      "status": "PASS",
+      "detail": "7 fields"
+    },
+    {
+      "label": "hr_rating_reviewers exists",
+      "status": "PASS",
+      "detail": "6 fields"
+    },
+    {
+      "label": "hr_rating_scores exists",
+      "status": "PASS",
+      "detail": "4 fields"
+    },
+    {
+      "label": "hr_rating_results exists",
+      "status": "PASS",
+      "detail": "10 fields"
+    },
+    {
+      "label": "hr_staff_reports exists",
+      "status": "PASS",
+      "detail": "12 fields"
+    },
+    {
+      "label": "hr_findings exists",
+      "status": "PASS",
+      "detail": "12 fields"
+    },
+    {
+      "label": "hr_case_attachments exists",
+      "status": "PASS",
+      "detail": "7 fields"
+    },
+    {
+      "label": "hr_rating_periods rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_rating_aspects rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_rating_assignments rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_rating_reviewers rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_rating_scores rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_rating_results rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_staff_reports rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_findings rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_case_attachments rules all null",
+      "status": "PASS",
+      "detail": "✓"
+    },
+    {
+      "label": "hr_case_attachments.file exists",
+      "status": "PASS",
+      "detail": "type=file"
+    },
+    {
+      "label": "hr_case_attachments.file type=file",
+      "status": "PASS",
+      "detail": "actual: file"
+    },
+    {
+      "label": "hr_case_attachments.file maxSize=10485760",
+      "status": "PASS",
+      "detail": "actual: 10485760"
+    },
+    {
+      "label": "hr_case_attachments.file mimeTypes includes image/jpeg",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.file mimeTypes includes image/png",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.file mimeTypes includes image/webp",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "users.mobile_session_nonce (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "users.account_type (select)",
+      "status": "PASS",
+      "detail": "type=select"
+    },
+    {
+      "label": "users.role_code (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "users.dashboard_access (bool)",
+      "status": "PASS",
+      "detail": "type=bool"
+    },
+    {
+      "label": "leave_requests.start_date (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "leave_requests.end_date (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "leave_requests.reason (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "leave_requests.division (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "leave_requests.position (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "leave_requests.booking_date (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "leave_requests.daily_compensation_rate (number)",
+      "status": "PASS",
+      "detail": "type=number"
+    },
+    {
+      "label": "leave_requests.compensation_amount (number)",
+      "status": "PASS",
+      "detail": "type=number"
+    },
+    {
+      "label": "leave_requests.rejection_reason (text)",
+      "status": "PASS",
+      "detail": "type=text"
+    },
+    {
+      "label": "users rules identical to Phase 21 snapshot",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "profiles rules identical to Phase 21 snapshot",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "leave_requests rules identical to Phase 21 snapshot",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_periods.name exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_periods.start_date exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_periods.end_date exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_periods.status exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_periods.description exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_periods.created_by exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_assignments.period exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_assignments.subject exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_assignments.reviewer_count exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_assignments.assignment_method exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_assignments.status exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_assignments.created_by exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_scores.reviewer_row exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_scores.aspect exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_scores.score exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_scores.comment exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_results.assignment exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_results.overall_score exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_results.category exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_results.respondent_count exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_results.aspect_scores_json exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_rating_results.calculated_at exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.title exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.body exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.category exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.status exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.priority exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.created_by exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.submitted_at exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_staff_reports.hr_note exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.title exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.body exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.category exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.status exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.priority exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.created_by exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.submitted_at exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_findings.hr_note exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.kind exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.parent_id exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.original_name exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.mime exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.size exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.created_by exists",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "hr_case_attachments.file exists",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "collections": {
+    "hr_rating_periods": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "start_date",
+          "type": "date"
+        },
+        {
+          "name": "end_date",
+          "type": "date"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "created_by",
+          "type": "relation"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_rating_aspects": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "code",
+          "type": "text"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "sort_order",
+          "type": "number"
+        },
+        {
+          "name": "is_active",
+          "type": "bool"
+        },
+        {
+          "name": "min_score",
+          "type": "number"
+        },
+        {
+          "name": "max_score",
+          "type": "number"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_rating_assignments": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "period",
+          "type": "relation"
+        },
+        {
+          "name": "subject",
+          "type": "relation"
+        },
+        {
+          "name": "reviewer_count",
+          "type": "number"
+        },
+        {
+          "name": "assignment_method",
+          "type": "select"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "selection_evidence_json",
+          "type": "text"
+        },
+        {
+          "name": "created_by",
+          "type": "relation"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_rating_reviewers": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "relation"
+        },
+        {
+          "name": "reviewer",
+          "type": "relation"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "relevance_tier",
+          "type": "text"
+        },
+        {
+          "name": "selection_note",
+          "type": "text"
+        },
+        {
+          "name": "submitted_at",
+          "type": "date"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_rating_scores": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "reviewer_row",
+          "type": "relation"
+        },
+        {
+          "name": "aspect",
+          "type": "relation"
+        },
+        {
+          "name": "score",
+          "type": "number"
+        },
+        {
+          "name": "comment",
+          "type": "text"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_rating_results": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "relation"
+        },
+        {
+          "name": "overall_score",
+          "type": "number"
+        },
+        {
+          "name": "category",
+          "type": "text"
+        },
+        {
+          "name": "respondent_count",
+          "type": "number"
+        },
+        {
+          "name": "aspect_scores_json",
+          "type": "text"
+        },
+        {
+          "name": "summary",
+          "type": "text"
+        },
+        {
+          "name": "strengths",
+          "type": "text"
+        },
+        {
+          "name": "improvements",
+          "type": "text"
+        },
+        {
+          "name": "suggestions",
+          "type": "text"
+        },
+        {
+          "name": "calculated_at",
+          "type": "date"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_staff_reports": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "body",
+          "type": "text"
+        },
+        {
+          "name": "category",
+          "type": "select"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "priority",
+          "type": "select"
+        },
+        {
+          "name": "location_text",
+          "type": "text"
+        },
+        {
+          "name": "created_by",
+          "type": "relation"
+        },
+        {
+          "name": "company_id",
+          "type": "text"
+        },
+        {
+          "name": "hr_note",
+          "type": "text"
+        },
+        {
+          "name": "submitted_at",
+          "type": "date"
+        },
+        {
+          "name": "closed_at",
+          "type": "date"
+        },
+        {
+          "name": "closed_by",
+          "type": "relation"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_findings": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "body",
+          "type": "text"
+        },
+        {
+          "name": "category",
+          "type": "select"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "priority",
+          "type": "select"
+        },
+        {
+          "name": "location_text",
+          "type": "text"
+        },
+        {
+          "name": "created_by",
+          "type": "relation"
+        },
+        {
+          "name": "company_id",
+          "type": "text"
+        },
+        {
+          "name": "hr_note",
+          "type": "text"
+        },
+        {
+          "name": "submitted_at",
+          "type": "date"
+        },
+        {
+          "name": "closed_at",
+          "type": "date"
+        },
+        {
+          "name": "closed_by",
+          "type": "relation"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "hr_case_attachments": {
+      "exists": true,
+      "fields": [
+        {
+          "name": "kind",
+          "type": "select"
+        },
+        {
+          "name": "parent_id",
+          "type": "text"
+        },
+        {
+          "name": "original_name",
+          "type": "text"
+        },
+        {
+          "name": "mime",
+          "type": "text"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        },
+        {
+          "name": "created_by",
+          "type": "relation"
+        },
+        {
+          "name": "file",
+          "type": "file"
+        }
+      ],
+      "rules": {
+        "listRule": null,
+        "viewRule": null,
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      }
+    },
+    "users": {
+      "rules": {
+        "listRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "updateRule": "@request.auth.id != \"\" && (\n  (\n    id = @request.auth.id\n    && (@request.data.role:isset = false || @request.data.role = role)\n    && (@request.data.status:isset = false || @request.data.status = status)\n  )\n  || @request.auth.role = \"hr\"\n  || @request.auth.role_code = \"hr\"\n  || @request.auth.role = \"owner\"\n  || @request.auth.role_code = \"owner\"\n  || @request.auth.account_type = \"owner\"\n)",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "role",
+          "type": "select"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "session_nonce",
+          "type": "text"
+        },
+        {
+          "name": "is_checked_in",
+          "type": "bool"
+        },
+        {
+          "name": "shift_active",
+          "type": "bool"
+        },
+        {
+          "name": "web_access",
+          "type": "bool"
+        },
+        {
+          "name": "last_checkin",
+          "type": "text"
+        },
+        {
+          "name": "last_checkout",
+          "type": "text"
+        },
+        {
+          "name": "inventory_role",
+          "type": "select"
+        },
+        {
+          "name": "inventory_warehouses",
+          "type": "relation"
+        },
+        {
+          "name": "default_store",
+          "type": "relation"
+        },
+        {
+          "name": "default_warehouse",
+          "type": "relation"
+        },
+        {
+          "name": "active_store",
+          "type": "relation"
+        },
+        {
+          "name": "active_warehouse",
+          "type": "relation"
+        },
+        {
+          "name": "locale",
+          "type": "select"
+        },
+        {
+          "name": "active_company",
+          "type": "relation"
+        },
+        {
+          "name": "default_company",
+          "type": "relation"
+        },
+        {
+          "name": "mobile_session_nonce",
+          "type": "text"
+        },
+        {
+          "name": "account_type",
+          "type": "select"
+        },
+        {
+          "name": "role_code",
+          "type": "text"
+        },
+        {
+          "name": "dashboard_access",
+          "type": "bool"
+        }
+      ]
+    },
+    "leave_requests": {
+      "rules": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation"
+        },
+        {
+          "name": "date",
+          "type": "date"
+        },
+        {
+          "name": "devision",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "select"
+        },
+        {
+          "name": "note",
+          "type": "text"
+        },
+        {
+          "name": "hr_action_by",
+          "type": "text"
+        },
+        {
+          "name": "hr_action_name",
+          "type": "text"
+        },
+        {
+          "name": "hr_action_at",
+          "type": "date"
+        },
+        {
+          "name": "start_date",
+          "type": "text"
+        },
+        {
+          "name": "end_date",
+          "type": "text"
+        },
+        {
+          "name": "reason",
+          "type": "text"
+        },
+        {
+          "name": "division",
+          "type": "text"
+        },
+        {
+          "name": "position",
+          "type": "text"
+        },
+        {
+          "name": "booking_date",
+          "type": "text"
+        },
+        {
+          "name": "daily_compensation_rate",
+          "type": "number"
+        },
+        {
+          "name": "compensation_amount",
+          "type": "number"
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        }
+      ]
+    }
+  },
+  "record_counts": {
+    "users": 23,
+    "leave_requests": 34,
+    "profiles": 23
+  },
+  "overall": "PASS",
+  "total_checks": 88,
+  "failed_checks": 0
+}

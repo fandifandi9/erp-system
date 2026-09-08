@@ -476,6 +476,41 @@
         "required": false,
         "maxSelect": 1
       }
+    },
+    {
+      "step": 99,
+      "action": "CREATE_COLLECTION",
+      "name": "hr_employee_options",
+      "type": "base",
+      "note": "Master daftar jabatan, departemen, dan divisi untuk formulir karyawan. Seed otomatis dari app saat pertama kali dibuka.",
+      "schema": [
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "values": ["position", "department", "division"]
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\")"
     }
   ],
   "default_data": [

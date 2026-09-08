@@ -144,14 +144,24 @@ const existingAccess = (await accessRes.json()).items ?? [];
 const existingKeys = new Set(existingAccess.map((r) => `${r.user}|${r.company}`));
 
 let created = 0;
+function isHrUser(u) {
+  const accountType = String(u.account_type || "").toLowerCase();
+  const roleCode = String(u.role_code || u.role || "").toLowerCase();
+  return accountType === "user" && roleCode === "hr";
+}
+
 for (const u of users) {
   const isOwner =
     String(u.account_type || "").toLowerCase() === "owner" ||
     String(u.role || "").toLowerCase() === "owner";
 
+  const activeCompanyIds = companyRows.filter((c) => c.is_active !== false).map((c) => c.id);
+
   const targetCompanies = isOwner
-    ? companyRows.map((c) => c.id)
-    : [u.default_company, u.active_company, defaultCid].filter(Boolean);
+    ? activeCompanyIds
+    : isHrUser(u)
+      ? activeCompanyIds
+      : [u.default_company, u.active_company, defaultCid].filter(Boolean);
 
   const unique = [...new Set(targetCompanies)];
   for (const cid of unique) {

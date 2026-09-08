@@ -234,6 +234,9 @@ export type InvWarehouse = {
   id: string;
   code: string;
   name: string;
+  company?: string;
+  store?: string;
+  warehouse_role?: string;
   is_active?: boolean;
 };
 
@@ -270,6 +273,8 @@ export type InvProduct = {
   commercial_ready_at?: string;
   commercial_ready_by?: string;
   created_by_role?: string;
+  /** Perubahan identitas/harga katalog — bukan pergerakan stok. */
+  catalog_updated_at?: string;
   /** Wajib input serial number saat picking / fulfillment. */
   requires_serial?: boolean;
   category?: string;

@@ -1,0 +1,26 @@
+{
+  "collection": "leave_requests",
+  "exported_at": "2026-08-11",
+  "environment": "production",
+  "host": "pb.serba.space",
+  "status": "SNAPSHOT_BEFORE_HARDENING",
+  "note": "Live rules verified during Leave Acceptance Gate. Write rules are NOT yet locked. Do not treat as target SoT.",
+  "previous_live": {
+    "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "createRule": "@request.auth.id != \"\" && @request.data.user = @request.auth.id",
+    "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+  },
+  "target_hardened": {
+    "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+    "createRule": null,
+    "updateRule": null,
+    "deleteRule": null,
+    "createRule_meaning": "LOCKED — superuser/admin only (null, not empty string)",
+    "updateRule_meaning": "LOCKED — superuser/admin only",
+    "deleteRule_meaning": "LOCKED — superuser/admin only"
+  },
+  "production_apply": "BLOCKED_STAGING_REQUIRED"
+}

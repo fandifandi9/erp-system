@@ -12,8 +12,12 @@
 import { ClientResponseError } from "pocketbase";
 import { pb } from "./pocketbase";
 import { getErrorMessage } from "./errors";
-import { computeLeaveCompensationAmount } from "./hr-compensation";
-import { resolveLeaveDailyRateForUser } from "./profile";
+import {
+  apiApproveLeave,
+  apiCancelLeave,
+  apiRejectLeave,
+  apiSubmitLeave,
+} from "@/lib/hr/leave-api-client";
 
 // ========================================
 // 🔐 TYPES
@@ -138,19 +142,6 @@ export const DEFAULT_LEAVE_BOOKING_REASON =
 /** Untuk PocketBase filter: escape tanda kutip dalam string */
 function pbEscape(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-/** Isi field jejak HR saat menyetujui / menolak (panggilan dari client dengan akun HR login). */
-function buildHrActionPayload(): Record<string, string> {
-  const m = pb.authStore.model as { id?: string; name?: string; email?: string } | null;
-  if (!m?.id) return {};
-  const id = String(m.id);
-  const name = String(m.name ?? m.email ?? "").trim();
-  return {
-    [HR_ACTION_BY_FIELD]: id,
-    [HR_ACTION_NAME_FIELD]: name || id,
-    [HR_ACTION_AT_FIELD]: new Date().toISOString(),
-  };
 }
 
 /** Teks singkat untuk UI: nama HR + tanggal/jam keputusan; null jika tidak ada data. */
@@ -404,6 +395,8 @@ async function checkDivisionQuota(
 
 /**
  * Kirim pengajuan cuti (status **pending**; HR menyetujui di /hr/leave).
+ * Wave 2: mutasi lewat Next.js API — user/status/hr_action_* ditetapkan server.
+ * `data.userId` diabaikan untuk otorisasi (tetap diterima untuk kompatibilitas caller).
  */
 export async function submitLeaveRequest(data: {
   userId: string;
@@ -417,149 +410,18 @@ export async function submitLeaveRequest(data: {
   data?: LeaveRequest;
 }> {
   try {
-    console.log("📝 Booking leave request:", data);
-
-    // Validation
-    if (!data.userId) {
+    if (!pb.authStore.isValid) {
       return { success: false, message: "User not logged in" };
     }
-
-    if (!data.start_date || !data.end_date) {
-      return { success: false, message: "Tanggal mulai dan selesai wajib diisi" };
-    }
-
-    const reasonText =
-      typeof data.reason === "string" && data.reason.trim().length > 0
-        ? data.reason.trim()
-        : DEFAULT_LEAVE_BOOKING_REASON;
-
-    let profile;
-    try {
-      profile = await pb.collection("profiles").getFirstListItem(
-        `user="${data.userId}"`,
-        { requestKey: null }
-      );
-    } catch {
-      return {
-        success: false,
-        message:
-          "Profil karyawan tidak ditemukan di PocketBase. Hubungi HR agar profil Anda dibuat / disinkronkan.",
-      };
-    }
-
-    const divisionKey = resolveProfileDivisionKey(
-      profile as { division?: string; department?: string }
-    );
-    const positionClean = String(profile.position ?? "").trim();
-
-    if (!divisionKey || !positionClean) {
-      return {
-        success: false,
-        message:
-          "Data profil belum lengkap: divisi atau departemen dan jabatan harus diisi di HR. Hubungi HR.",
-      };
-    }
-
-    /** Bandingkan yyyy-MM-dd sebagai string — konsisten di semua zona waktu */
-    const todayStr = todayYmdLocal();
-    if (data.start_date < todayStr) {
-      return { success: false, message: "Tanggal mulai tidak boleh di masa lalu" };
-    }
-
-    if (data.start_date > data.end_date) {
-      return { success: false, message: "Tanggal mulai tidak boleh setelah tanggal selesai" };
-    }
-
-    const rangeDays = expandInclusiveDateRange(data.start_date, data.end_date);
-    const days = rangeDays.length;
-
-    // ✅ VALIDASI 1: Satu pengajuan = maks satu hari (kalender staff)
-    if (days > MAX_DAYS_PER_BOOKING) {
-      return {
-        success: false,
-        message: `Maksimal ${MAX_DAYS_PER_BOOKING} hari per booking. Anda memilih ${days} hari.`,
-      };
-    }
-
-    // ✅ VALIDASI 2: Kuota pengajuan pending+approved per bulan kalender (per profil atau default)
-    const monthlyUsage = await getMonthlyBookingUsage(data.userId);
-
-    if (monthlyUsage.used >= monthlyUsage.max) {
-      return {
-        success: false,
-        message: `Kuota pengajuan bulan ini habis (${monthlyUsage.max}× per bulan). Batalkan pengajuan yang belum diproses / disetujui atau tunggu bulan depan.`,
-      };
-    }
-
-    // ✅ VALIDASI 3: Tidak overlap dengan cuti Anda (pending atau approved)
-    const overlapping = await checkOverlappingLeave(
-      data.userId,
-      data.start_date,
-      data.end_date
-    );
-
-    if (overlapping) {
-      return {
-        success: false,
-        message:
-          "Periode ini bertabrakan dengan pengajuan atau cuti Anda yang lain. Pilih tanggal lain.",
-      };
-    }
-
-    const noteLegacy =
-      days > 1
-        ? `${reasonText} | s.d. ${data.end_date} (${days} hari)`
-        : reasonText;
-
-    // ✅ CREATE: isi skema baru + skema lama PB (field `date` + `note` + `division`)
-    const record = await pb.collection("leave_requests").create({
-      user: data.userId,
+    const result = await apiSubmitLeave({
       start_date: data.start_date,
       end_date: data.end_date,
-      reason: reasonText,
-      status: "pending",
-      division: divisionKey,
-      /** Skema lama beberapa instance PB memakai typo `devision` — kirim dua-duanya. */
-      devision: divisionKey,
-      position: positionClean,
-      booking_date: new Date().toISOString(),
-      date: data.start_date,
-      note: noteLegacy,
+      reason: data.reason,
     });
-
-    let stored: Record<string, unknown> = record as unknown as Record<string, unknown>;
-    try {
-      stored = (await pb.collection("leave_requests").getOne(record.id, {
-        requestKey: null,
-      })) as unknown as Record<string, unknown>;
-    } catch {
-      /* pakai response create */
-    }
-
-    const savedBounds = pickLeaveDatesFromPbRecord(stored);
-    if (
-      !ymdFromUnknown(savedBounds.start_date) ||
-      !ymdFromUnknown(savedBounds.end_date)
-    ) {
-      console.error(
-        "[leave] create ok tapi tanggal tidak terbaca di server — cek field start_date/end_date & API rule Create:",
-        stored
-      );
-      return {
-        success: false,
-        message:
-          "Tanggal cuti tidak tersimpan. Di PocketBase: koleksi `leave_requests` harus punya field **`date`** (atau `start_date`/`end_date`) dan rule Create mengizinkan staff mengisinya.",
-      };
-    }
-
-    console.log("✅ Leave request submitted (pending):", record.id);
-
-    const updatedMonthly = await getMonthlyBookingUsage(data.userId);
-
     return {
-      success: true,
-      message: `Pengajuan cuti (${days} hari) terkirim & menunggu persetujuan HR. Pengajuan bulan ini: ${updatedMonthly.used}/${updatedMonthly.max}.`,
-      data: normalizeLeaveRequestsFromPb([stored])[0] ?? (record as unknown as LeaveRequest),
+      success: result.success,
+      message: result.message,
+      data: result.data as LeaveRequest | undefined,
     };
   } catch (error: unknown) {
     console.error("❌ Leave request error:", error);
@@ -603,86 +465,16 @@ async function overlapsOtherApprovedLeaves(
 }
 
 /**
- * HR/Owner menyetujui pengajuan (pending → approved); memvalidasi kuota divisi & overlap cuti approved.
+ * HR/Owner menyetujui pengajuan (pending → approved).
+ * Wave 2: server API menetapkan status + hr_action_* + kompensasi.
  */
 export async function approveLeaveRequestByHr(requestId: string): Promise<{
   success: boolean;
   message: string;
 }> {
   try {
-    const record = await pb.collection("leave_requests").getOne(requestId);
-
-    if (record.status !== "pending") {
-      return {
-        success: false,
-        message: "Hanya pengajuan berstatus Menunggu yang bisa disetujui.",
-      };
-    }
-
-    const rawRec = record as unknown as Record<string, unknown>;
-    const userId = leaveRequestUserId(record as { user?: unknown });
-    const bounds = pickLeaveDatesFromPbRecord(rawRec);
-    const divisionKey = String(rawRec.division ?? rawRec.devision ?? "").trim();
-    const start = normalizeYmd(bounds.start_date);
-    const end = normalizeYmd(bounds.end_date);
-
-    if (!(userId && divisionKey)) {
-      return { success: false, message: "Data pengajuan tidak lengkap." };
-    }
-
-    const quotaCheck = await checkDivisionQuota(
-      divisionKey,
-      start,
-      end,
-      userId
-    );
-
-    if (!quotaCheck.success) {
-      if (quotaCheck.blockedDates.length === 0) {
-        return {
-          success: false,
-          message:
-            "Gagal memeriksa kuota divisi. Periksa koneksi atau rule PocketBase, lalu coba lagi.",
-        };
-      }
-      const maxPeople = await getDivisionQuota(divisionKey);
-      const blockedDatesStr = quotaCheck.blockedDates
-        .slice(0, 5)
-        .map((d) => new Date(`${d}T12:00:00`).toLocaleDateString("id-ID"))
-        .join(", ");
-      return {
-        success: false,
-        message: `Kuota divisi penuh untuk tanggal: ${blockedDatesStr}${
-          quotaCheck.blockedDates.length > 5 ? "..." : ""
-        }. Maksimal ${maxPeople} orang per hari.`,
-      };
-    }
-
-    const overlap = await overlapsOtherApprovedLeaves(userId, start, end, requestId);
-    if (overlap) {
-      return {
-        success: false,
-        message:
-          "Karyawan sudah punya cuti disetujui lain yang bertabrakan dengan tanggal ini.",
-      };
-    }
-
-    const dailyRate = await resolveLeaveDailyRateForUser(userId);
-    const compensation_amount = computeLeaveCompensationAmount(start, end, dailyRate);
-
-    await pb.collection("leave_requests").update(requestId, {
-      status: "approved",
-      ...buildHrActionPayload(),
-      daily_compensation_rate: dailyRate,
-      compensation_amount,
-    });
-
-    const payHint =
-      dailyRate > 0
-        ? ` Kompensasi: ${compensation_amount.toLocaleString("id-ID")} (${dailyRate.toLocaleString("id-ID")}/hari).`
-        : "";
-
-    return { success: true, message: `Pengajuan disetujui.${payHint}` };
+    const result = await apiApproveLeave(requestId);
+    return { success: result.success, message: result.message };
   } catch (error: unknown) {
     return {
       success: false,
@@ -693,6 +485,7 @@ export async function approveLeaveRequestByHr(requestId: string): Promise<{
 
 /**
  * HR/Owner menolak pengajuan (pending → rejected).
+ * Wave 2: server API menetapkan status + hr_action_*.
  */
 export async function rejectLeaveRequestByHr(
   requestId: string,
@@ -710,34 +503,8 @@ export async function rejectLeaveRequestByHr(
   }
 
   try {
-    const record = await pb.collection("leave_requests").getOne(requestId);
-
-    if (record.status !== "pending") {
-      return {
-        success: false,
-        message: "Hanya pengajuan Menunggu yang bisa ditolak.",
-      };
-    }
-
-    const hrPayload = buildHrActionPayload();
-
-    try {
-      await pb.collection("leave_requests").update(requestId, {
-        status: "rejected",
-        rejection_reason: reason,
-        ...hrPayload,
-      });
-    } catch {
-      const baseNote = String((record as { note?: string }).note ?? "").trimEnd();
-      const tag = `\n\n[Penolakan HR]: ${reason}`;
-      await pb.collection("leave_requests").update(requestId, {
-        status: "rejected",
-        note: (baseNote + tag).trim(),
-        ...hrPayload,
-      });
-    }
-
-    return { success: true, message: "Pengajuan ditolak. Staff dapat membaca alasannya di riwayat cuti." };
+    const result = await apiRejectLeave(requestId, reason);
+    return { success: result.success, message: result.message };
   } catch (error: unknown) {
     return {
       success: false,
@@ -905,85 +672,17 @@ export function canStaffCancelLeaveLocally(
 
 /**
  * Batalkan pengajuan (pending) atau cuti yang disetujui sebelum tanggal mulai.
+ * Wave 2: server API — hanya milik sendiri; actor tercatat di audit event.
  */
 export async function cancelLeaveRequest(
   requestId: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const record = await pb.collection("leave_requests").getOne(requestId);
-
-    if (
-      record.status === "cancelled" ||
-      record.status === "rejected"
-    ) {
-      return {
-        success: false,
-        message: "Pengajuan ini tidak aktif lagi.",
-      };
+    if (!pb.authStore.isValid) {
+      return { success: false, message: "Login diperlukan." };
     }
-
-    if (record.status !== "pending" && record.status !== "approved") {
-      return {
-        success: false,
-        message: "Status ini tidak bisa dibatalkan dari aplikasi.",
-      };
-    }
-
-    const bounds = pickLeaveDatesFromPbRecord(
-      record as unknown as Record<string, unknown>
-    );
-    const ymd = ymdFromUnknown(bounds.start_date);
-
-    const daysAhead = calendarDaysFromTodayUntilLeaveStart(ymd);
-    if (daysAhead === null) {
-      return {
-        success: false,
-        message: "Data tanggal pengajuan tidak valid di server.",
-      };
-    }
-
-    if (record.status === "pending") {
-      if (daysAhead < 1) {
-        return {
-          success: false,
-          message:
-            daysAhead < 0
-              ? "Tidak dapat membatalkan pengajuan yang tanggal mulainya sudah lewat."
-              : "Tidak dapat membatalkan pengajuan yang mulai hari ini. Hubungi HR jika diperlukan.",
-        };
-      }
-    }
-
-    if (record.status === "approved") {
-      if (daysAhead < 1) {
-        return {
-          success: false,
-          message:
-            daysAhead < 0
-              ? "Tidak dapat membatalkan cuti yang sudah lewat atau sedang berjalan."
-              : "Tidak dapat membatalkan cuti yang mulai hari ini.",
-        };
-      }
-      if (daysAhead < 2) {
-        return {
-          success: false,
-          message:
-            "Cuti yang sudah disetujui HR tidak dapat dibatalkan mulai masuk H−1 (satu hari kalender sebelum mulai). Syarat pembatalan: paling lambat dua hari sebelum tanggal mulai cuti. Silakan hubungi HR untuk penyesuaian.",
-        };
-      }
-    }
-
-    await pb.collection("leave_requests").update(requestId, {
-      status: "cancelled",
-    });
-
-    return {
-      success: true,
-      message:
-        record.status === "pending"
-          ? "Pengajuan berhasil dibatalkan."
-          : "Cuti yang disetujui berhasil dibatalkan.",
-    };
+    const result = await apiCancelLeave(requestId);
+    return { success: result.success, message: result.message };
   } catch (error: unknown) {
     return {
       success: false,

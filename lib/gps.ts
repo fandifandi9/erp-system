@@ -74,6 +74,9 @@ function geolocationMessageId(code: number): string {
   return "Tidak bisa mendapatkan koordinat. Coba lagi dari perangkat/browser lain atau cek pengaturan lokasi sistem.";
 }
 
+/** Tolak pembacaan GPS kalau ketidakpastian lokasi lebih dari ini (meter). */
+export const DEFAULT_MAX_GPS_ACCURACY_METERS = 200;
+
 /**
  * Get user's current GPS location with debug fallback
  * @returns Promise with coordinates or error
@@ -113,7 +116,22 @@ export function getCurrentLocation(): Promise<{
           maximumAge: 0,
         });
         const out = coordsFromPosition(pHigh);
-        console.log("✅ GPS Success (high accuracy)", out);
+        // Browser often reports "success" with city-level accuracy (tens of km) on desktop.
+        if (out.accuracy > DEFAULT_MAX_GPS_ACCURACY_METERS) {
+          console.warn("⚠️ GPS returned but accuracy too coarse", out);
+          const dbg = readDebugCoordsFromStorage();
+          if (dbg && process.env.NODE_ENV !== "production") {
+            console.warn("🔧 DEBUG MODE: coarse GPS → using debug coordinates", dbg);
+            resolve(dbg);
+            return;
+          }
+        }
+        console.log(
+          out.accuracy > DEFAULT_MAX_GPS_ACCURACY_METERS
+            ? "⚠️ GPS coarse (will fail accuracy gate)"
+            : "✅ GPS Success (high accuracy)",
+          out,
+        );
         resolve(out);
         return;
       } catch (highErr: unknown) {
@@ -149,9 +167,6 @@ export function getCurrentLocation(): Promise<{
     })();
   });
 }
-
-/** Tolak pembacaan GPS kalau ketidakpastian lokasi lebih dari ini (meter). */
-export const DEFAULT_MAX_GPS_ACCURACY_METERS = 200;
 
 /**
  * Gagalkan check-in kalau GPS terlalu lebar ketidakpastiannya (sering spoof / indoor buruk).

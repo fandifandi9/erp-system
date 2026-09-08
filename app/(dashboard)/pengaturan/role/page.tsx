@@ -47,8 +47,8 @@ export default function RolePermissionPage() {
               {t("pengaturan.role.basePaths", { count: role.paths.length })}
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {role.paths.slice(0, 24).map((p) => (
-                <span key={p} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              {role.paths.slice(0, 24).map((p, idx) => (
+                <span key={`${role.code}:${p}:${idx}`} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                   {p}
                 </span>
               ))}

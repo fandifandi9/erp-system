@@ -88,7 +88,7 @@ export function ModuleHubPage({ title, subtitle, stats, links }: ModuleHubPagePr
 
           return (
             <Link
-              key={l.href}
+              key={`${l.href}::${l.label}`}
               href={l.href}
               className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-indigo-200 hover:shadow-md"
             >

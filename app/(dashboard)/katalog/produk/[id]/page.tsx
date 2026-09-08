@@ -15,11 +15,8 @@ import { WmsCard } from "@/components/wms/ui";
 import {
   fetchCatalogProduct,
 } from "@/lib/catalog/client";
-import {
-  fetchProductsLastSale,
-  isProductLowStock,
-} from "@/lib/catalog/product-last-sale";
-import { fetchProductsGlobalStock } from "@/lib/catalog/product-stock";
+import { isProductLowStock } from "@/lib/catalog/product-last-sale";
+import type { ProductStockOverview } from "@/lib/catalog/product-stock";
 import {
   canActivateCatalogProduct,
   canEditCatalogPrices,
@@ -32,11 +29,25 @@ import { fetchCategories, fetchBrands } from "@/lib/inventory/client";
 import type { InvBrand, InvCategory } from "@/lib/inventory/types";
 import { getErrorMessage } from "@/lib/errors";
 import { pb } from "@/lib/pocketbase";
+import { resolveCatalogUpdatedAt } from "@/lib/catalog/catalog-meta";
 import { formatIntegerId } from "@/lib/format-number";
 import { useLocale } from "@/components/LocaleProvider";
 
+function formatProductTimestamp(iso: string | undefined, locale: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(locale === "en" ? "en-US" : "id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function KatalogProdukDetailPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const user = pb.authStore.model;
@@ -52,7 +63,7 @@ export default function KatalogProdukDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [globalStock, setGlobalStock] = useState<number | null>(null);
-  const [lastSaleDate, setLastSaleDate] = useState<string | null>(null);
+  const [stockByStore, setStockByStore] = useState<Record<string, number>>({});
   const [editOpen, setEditOpen] = useState(false);
   const [editTab, setEditTab] = useState<"identity" | "pricing">("identity");
 
@@ -62,16 +73,25 @@ export default function KatalogProdukDetailPage() {
     setProduct(res.item);
   }, [id]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [cats, brs] = await Promise.all([fetchCategories(true), fetchBrands(true)]);
-        setCategories(cats);
-        setBrands(brs);
-      } catch {
-        /* abaikan */
-      }
-    })();
+  const ensureLookupData = useCallback(async () => {
+    if (categories.length > 0 && brands.length > 0) return;
+    try {
+      const [cats, brs] = await Promise.all([fetchCategories(true), fetchBrands(true)]);
+      setCategories(cats);
+      setBrands(brs);
+    } catch {
+      /* abaikan */
+    }
+  }, [categories.length, brands.length]);
+
+  const handleStockOverview = useCallback((overview: ProductStockOverview) => {
+    setGlobalStock(overview.totalOnHand);
+    const byStore: Record<string, number> = {};
+    for (const row of overview.rows) {
+      if (!row.storeId) continue;
+      byStore[row.storeId] = (byStore[row.storeId] ?? 0) + row.onHand;
+    }
+    setStockByStore(byStore);
   }, []);
 
   useEffect(() => {
@@ -94,27 +114,8 @@ export default function KatalogProdukDetailPage() {
   }, [id, router]);
 
   useEffect(() => {
-    if (!id || !product) return;
-    const isBundle = (product.product_type ?? "simple") === "bundle";
-    if (isBundle) {
-      setGlobalStock(null);
-      setLastSaleDate(null);
-      return;
-    }
-    void (async () => {
-      try {
-        const [stocks, lastSales] = await Promise.all([
-          fetchProductsGlobalStock([product.id]),
-          fetchProductsLastSale([product.id]),
-        ]);
-        setGlobalStock(stocks[product.id] ?? 0);
-        setLastSaleDate(lastSales[product.id]?.lastSaleDate ?? null);
-      } catch {
-        setGlobalStock(null);
-        setLastSaleDate(null);
-      }
-    })();
-  }, [id, product]);
+    if (editOpen) void ensureLookupData();
+  }, [editOpen, ensureLookupData]);
 
   if (loading) {
     return (
@@ -150,6 +151,7 @@ export default function KatalogProdukDetailPage() {
               <button
                 type="button"
                 onClick={() => {
+                  void ensureLookupData();
                   setEditTab("identity");
                   setEditOpen(true);
                 }}
@@ -214,16 +216,15 @@ export default function KatalogProdukDetailPage() {
                     value={String(product.min_stock ?? 0)}
                     warn={lowStock}
                   />
-                  {!isBundle ? (
-                    <Detail
-                      label={t("catalog.produk.lastSale")}
-                      value={
-                        lastSaleDate
-                          ? lastSaleDate
-                          : t("catalog.produk.lastSaleNever")
-                      }
-                    />
-                  ) : null}
+                  <Detail
+                    label={t("catalog.produk.createdAt")}
+                    value={formatProductTimestamp(product.created, locale)}
+                  />
+                  <Detail
+                    label={t("catalog.produk.updatedAt")}
+                    value={formatProductTimestamp(resolveCatalogUpdatedAt(product), locale)}
+                    hint={t("catalog.produk.updatedAtHint")}
+                  />
                   <Detail
                     label={t("catalog.produk.serialRequired")}
                     value={product.requires_serial ? t("catalog.common.yes") : t("catalog.common.no")}
@@ -240,7 +241,13 @@ export default function KatalogProdukDetailPage() {
           </WmsCard>
         </div>
 
-        {showStock ? <ProductStockSummary productId={product.id} isBundle={isBundle} /> : null}
+        {showStock ? (
+          <ProductStockSummary
+            productId={product.id}
+            isBundle={isBundle}
+            onOverviewLoaded={handleStockOverview}
+          />
+        ) : null}
 
         {lowStock ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
@@ -257,6 +264,8 @@ export default function KatalogProdukDetailPage() {
             product={product}
             canEditPrices={fieldVis.editPrices}
             showBuyPrice={fieldVis.showBuyPrice}
+            globalStock={globalStock ?? undefined}
+            stockByStore={stockByStore}
             onSaved={reload}
             onEditWholesale={
               canEditBundle
@@ -297,11 +306,13 @@ function Detail({
   value,
   mono,
   warn,
+  hint,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   warn?: boolean;
+  hint?: string;
 }) {
   return (
     <div
@@ -316,6 +327,7 @@ function Detail({
       >
         {value}
       </dd>
+      {hint ? <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{hint}</p> : null}
     </div>
   );
 }

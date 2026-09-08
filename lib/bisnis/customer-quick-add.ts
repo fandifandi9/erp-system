@@ -1,7 +1,7 @@
 /** Kode validasi form tambah pelanggan cepat. */
-export type QuickCustomerValidationError = "name" | "phone" | "email" | "emailFormat";
+export type QuickCustomerValidationError = "name" | "phone" | "emailFormat";
 
-/** Validasi form tambah pelanggan cepat (penjualan, dll.). */
+/** Validasi form tambah pelanggan cepat (penjualan, dll.). Nama wajib; telepon & email opsional. */
 export function validateQuickCustomerInput(input: {
   name: string;
   phone: string;
@@ -11,11 +11,10 @@ export function validateQuickCustomerInput(input: {
   if (name.length < 2) return "name";
 
   const phoneDigits = input.phone.replace(/\D/g, "");
-  if (phoneDigits.length < 8) return "phone";
+  if (phoneDigits.length > 0 && phoneDigits.length < 8) return "phone";
 
   const email = input.email.trim();
-  if (!email) return "email";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "emailFormat";
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "emailFormat";
 
   return null;
 }

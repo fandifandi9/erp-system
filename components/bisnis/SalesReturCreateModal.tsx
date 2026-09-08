@@ -1,40 +1,36 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
-import { createSalesReturFromOrderApi, fetchSalesOrderLines } from "@/lib/bisnis/client";
 import {
-  emptySettlementEstimate,
-  EXPECTED_CONDITION_LABEL,
-  isSettlementIncomingType,
-  isSettlementOutgoingType,
-  SETTLEMENT_INCOMING_LABELS,
-  SETTLEMENT_OUTGOING_LABELS,
-  type CreateSalesReturLineInput,
-  type SalesReturSettlementEstimate,
-  type SettlementIncomingType,
-  type SettlementOutgoingType,
-} from "@/lib/bisnis/sales-retur-expected";
-import { BISNIS_COLLECTIONS, type ReturLineCondition, type SalesOrder, type SalesOrderLine } from "@/lib/bisnis/types";
+  createSalesReturFromOrderApi,
+  fetchInvoiceBySalesOrder,
+  fetchSalesOrderLines,
+} from "@/lib/bisnis/client";
+import type { CreateSalesReturLineInput } from "@/lib/bisnis/sales-retur-expected";
+import { fetchCouriersCached } from "@/lib/bisnis/couriers";
+import { invoicePreviewForReturUrl } from "@/lib/bisnis/module-routes";
+import {
+  BISNIS_COLLECTIONS,
+  type Courier,
+  type Invoice,
+  type SalesOrder,
+  type SalesOrderLine,
+} from "@/lib/bisnis/types";
 import { getErrorMessage } from "@/lib/errors";
+import { parseSerialNumbersJson } from "@/lib/wms/serial-numbers";
+import { useLocale } from "@/components/LocaleProvider";
 
 type LineDraft = {
   sales_order_line: string;
   productName: string;
   sku: string;
+  serials: string[];
   maxQty: number;
   qty: number;
   included: boolean;
-  expected_condition: ReturLineCondition;
-  reason: string;
-};
-
-type SettlementDraft = {
-  key: string;
-  kind: "outgoing" | "incoming";
-  type: SettlementOutgoingType | SettlementIncomingType;
-  amount: number;
 };
 
 type Props = {
@@ -43,16 +39,6 @@ type Props = {
   onClose: () => void;
   onCreated: (returId: string) => void;
 };
-
-const fmtNum = (v: number) => new Intl.NumberFormat("id-ID").format(v);
-const OUTGOING_TYPES = Object.keys(SETTLEMENT_OUTGOING_LABELS) as SettlementOutgoingType[];
-const INCOMING_TYPES = Object.keys(SETTLEMENT_INCOMING_LABELS) as SettlementIncomingType[];
-
-let settlementKeySeq = 0;
-function nextSettlementKey() {
-  settlementKeySeq += 1;
-  return `st-${settlementKeySeq}`;
-}
 
 async function loadRemainingBySoLine(salesOrderId: string, soLines: SalesOrderLine[]) {
   const remaining: Record<string, number> = {};
@@ -73,76 +59,67 @@ async function loadRemainingBySoLine(salesOrderId: string, soLines: SalesOrderLi
   return remaining;
 }
 
-function toSettlementEstimate(drafts: SettlementDraft[]): SalesReturSettlementEstimate {
-  return {
-    items: drafts
-      .filter((d) => d.amount > 0)
-      .map((d) => ({ type: d.type, amount: d.amount })),
-  };
-}
-
 export function SalesReturCreateModal({ open, salesOrder, onClose, onCreated }: Props) {
+  const { t, locale } = useLocale();
+  const fmtNum = (v: number) =>
+    new Intl.NumberFormat(locale === "en" ? "en-US" : "id-ID").format(v);
+
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const [linkedInvoice, setLinkedInvoice] = useState<Invoice | null>(null);
   const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
-  const [settlementDrafts, setSettlementDrafts] = useState<SettlementDraft[]>([]);
+  const [notesForWms, setNotesForWms] = useState("");
+  const [platformReturNo, setPlatformReturNo] = useState("");
+  const [returnMethod, setReturnMethod] = useState<"dropoff" | "courier">("dropoff");
+  const [returnCourier, setReturnCourier] = useState("");
+  const [returnTrackingNo, setReturnTrackingNo] = useState("");
+  const [couriers, setCouriers] = useState<Courier[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const soLines = await fetchSalesOrderLines(salesOrder.id);
+      const [soLines, courierList, invoice] = await Promise.all([
+        fetchSalesOrderLines(salesOrder.id),
+        fetchCouriersCached(true).catch(() => [] as Courier[]),
+        fetchInvoiceBySalesOrder(salesOrder.id).catch(() => null),
+      ]);
+      setCouriers(courierList);
+      setLinkedInvoice(invoice && invoice.status !== "cancelled" ? invoice : null);
       const remaining = await loadRemainingBySoLine(salesOrder.id, soLines);
       setLines(
         soLines
           .filter((sol) => (remaining[sol.id] ?? 0) > 0)
           .map((sol) => ({
             sales_order_line: sol.id,
-            productName: sol.expand?.product?.name ?? sol.name_snapshot ?? "Produk",
+            productName:
+              sol.expand?.product?.name ?? sol.name_snapshot ?? t("sales.createRetur.productFallback"),
             sku: sol.expand?.product?.sku ?? sol.sku_snapshot ?? "—",
+            serials: parseSerialNumbersJson(sol.serial_numbers_json),
             maxQty: remaining[sol.id] ?? 0,
             qty: remaining[sol.id] ?? 0,
             included: true,
-            expected_condition: "good" as ReturLineCondition,
-            reason: "",
           })),
       );
     } finally {
       setLoading(false);
     }
-  }, [salesOrder]);
+  }, [salesOrder, t]);
 
   useEffect(() => {
     if (!open) return;
     setReason("");
-    setNotes("");
-    setSettlementDrafts([]);
+    setNotesForWms("");
+    setPlatformReturNo("");
+    setReturnMethod("dropoff");
+    setReturnCourier("");
+    setReturnTrackingNo("");
+    setLinkedInvoice(null);
     void load();
   }, [open, load]);
 
   const patchLine = (lineId: string, patch: Partial<LineDraft>) => {
     setLines((prev) => prev.map((l) => (l.sales_order_line === lineId ? { ...l, ...patch } : l)));
-  };
-
-  const addSettlement = (kind: SettlementDraft["kind"]) => {
-    setSettlementDrafts((prev) => [
-      ...prev,
-      {
-        key: nextSettlementKey(),
-        kind,
-        type: kind === "outgoing" ? "refund_customer" : "recovery_marketplace",
-        amount: 0,
-      },
-    ]);
-  };
-
-  const patchSettlement = (key: string, patch: Partial<SettlementDraft>) => {
-    setSettlementDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
-  };
-
-  const removeSettlement = (key: string) => {
-    setSettlementDrafts((prev) => prev.filter((d) => d.key !== key));
   };
 
   const handleSubmit = async () => {
@@ -151,29 +128,41 @@ export function SalesReturCreateModal({ open, salesOrder, onClose, onCreated }: 
       .map((l) => ({
         sales_order_line: l.sales_order_line,
         qty: l.qty,
-        expected_condition: l.expected_condition,
-        reason: l.reason.trim() || undefined,
+        // Tahap claim: kondisi belum ditentukan — default good; WMS/bisnis sesuaikan belakangan.
+        expected_condition: "good",
       }));
 
     if (!payloadLines.length) {
-      alert("Pilih minimal satu barang dengan qty retur.");
+      alert(t("sales.createRetur.errSelectLine"));
       return;
     }
 
-    const settlement = toSettlementEstimate(settlementDrafts);
+    if (returnMethod === "courier") {
+      if (!returnCourier.trim()) {
+        alert(t("sales.createRetur.errReturnCourier"));
+        return;
+      }
+      if (!returnTrackingNo.trim()) {
+        alert(t("sales.createRetur.errReturnTracking"));
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
       const { retur } = await createSalesReturFromOrderApi(salesOrder.id, {
         reason: reason.trim() || undefined,
-        notes: notes.trim() || undefined,
-        settlement_estimate: settlement.items.length > 0 ? settlement : undefined,
+        notes_for_wms: notesForWms.trim() || undefined,
+        platform_retur_no: platformReturNo.trim() || undefined,
+        return_method: returnMethod,
+        return_courier: returnMethod === "courier" ? returnCourier.trim() : undefined,
+        return_tracking_no: returnMethod === "courier" ? returnTrackingNo.trim() : undefined,
         lines: payloadLines,
       });
       onCreated(retur.id);
       onClose();
     } catch (e: unknown) {
-      alert(getErrorMessage(e, "Gagal membuat retur"));
+      alert(getErrorMessage(e, t("sales.createRetur.errCreate")));
     } finally {
       setSubmitting(false);
     }
@@ -186,9 +175,21 @@ export function SalesReturCreateModal({ open, salesOrder, onClose, onCreated }: 
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl">
         <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Buat Retur</h2>
+            <h2 className="text-lg font-bold text-slate-900">{t("sales.createRetur.title")}</h2>
             <p className="mt-0.5 text-sm text-slate-500">
-              SO {salesOrder.order_no} · Estimasi kondisi dari customer. Gudang tujuan ditentukan sistem.
+              {linkedInvoice ? (
+                <>
+                  <span>{t("sales.createRetur.refInv")} </span>
+                  <Link
+                    href={invoicePreviewForReturUrl(linkedInvoice.id)}
+                    className="font-mono font-medium text-indigo-600 hover:underline"
+                  >
+                    {linkedInvoice.invoice_no}
+                  </Link>
+                </>
+              ) : (
+                <span className="font-mono text-slate-500">{salesOrder.order_no}</span>
+              )}
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
@@ -202,188 +203,195 @@ export function SalesReturCreateModal({ open, salesOrder, onClose, onCreated }: 
               <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
             </div>
           ) : lines.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">
-              Semua barang pada penjualan ini sudah diretur.
-            </p>
+            <p className="py-8 text-center text-sm text-slate-500">{t("sales.createRetur.emptyAllReturned")}</p>
           ) : (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="font-medium text-slate-700">Alasan retur (customer)</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            <div className="space-y-5">
+              {/* Cara pengembalian */}
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {t("sales.createRetur.returnMethod")}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {t("sales.createRetur.returnMethodHint")}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:gap-6">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                    <input
+                      type="radio"
+                      name="return-method"
+                      checked={returnMethod === "dropoff"}
+                      onChange={() => setReturnMethod("dropoff")}
+                    />
+                    {t("sales.createRetur.returnDropoff")}
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                    <input
+                      type="radio"
+                      name="return-method"
+                      checked={returnMethod === "courier"}
+                      onChange={() => setReturnMethod("courier")}
+                    />
+                    {t("sales.createRetur.returnCourier")}
+                  </label>
+                </div>
+                {returnMethod === "courier" ? (
+                  <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">
+                        {t("sales.createRetur.returnCourierLabel")}
+                      </span>
+                      <select
+                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                        value={returnCourier}
+                        onChange={(e) => setReturnCourier(e.target.value)}
+                      >
+                        <option value="">{t("sales.createRetur.returnCourierPlaceholder")}</option>
+                        {couriers.map((c) => (
+                          <option key={c.id} value={c.name}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">
+                        {t("sales.createRetur.returnTracking")}
+                      </span>
+                      <input
+                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900"
+                        value={returnTrackingNo}
+                        onChange={(e) => setReturnTrackingNo(e.target.value)}
+                        placeholder={t("sales.createRetur.returnTrackingPlaceholder")}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </section>
+
+              {/* Nomor platform opsional */}
+              <section className="space-y-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {t("sales.createRetur.platformReturNo")}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {t("sales.createRetur.platformReturNoHint")}
+                  </p>
+                </div>
+                <input
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900"
+                  value={platformReturNo}
+                  onChange={(e) => setPlatformReturNo(e.target.value)}
+                  placeholder={t("sales.createRetur.platformReturNoPlaceholder")}
+                />
+              </section>
+
+              {/* Alasan + instruksi */}
+              <section className="grid gap-4 sm:grid-cols-2 sm:items-start">
+                <div className="flex flex-col gap-1.5">
+                  <h3 className="min-h-[2.25rem] text-sm font-semibold leading-snug text-slate-900">
+                    {t("sales.createRetur.reason")}
+                  </h3>
+                  <textarea
+                    rows={3}
+                    className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="Mis. tidak jadi digunakan"
+                    placeholder={t("sales.createRetur.reasonPlaceholder")}
                   />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-slate-700">Catatan internal</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Opsional"
-                  />
-                </label>
-              </div>
-
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                      <th className="px-3 py-2">✓</th>
-                      <th className="px-3 py-2">Produk</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2">Kondisi diharapkan</th>
-                      <th className="px-3 py-2">Catatan baris</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((line) => (
-                      <tr key={line.sales_order_line} className="border-b border-slate-50">
-                        <td className="px-3 py-2">
-                          <input
-                            type="checkbox"
-                            checked={line.included}
-                            onChange={(e) => patchLine(line.sales_order_line, { included: e.target.checked })}
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <p className="font-medium text-slate-800">{line.productName}</p>
-                          <p className="font-mono text-xs text-slate-500">{line.sku}</p>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <input
-                            type="number"
-                            min={1}
-                            max={line.maxQty}
-                            disabled={!line.included}
-                            value={line.qty}
-                            onChange={(e) =>
-                              patchLine(line.sales_order_line, {
-                                qty: Math.min(line.maxQty, Math.max(1, Number(e.target.value) || 0)),
-                              })
-                            }
-                            className="w-16 rounded border border-slate-200 px-2 py-1 text-right text-sm"
-                          />
-                          <span className="ml-1 text-xs text-slate-400">/ {fmtNum(line.maxQty)}</span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <select
-                            disabled={!line.included}
-                            value={line.expected_condition}
-                            onChange={(e) =>
-                              patchLine(line.sales_order_line, {
-                                expected_condition: e.target.value as ReturLineCondition,
-                              })
-                            }
-                            className="w-full min-w-[11rem] rounded border border-slate-200 px-2 py-1 text-sm"
-                          >
-                            <option value="good">{EXPECTED_CONDITION_LABEL.good}</option>
-                            <option value="damaged">{EXPECTED_CONDITION_LABEL.damaged}</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            disabled={!line.included}
-                            value={line.reason}
-                            onChange={(e) => patchLine(line.sales_order_line, { reason: e.target.value })}
-                            className="w-full min-w-[8rem] rounded border border-slate-200 px-2 py-1 text-sm"
-                            placeholder="Opsional"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-800">Estimasi settlement (opsional)</p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Default kosong. Tambah beban atau recovery hanya jika diperlukan.
-                </p>
-
-                {settlementDrafts.length > 0 ? (
-                  <ul className="mt-3 space-y-2">
-                    {settlementDrafts.map((row) => {
-                      const typeOptions =
-                        row.kind === "outgoing" ? OUTGOING_TYPES : INCOMING_TYPES;
-                      const labels =
-                        row.kind === "outgoing" ? SETTLEMENT_OUTGOING_LABELS : SETTLEMENT_INCOMING_LABELS;
-                      return (
-                        <li
-                          key={row.key}
-                          className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3"
-                        >
-                          <span className="text-xs font-semibold uppercase text-slate-500">
-                            {row.kind === "outgoing" ? "Beban" : "Recovery"}
-                          </span>
-                          <select
-                            value={row.type}
-                            onChange={(e) => {
-                              const t = e.target.value;
-                              if (row.kind === "outgoing" && isSettlementOutgoingType(t as SettlementOutgoingType)) {
-                                patchSettlement(row.key, { type: t as SettlementOutgoingType });
-                              } else if (
-                                row.kind === "incoming" &&
-                                isSettlementIncomingType(t as SettlementIncomingType)
-                              ) {
-                                patchSettlement(row.key, { type: t as SettlementIncomingType });
-                              }
-                            }}
-                            className="min-w-[10rem] flex-1 rounded border border-slate-200 px-2 py-1.5 text-sm"
-                          >
-                            {typeOptions.map((t) => (
-                              <option key={t} value={t}>
-                                {labels[t as keyof typeof labels]}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="Rp"
-                            value={row.amount || ""}
-                            onChange={(e) =>
-                              patchSettlement(row.key, { amount: Number(e.target.value) || 0 })
-                            }
-                            className="w-32 rounded border border-slate-200 px-2 py-1.5 text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeSettlement(row.key)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
-                            title="Hapus"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => addSettlement("outgoing")}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Tambah Beban
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addSettlement("incoming")}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Tambah Recovery
-                  </button>
                 </div>
-              </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="min-h-[2.25rem]">
+                    <h3 className="text-sm font-semibold leading-snug text-slate-900">
+                      {t("sales.createRetur.notesForWms")}
+                    </h3>
+                    <p className="text-[10px] leading-tight text-slate-400">
+                      {t("sales.createRetur.notesForWmsHint")}
+                    </p>
+                  </div>
+                  <textarea
+                    rows={3}
+                    className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    value={notesForWms}
+                    onChange={(e) => setNotesForWms(e.target.value)}
+                    placeholder={t("sales.createRetur.notesForWmsPlaceholder")}
+                  />
+                </div>
+              </section>
+
+              {/* Barang */}
+              <section className="space-y-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {t("sales.createRetur.colProduct")}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {locale === "en"
+                      ? "Select items and qty to claim. Condition is decided after WMS receives the goods."
+                      : "Pilih barang dan qty claim. Kondisi ditentukan setelah WMS menerima barang."}
+                  </p>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <th className="w-10 px-3 py-2.5">✓</th>
+                        <th className="px-3 py-2.5">{t("sales.createRetur.colProduct")}</th>
+                        <th className="px-3 py-2.5 text-right">{t("sales.createRetur.colQty")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line) => (
+                        <tr key={line.sales_order_line} className="border-b border-slate-50 last:border-0">
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={line.included}
+                              onChange={(e) =>
+                                patchLine(line.sales_order_line, { included: e.target.checked })
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <p className="font-medium text-slate-900">{line.productName}</p>
+                            <p className="font-mono text-xs text-slate-500">{line.sku}</p>
+                            {line.serials.length > 0 ? (
+                              <p className="mt-1 font-mono text-[11px] text-indigo-700">
+                                {t("sales.createRetur.colSerial")}: {line.serials.join(", ")}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="inline-flex w-full items-center justify-end gap-2">
+                              <input
+                                type="number"
+                                min={1}
+                                max={line.maxQty}
+                                disabled={!line.included}
+                                value={line.qty}
+                                onChange={(e) =>
+                                  patchLine(line.sales_order_line, {
+                                    qty: Math.min(
+                                      line.maxQty,
+                                      Math.max(1, Number(e.target.value) || 0),
+                                    ),
+                                  })
+                                }
+                                className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-right text-sm tabular-nums text-slate-900 disabled:bg-slate-50"
+                              />
+                              <span className="whitespace-nowrap text-xs text-slate-500 tabular-nums">
+                                {t("sales.createRetur.colQtyMax", { max: fmtNum(line.maxQty) })}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           )}
         </div>
@@ -394,7 +402,7 @@ export function SalesReturCreateModal({ open, salesOrder, onClose, onCreated }: 
             onClick={onClose}
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
-            Batal
+            {t("sales.createRetur.cancel")}
           </button>
           <button
             type="button"
@@ -402,8 +410,8 @@ export function SalesReturCreateModal({ open, salesOrder, onClose, onCreated }: 
             onClick={() => void handleSubmit()}
             className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-            Buat retur & kirim ke WMS
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {t("sales.createRetur.submit")}
           </button>
         </div>
       </div>

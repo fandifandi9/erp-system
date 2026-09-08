@@ -34,3 +34,17 @@ export function hasUnboxingMedia(raw?: string | null): boolean {
   const m = parseUnboxingMedia(raw);
   return Boolean(m.video || (m.photos?.length ?? 0) > 0);
 }
+
+/** URL API untuk menampilkan bukti unboxing retur. */
+export function unboxingMediaApiUrl(
+  returId: string,
+  kind: "video" | "photo",
+  index = 0,
+): string {
+  const q = new URLSearchParams({
+    retur_id: returId,
+    kind,
+  });
+  if (kind === "photo") q.set("index", String(index));
+  return `/api/wms/unboxing-video?${q.toString()}`;
+}

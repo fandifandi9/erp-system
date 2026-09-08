@@ -55,7 +55,53 @@ export async function completePurchaseRetur(
   if (!lines.length) throw new Error("Tambahkan barang retur.");
 
   const poId = retur.purchase_order || retur.reference_id;
-  if (!poId) throw new Error("Retur harus terhubung ke purchase order.");
+
+  // Retur mandiri (tanpa PO)
+  if (!poId) {
+    const warehouse = retur.warehouse;
+    if (!warehouse) throw new Error("Gudang utama tidak ditemukan.");
+    const stockMap = await fetchWarehouseStockMap(warehouse);
+    const stockLines: { product: string; qty: number }[] = [];
+    let refundTotal = 0;
+    for (const line of lines) {
+      const qty = Number(line.qty) || 0;
+      if (qty <= 0) continue;
+      const available = getWarehouseStockQty(stockMap, line.product);
+      if (available < qty) {
+        const name = line.expand?.product?.name ?? line.product;
+        throw new Error(
+          `Stok di gudang tidak cukup untuk "${name}" (tersedia ${available}, butuh ${qty}).`,
+        );
+      }
+      const unitPrice = Number(line.unit_price) || 0;
+      refundTotal += Number(line.line_total) || roundMoney(unitPrice * qty);
+      const existing = stockLines.find((b) => b.product === line.product);
+      if (existing) existing.qty += qty;
+      else stockLines.push({ product: line.product, qty });
+    }
+    if (!stockLines.length) throw new Error("Tidak ada qty retur valid.");
+
+    await postPurchaseReturnStockOutServer({
+      pb,
+      from_warehouse: warehouse,
+      to_warehouse: warehouse,
+      reference_type: "PURCHASE_RETURN",
+      reference_id: returId,
+      reference_no: retur.retur_no,
+      lines: stockLines,
+      userId,
+    });
+
+    const updated = await pb.collection(BISNIS_COLLECTIONS.returs).update<Retur>(returId, {
+      status: "completed",
+      workflow_phase: "completed",
+      completed_at: new Date().toISOString(),
+      stock_posted_at: new Date().toISOString(),
+      total: refundTotal,
+      warehouse,
+    });
+    return { retur: updated, refund_total: refundTotal };
+  }
 
   const po = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getOne<PurchaseOrder>(poId);
   const warehouse = po.warehouse || retur.warehouse;

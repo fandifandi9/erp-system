@@ -127,6 +127,9 @@ export function ShippingInfoSection({
             serviceName={shipping.shipping_service}
             onCourierChange={(name) => set({ courier: name })}
             onServiceChange={(name) => set({ shipping_service: name })}
+            onCourierServiceChange={(courier, service) =>
+              set({ courier, shipping_service: service })
+            }
             courierLabel={t("sales.shipping.courier")}
             serviceLabel={t("sales.shipping.service")}
             inputClassName={inputCls}

@@ -2,7 +2,7 @@ import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS, type SalesOrder } from "./types";
 import { parseNotesWithShipping } from "./shipping-notes";
 
-export type AwbSource = "manual" | "excel" | "zip_import" | "wms_pickup";
+export type AwbSource = "manual" | "excel" | "zip_import" | "wms_pickup" | "system";
 
 export const AWB_LABEL_MIME = [
   "application/pdf",
@@ -62,6 +62,8 @@ export function awbSourceLabel(source?: AwbSource | string | null): string {
       return "ZIP batch import";
     case "wms_pickup":
       return "Gudang (Ready Pickup)";
+    case "system":
+      return "Dibuat sistem";
     default:
       return "—";
   }

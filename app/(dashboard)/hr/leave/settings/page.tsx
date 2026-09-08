@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { pb } from "@/lib/pocketbase";
-import { DIVISION_OPTIONS } from "@/lib/hr-employee-options";
+import { fetchHrEmployeeOptions } from "@/lib/hr-employee-options";
 import { Building2, Loader2, Plus, Trash2, AlertCircle, CheckCircle, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/LocaleProvider";
+import { canAccessHrWebSurface } from "@/lib/access/hr-web-access";
 
 interface DivisionQuota {
   id: string;
@@ -27,8 +28,13 @@ export default function DivisionQuotaSettingsPage() {
     max_people_per_day: 2,
   });
 
+  const [divisionOptions, setDivisionOptions] = useState<{ value: string; label: string }[]>([]);
+
   const currentUser = pb.authStore.model;
-  const hasAccess = !!currentUser && (currentUser.role === "hr" || currentUser.role === "owner");
+  const hasAccess = canAccessHrWebSurface(
+    currentUser as Record<string, unknown> | null,
+    "/hr/leave/settings",
+  );
 
   const fetchQuotas = async () => {
     setLoading(true);
@@ -52,6 +58,7 @@ export default function DivisionQuotaSettingsPage() {
       return;
     }
     void fetchQuotas();
+    void fetchHrEmployeeOptions("division").then(setDivisionOptions);
   }, [hasAccess]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -214,7 +221,7 @@ export default function DivisionQuotaSettingsPage() {
             <option value="" disabled>
               {t("hr.leave.quotaSettings.selectDivision")}
             </option>
-            {DIVISION_OPTIONS.map((opt) => (
+            {divisionOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

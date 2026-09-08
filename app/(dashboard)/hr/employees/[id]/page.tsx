@@ -1,11 +1,17 @@
 "use client";
 
 import { pb } from "@/lib/pocketbase";
-import { DIVISION_OPTIONS } from "@/lib/hr-employee-options";
+import {
+  fetchAllHrEmployeeOptions,
+  type EmployeeSelectOption,
+  type HrOptionCategory,
+} from "@/lib/hr-employee-options";
+import { HrManageableSelectField } from "@/components/hr/HrManageableSelectField";
+import { HrManagerPickerField } from "@/components/hr/HrManagerPickerField";
+import { HrEntitySelectField } from "@/components/hr/HrEntitySelectField";
 import {
   getMaxBookingsPerMonth,
   PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD,
-  parseLeaveBookingsQuotaFromProfile,
   leaveBookingsQuotaFromProfileRecord,
 } from "@/lib/leave";
 import { formatIntegerId, parseIntegerInput } from "@/lib/format-number";
@@ -21,6 +27,9 @@ import { useEffect, useState, useCallback, useMemo, type ReactNode } from "react
 import { useParams, useRouter } from "next/navigation";
 import { coerceBrowserTimeToHm, formalizeTimeHmInput } from "@/lib/time-hm-input";
 import { useLocale } from "@/components/LocaleProvider";
+import { canAccessEmployeeManagement } from "@/lib/capabilities/web-access";
+import { hrApiGetEmployee, hrApiPatchEmployee } from "@/lib/hr/hr-api-client";
+import { isDashboardAccessEnabled } from "@/lib/hr/employee-role-presets";
 import {
   HR_DEPARTMENT_LABELS_EN,
   HR_DIVISION_LABELS_EN,
@@ -33,12 +42,17 @@ type EmployeeUser = {
   name?: string;
   email?: string;
   role?: string;
+  role_code?: string;
+  inventory_role?: string;
+  hr_role_preset?: string;
+  dashboard_access?: boolean;
   status?: string;
 };
 
 type EmployeeProfile = {
   id: string;
   name?: string;
+  email?: string;
   position?: string;
   department?: string;
   /** Kuota pengajuan cuti (pending + disetujui) per bulan kalender — opsional di PocketBase */
@@ -69,6 +83,7 @@ type EmployeeProfile = {
   shift_end_weekend?: string;
   join_date?: string;
   require_checkin_selfie?: boolean;
+  manager?: string;
   expand?: {
     user?: EmployeeUser;
   };
@@ -79,62 +94,31 @@ type OfficeItem = {
   name?: string;
 };
 
-type SelectOption = { value: string; label: string };
+type OrgPositionOption = {
+  id: string;
+  name: string;
+  filled: boolean;
+  parentPositionId: string | null;
+  holderName: string | null;
+};
 
-/** Pilihan umum perusahaan di Indonesia — nilai disimpan sebagai teks di profile */
-const POSITION_OPTIONS: SelectOption[] = [
-  { value: "Direktur Utama", label: "Direktur Utama" },
-  { value: "Wakil Direktur", label: "Wakil Direktur" },
-  { value: "Direktur", label: "Direktur" },
-  { value: "General Manager (GM)", label: "General Manager (GM)" },
-  { value: "Manajer", label: "Manajer" },
-  { value: "Asisten Manajer", label: "Asisten Manajer" },
-  { value: "Supervisor", label: "Supervisor" },
-  { value: "Koordinator", label: "Koordinator" },
-  { value: "Team Leader", label: "Team Leader" },
-  { value: "Staff Ahli / Senior", label: "Staff Ahli / Senior" },
-  { value: "Staff", label: "Staff" },
-  { value: "Officer", label: "Officer" },
-  { value: "Administrasi", label: "Administrasi" },
-  { value: "Akuntan", label: "Akuntan" },
-  { value: "HR / Personalia", label: "HR / Personalia" },
-  { value: "Marketing & Branding", label: "Marketing & Branding" },
-  { value: "Sales / Penjualan", label: "Sales / Penjualan" },
-  { value: "Customer Service", label: "Customer Service" },
-  { value: "Operator Produksi", label: "Operator Produksi" },
-  { value: "Teknisi", label: "Teknisi" },
-  { value: "QC / QA", label: "QC / QA" },
-  { value: "Gudang", label: "Gudang" },
-  { value: "Kurir / Driver", label: "Kurir / Driver" },
-  { value: "Satpam / Security", label: "Satpam / Security" },
-  { value: "Office Boy / OB", label: "Office Boy / OB" },
-  { value: "Resepsionis", label: "Resepsionis" },
-  { value: "Magang / Intern", label: "Magang / Intern" },
-];
-
-const DEPARTMENT_OPTIONS: SelectOption[] = [
-  { value: "Direksi", label: "Direksi" },
-  { value: "Sekretariat Perusahaan", label: "Sekretariat Perusahaan" },
-  { value: "Keuangan & Akuntansi", label: "Keuangan & Akuntansi" },
-  { value: "SDM / HR", label: "SDM / HR" },
-  { value: "Pemasaran & Penjualan", label: "Pemasaran & Penjualan" },
-  { value: "Operasional", label: "Operasional" },
-  { value: "Produksi", label: "Produksi" },
-  { value: "Gudang & Logistik", label: "Gudang & Logistik" },
-  { value: "Pengadaan / Procurement", label: "Pengadaan / Procurement" },
-  { value: "IT / Teknologi Informasi", label: "IT / Teknologi Informasi" },
-  { value: "Hukum & Kepatuhan", label: "Hukum & Kepatuhan" },
-  { value: "Riset & Pengembangan (R&D)", label: "Riset & Pengembangan (R&D)" },
-  { value: "Layanan Pelanggan", label: "Layanan Pelanggan" },
-  { value: "Teknik & Pemeliharaan", label: "Teknik & Pemeliharaan" },
-  { value: "Administrasi Umum", label: "Administrasi Umum" },
-  { value: "Internal Audit", label: "Internal Audit" },
-  { value: "PPIC / Perencanaan Produksi", label: "PPIC / Perencanaan Produksi" },
-];
-
-function optionValuesSet(options: SelectOption[]): Set<string> {
-  return new Set(options.map((o) => o.value));
+/** Atasan langsung dari pohon jabatan (parent position + holder). */
+function superiorLabelFromOrgStructure(
+  positionId: string,
+  positions: OrgPositionOption[],
+): string {
+  const pid = positionId.trim();
+  if (!pid) return "—";
+  const pos = positions.find((p) => p.id === pid);
+  if (!pos) return "—";
+  if (!pos.parentPositionId) return "Jabatan akar / tanpa induk";
+  const parent = positions.find((p) => p.id === pos.parentPositionId);
+  if (!parent) return "—";
+  if (parent.holderName) return `${parent.holderName} · ${parent.name}`;
+  if (!parent.filled) return `${parent.name} (jabatan induk vacant)`;
+  return parent.name;
 }
+
 
 /** Nilai PB bisa datetime lengkap — <input type="date"> butuh yyyy-MM-dd saja */
 function joinDateFromPocketBase(raw: string | undefined): string {
@@ -155,6 +139,22 @@ function joinDateToPocketBase(raw: string): string | null {
     return `${d}T12:00:00.000Z`;
   }
   return d;
+}
+
+/** Angka > 0 untuk tampilan form; 0/null/kosong → field kosong. */
+function positiveIntStringOrEmpty(v: unknown): string {
+  if (v == null || v === "") return "";
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(Math.floor(n));
+}
+
+/** Kosong di form → null di PocketBase (bukan 0 atau default). */
+function optionalStoredInt(raw: string): number | null {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  const n = parseInt(digits, 10);
+  return Number.isNaN(n) ? null : n;
 }
 
 /** Normalisasi nilai jam dari record PocketBase untuk dibandingkan dengan state form. */
@@ -228,35 +228,80 @@ export default function EmployeeDetailPage() {
   const router = useRouter();
   const id = params?.id as string;
 
-  const positionOptions = useMemo(
-    () =>
-      POSITION_OPTIONS.map((o) => ({
+  const authUser = pb.authStore.model as Record<string, unknown> | null;
+  const hasPageAccess = canAccessEmployeeManagement(authUser);
+
+  useEffect(() => {
+    if (!hasPageAccess) {
+      router.replace("/hr/employees");
+    }
+  }, [hasPageAccess, router]);
+
+  const [hrOptions, setHrOptions] = useState<Record<HrOptionCategory, EmployeeSelectOption[]>>({
+    position: [],
+    department: [],
+    division: [],
+  });
+
+  const [canManageHrOptions, setCanManageHrOptions] = useState(false);
+  const [canViewSensitive, setCanViewSensitive] = useState(false);
+  const [canUpdateEmployee, setCanUpdateEmployee] = useState(false);
+  const [canAssignManager, setCanAssignManager] = useState(false);
+  const [canViewEntities, setCanViewEntities] = useState(false);
+  const [canAssignMembership, setCanAssignMembership] = useState(false);
+  const [canViewEmployee, setCanViewEmployee] = useState(false);
+
+  const reloadHrOptions = useCallback(async () => {
+    setHrOptions(await fetchAllHrEmployeeOptions());
+  }, []);
+
+  const localizeOptions = useCallback(
+    (items: EmployeeSelectOption[], labelsEn: Record<string, string>) =>
+      items.map((o) => ({
         ...o,
-        label: localizeHrOptionLabel(o.value, locale, HR_POSITION_LABELS_EN),
+        label: localizeHrOptionLabel(o.value, locale, labelsEn),
       })),
-    [locale]
+    [locale],
+  );
+
+  const positionOptions = useMemo(
+    () => localizeOptions(hrOptions.position, HR_POSITION_LABELS_EN),
+    [hrOptions.position, localizeOptions],
   );
 
   const departmentOptions = useMemo(
-    () =>
-      DEPARTMENT_OPTIONS.map((o) => ({
-        ...o,
-        label: localizeHrOptionLabel(o.value, locale, HR_DEPARTMENT_LABELS_EN),
-      })),
-    [locale]
+    () => localizeOptions(hrOptions.department, HR_DEPARTMENT_LABELS_EN),
+    [hrOptions.department, localizeOptions],
   );
 
   const divisionOptions = useMemo(
-    () =>
-      DIVISION_OPTIONS.map((o) => ({
-        ...o,
-        label: localizeHrOptionLabel(o.value, locale, HR_DIVISION_LABELS_EN),
-      })),
-    [locale]
+    () => localizeOptions(hrOptions.division, HR_DIVISION_LABELS_EN),
+    [hrOptions.division, localizeOptions],
+  );
+
+  const hrManageLabels = useMemo(
+    () => ({
+      add: t("hr.employees.detail.addOption"),
+      remove: t("hr.employees.detail.removeOption"),
+      newPlaceholder: t("hr.employees.detail.newOptionPlaceholder"),
+      optionExists: t("hr.employees.detail.optionExists"),
+      addFailed: t("hr.employees.detail.optionAddFailed"),
+      removeFailed: t("hr.employees.detail.optionRemoveFailed"),
+      removeConfirm: t("hr.employees.detail.removeOptionConfirm"),
+      legacySuffix: t("hr.employees.detail.legacyData"),
+      emptyOptional: t("hr.employees.detail.selectEmpty"),
+      emptyRequired: t("hr.employees.detail.selectChoose"),
+      search: t("hr.employees.detail.searchOption"),
+      noResults: t("hr.employees.detail.noOptionResults"),
+      cancel: t("hr.employees.detail.cancelAdd"),
+      addNew: "",
+    }),
+    [t],
   );
 
   const [user, setUser] = useState<EmployeeUser | null>(null);
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
+  const [accountEmail, setAccountEmail] = useState("");
   const [offices, setOffices] = useState<OfficeItem[]>([]);
 
   // FORM STATE
@@ -273,11 +318,9 @@ export default function EmployeeDetailPage() {
   const [npwp, setNpwp] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
   const [profileStatus, setProfileStatus] = useState("");
-  const [lateToleranceInput, setLateToleranceInput] = useState("10");
+  const [lateToleranceInput, setLateToleranceInput] = useState("");
   const [joinDate, setJoinDate] = useState("");
-  const [leaveBookingsQuota, setLeaveBookingsQuota] = useState(
-    () => String(getMaxBookingsPerMonth())
-  );
+  const [leaveBookingsQuota, setLeaveBookingsQuota] = useState("");
   const [leaveDailyRate, setLeaveDailyRate] = useState("");
   const [extraBonusAmount, setExtraBonusAmount] = useState("");
   const [extraBonusEnabled, setExtraBonusEnabled] = useState(false);
@@ -286,82 +329,119 @@ export default function EmployeeDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [shiftStart, setShiftStart] = useState("08:00");
-  const [shiftEnd, setShiftEnd] = useState("17:00");
+  const [shiftStart, setShiftStart] = useState("");
+  const [shiftEnd, setShiftEnd] = useState("");
   const [shiftStartSaturday, setShiftStartSaturday] = useState("");
   const [shiftEndSaturday, setShiftEndSaturday] = useState("");
   const [shiftStartSunday, setShiftStartSunday] = useState("");
   const [shiftEndSunday, setShiftEndSunday] = useState("");
   const [requireCheckinSelfie, setRequireCheckinSelfie] = useState(false);
+  const [managerUserId, setManagerUserId] = useState("");
+  const [orgPositionId, setOrgPositionId] = useState("");
+  const [orgPositions, setOrgPositions] = useState<OrgPositionOption[]>([]);
+  const [derivedSuperiorLabel, setDerivedSuperiorLabel] = useState("—");
+  const [orgContextCompanyId, setOrgContextCompanyId] = useState<string | null>(null);
+  const [otherOrgAssignments, setOtherOrgAssignments] = useState<
+    Array<{ companyId: string; orgPositionId: string }>
+  >([]);
+  const [managerIsDerived, setManagerIsDerived] = useState(false);
+  const [isSelfProfile, setIsSelfProfile] = useState(false);
+  const [primaryEntityId, setPrimaryEntityId] = useState("");
 
   // =========================
   // FETCH DATA
   // =========================
-  const fetchOffices = useCallback(async () => {
-    try {
-      const res = await pb.collection("offices").getFullList({
-        filter: 'is_active=true',
-        sort: 'name',
-        requestKey: null,
-      });
+  const applyDetailPayload = useCallback(
+    (data: Awaited<ReturnType<typeof hrApiGetEmployee>>) => {
+      const userData = data.user as EmployeeUser;
+      const profileData = data.profile as EmployeeProfile | null;
 
-      setOffices(res as unknown as OfficeItem[]);
-    } catch (err) {
-      console.error("Gagal ambil offices:", err);
-    }
-  }, []);
+      setCanUpdateEmployee(Boolean(data.actor.canUpdate));
+      setCanViewSensitive(Boolean(data.actor.canViewSensitive));
+      setCanManageHrOptions(Boolean(data.actor.canUpdate));
+      setCanAssignManager(Boolean(data.actor.canAssignManager));
+      setCanViewEntities(Boolean(data.actor.canViewEntities));
+      setCanAssignMembership(Boolean(data.actor.canAssignMembership));
+      setCanViewEmployee(Boolean(data.actor.canView));
+      setOffices(data.offices || []);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
+      setUser(userData);
+      setProfile(profileData);
+      setAccountEmail(
+        String(profileData?.email || "").trim() || String(userData.email || "").trim(),
+      );
+      setPrimaryEntityId(data.primaryEntityId || "");
 
-      // Fetch profile with user data
-      const list = await pb.collection("profiles").getFullList({
-        filter: `user="${id}"`,
-        sort: "-updated",
-        expand: "user,office_id",
-        requestKey: null,
-      });
+      setName(profileData?.name || userData.name || "");
+      setPosition(profileData?.position || "");
+      setDepartment(profileData?.department || "");
+      setSalaryDigits(positiveIntStringOrEmpty(profileData?.salary));
+      setOfficeId(profileData?.office_id || "");
+      setPhone(profileData?.phone || "");
+      setAddress(profileData?.address || "");
+      setDivision(profileData?.division || "");
 
-      if (list.length > 1) {
-        console.warn(
-          `[hr/employees/${id}] Ada ${list.length} profil untuk user yang sama — memakai yang terbaru di-update.`
+      const org = data.organization;
+      setOrgPositionId(org?.orgPositionId || "");
+      setOrgPositions(
+        (org?.positions || []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          filled: Boolean(p.filled),
+          parentPositionId: p.parentPositionId ?? null,
+          holderName:
+            String(p.holderName ?? "").trim() ||
+            (Array.isArray(p.holderNames) && p.holderNames[0]
+              ? String(p.holderNames[0]).trim()
+              : "") ||
+            null,
+        })),
+      );
+      setManagerIsDerived(Boolean(org?.managerIsDerived));
+      setIsSelfProfile(Boolean(org?.isSelf));
+      setOrgContextCompanyId(org?.contextCompanyId ?? null);
+      setOtherOrgAssignments(
+        (org?.otherAssignments || []).map((a) => ({
+          companyId: a.companyId,
+          orgPositionId: a.orgPositionId,
+        })),
+      );
+      const ds = org?.derivedSuperior;
+      if (ds?.parentPositionName) {
+        setDerivedSuperiorLabel(
+          ds.vacant
+            ? `${ds.parentPositionName} (jabatan induk vacant)`
+            : ds.superiorName
+              ? `${ds.superiorName} · ${ds.parentPositionName}`
+              : ds.parentPositionName,
         );
+      } else {
+        setDerivedSuperiorLabel(org?.orgPositionId ? "Jabatan akar / tanpa induk" : "—");
       }
 
-      if (list.length > 0) {
-        const profileData = list[0] as unknown as EmployeeProfile;
-  const userData = profileData.expand?.user;
+      const rawMgr = profileData?.manager as unknown;
+      if (typeof rawMgr === "string") setManagerUserId(rawMgr);
+      else if (rawMgr && typeof rawMgr === "object" && "id" in rawMgr) {
+        setManagerUserId(String((rawMgr as { id: string }).id));
+      } else setManagerUserId("");
 
-  setUser(userData ?? null);
-  setProfile(profileData);
-
-  setName(profileData.name || userData?.name || "");
-  setPosition(profileData.position || "");
-  setDepartment(profileData.department || "");
-  const rawSalary = profileData.salary;
-  setSalaryDigits(
-    rawSalary != null && !Number.isNaN(Number(rawSalary))
-      ? String(Math.max(0, Math.floor(Number(rawSalary))))
-      : ""
-  );
-  setOfficeId(profileData.office_id || "");
-  setPhone(profileData.phone || "");
-  setAddress(profileData.address || "");
-  setDivision(profileData.division || "");
-  setNik(profileData.nik || "");
-  setNpwp(profileData.npwp || "");
-  setEmployeeCode(profileData.employee_code || "");
-  setProfileStatus(profileData.profile_status || "draft");
-  setLateToleranceInput(String(Math.max(0, Math.floor(Number(profileData.late_tolerance ?? 10)))));
-      setShiftStart(formalizeTimeHmInput(profileData.shift_start || "08:00") || "08:00");
-      setShiftEnd(formalizeTimeHmInput(profileData.shift_end || "17:00") || "17:00");
-      const legWkStart = formalizeTimeHmInput(profileData.shift_start_weekend ?? "") || "";
-      const legWkEnd = formalizeTimeHmInput(profileData.shift_end_weekend ?? "") || "";
-      let satS = formalizeTimeHmInput(profileData.shift_start_saturday ?? "") || "";
-      let satE = formalizeTimeHmInput(profileData.shift_end_saturday ?? "") || "";
-      let sunS = formalizeTimeHmInput(profileData.shift_start_sunday ?? "") || "";
-      let sunE = formalizeTimeHmInput(profileData.shift_end_sunday ?? "") || "";
+      setNik(profileData?.nik || "");
+      setNpwp(profileData?.npwp || "");
+      setEmployeeCode(profileData?.employee_code || "");
+      setProfileStatus(profileData?.profile_status || "");
+      setLateToleranceInput(
+        profileData?.late_tolerance != null && !Number.isNaN(Number(profileData.late_tolerance))
+          ? String(Math.max(0, Math.floor(Number(profileData.late_tolerance))))
+          : "",
+      );
+      setShiftStart(formalizeTimeHmInput(profileData?.shift_start || "") || "");
+      setShiftEnd(formalizeTimeHmInput(profileData?.shift_end || "") || "");
+      const legWkStart = formalizeTimeHmInput(profileData?.shift_start_weekend ?? "") || "";
+      const legWkEnd = formalizeTimeHmInput(profileData?.shift_end_weekend ?? "") || "";
+      let satS = formalizeTimeHmInput(profileData?.shift_start_saturday ?? "") || "";
+      let satE = formalizeTimeHmInput(profileData?.shift_end_saturday ?? "") || "";
+      let sunS = formalizeTimeHmInput(profileData?.shift_start_sunday ?? "") || "";
+      let sunE = formalizeTimeHmInput(profileData?.shift_end_sunday ?? "") || "";
       if (!satS && !satE && legWkStart && legWkEnd) {
         satS = legWkStart;
         satE = legWkEnd;
@@ -374,108 +454,68 @@ export default function EmployeeDetailPage() {
       setShiftEndSaturday(satE);
       setShiftStartSunday(sunS);
       setShiftEndSunday(sunE);
-  setRequireCheckinSelfie(
-    profileData.require_checkin_selfie === true ||
-      String(profileData.require_checkin_selfie).toLowerCase() === "true" ||
-      Number(profileData.require_checkin_selfie) === 1
-  );
-  setJoinDate(joinDateFromPocketBase(profileData.join_date));
+      setRequireCheckinSelfie(
+        profileData?.require_checkin_selfie === true ||
+          String(profileData?.require_checkin_selfie).toLowerCase() === "true" ||
+          Number(profileData?.require_checkin_selfie) === 1,
+      );
+      setJoinDate(joinDateFromPocketBase(profileData?.join_date));
 
-  const parsedQ = leaveBookingsQuotaFromProfileRecord(
-    profileData as unknown as Record<string, unknown>
-  );
-  setLeaveBookingsQuota(
-    parsedQ != null ? String(parsedQ) : String(getMaxBookingsPerMonth())
-  );
-  const ldr = profileData.leave_daily_rate;
-  setLeaveDailyRate(
-    ldr != null && !Number.isNaN(Number(ldr)) ? String(Math.max(0, Math.floor(Number(ldr)))) : ""
-  );
-  const eba = profileData.extra_bonus_amount;
-  setExtraBonusAmount(
-    eba != null && !Number.isNaN(Number(eba)) ? String(Math.max(0, Math.floor(Number(eba)))) : ""
-  );
-  setExtraBonusEnabled(
-    profileData.extra_bonus_enabled === true ||
-      String(profileData.extra_bonus_enabled).toLowerCase() === "true" ||
-      Number(profileData.extra_bonus_enabled) === 1
-  );
-  const ldm = profileData.late_deduction_rupiah_per_minute;
-  setLateDeductionPerMinute(
-    ldm != null && !Number.isNaN(Number(ldm)) ? String(Math.max(0, Math.floor(Number(ldm)))) : ""
-  );
-  const adm = profileData.absence_deduction_rupiah_per_day;
-  setAbsenceDeductionPerDay(
-    adm != null && !Number.isNaN(Number(adm)) ? String(Math.max(0, Math.floor(Number(adm)))) : ""
+      const defaultQuota = data.defaults?.leaveBookingsQuota ?? getMaxBookingsPerMonth();
+      const parsedQ = profileData
+        ? leaveBookingsQuotaFromProfileRecord(profileData as unknown as Record<string, unknown>)
+        : null;
+      setLeaveBookingsQuota(parsedQ != null && parsedQ > 0 ? String(parsedQ) : "");
+      setLeaveDailyRate(positiveIntStringOrEmpty(profileData?.leave_daily_rate));
+      setExtraBonusAmount(positiveIntStringOrEmpty(profileData?.extra_bonus_amount));
+      setExtraBonusEnabled(
+        profileData?.extra_bonus_enabled === true ||
+          String(profileData?.extra_bonus_enabled).toLowerCase() === "true" ||
+          Number(profileData?.extra_bonus_enabled) === 1,
+      );
+      setLateDeductionPerMinute(
+        positiveIntStringOrEmpty(profileData?.late_deduction_rupiah_per_minute),
+      );
+      setAbsenceDeductionPerDay(
+        positiveIntStringOrEmpty(profileData?.absence_deduction_rupiah_per_day),
+      );
+      void defaultQuota;
+    },
+    [],
   );
 
-} else {
-  const userData = await pb.collection("users").getOne(id, {
-    requestKey: null,
-  });
-
-  setUser(userData as unknown as EmployeeUser);
-  setProfile(null);
-
-  setName(userData.name || "");
-  setPosition("");
-  setDepartment("");
-  setSalaryDigits("");
-  setOfficeId("");
-  setLeaveBookingsQuota(String(getMaxBookingsPerMonth()));
-  setRequireCheckinSelfie(false);
-}
-
-    } catch {
-      // Fallback if profile doesn't exist
-      try {
-        const userData = await pb.collection("users").getOne(id, {
-          requestKey: null,
-        });
-
-        setUser(userData as unknown as EmployeeUser);
-        setProfile(null);
-
-        setName(userData.name || "");
-        setPosition("");
-        setDepartment("");
-        setSalaryDigits("");
-        setOfficeId("");
-        setLeaveBookingsQuota(String(getMaxBookingsPerMonth()));
-        setRequireCheckinSelfie(false);
-
-      } catch (e) {
-        console.error("USER ERROR:", e);
-        alert(t("hr.employees.detail.userNotFound"));
-        router.push("/hr/employees");
-        return;
-      }
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await hrApiGetEmployee(id);
+      applyDetailPayload(data);
+    } catch (err) {
+      console.error("USER ERROR:", err);
+      alert(t("hr.employees.detail.userNotFound"));
+      router.push("/hr/employees");
     } finally {
       setLoading(false);
     }
-  }, [id, router, t]);
+  }, [id, router, t, applyDetailPayload]);
 
   useEffect(() => {
     if (!id) return;
     fetchData();
-    fetchOffices();
-  }, [id, fetchData, fetchOffices]);
+    void reloadHrOptions();
+  }, [id, fetchData, reloadHrOptions]);
 
   // =========================
   // SAVE DATA
   // =========================
   const handleSave = async () => {
-    if (!user) return;
-
-    // Validation
-    if (!officeId) {
-      alert(t("hr.employees.detail.errOfficeRequired"));
+    if (!user || !canUpdateEmployee) {
+      alert(t("hr.common.noAccess"));
       return;
     }
 
-    const salaryNum = salaryDigits ? Number(salaryDigits) : 0;
-    if (!position || !department || !salaryDigits || salaryNum <= 0) {
-      alert(t("hr.employees.detail.errRequiredFields"));
+    // Validation — hanya kantor wajib; kolom lain boleh kosong
+    if (!officeId) {
+      alert(t("hr.employees.detail.errOfficeRequired"));
       return;
     }
 
@@ -485,9 +525,6 @@ export default function EmployeeDetailPage() {
     let shouldNavigateToList = false;
 
     try {
-      const shiftStartNorm = formalizeTimeHmInput(shiftStart) || shiftStart;
-      const shiftEndNorm = formalizeTimeHmInput(shiftEnd) || shiftEnd;
-
       const satStart = formalizeTimeHmInput(shiftStartSaturday) || "";
       const satEnd = formalizeTimeHmInput(shiftEndSaturday) || "";
       const sunStart = formalizeTimeHmInput(shiftStartSunday) || "";
@@ -504,104 +541,52 @@ export default function EmployeeDetailPage() {
         return;
       }
 
-      const shiftSatSunPayload = {
-        [PROFILE_SHIFT_START_SATURDAY_FIELD]: satStart && satEnd ? satStart : "",
-        [PROFILE_SHIFT_END_SATURDAY_FIELD]: satStart && satEnd ? satEnd : "",
-        [PROFILE_SHIFT_START_SUNDAY_FIELD]: sunStart && sunEnd ? sunStart : "",
-        [PROFILE_SHIFT_END_SUNDAY_FIELD]: sunStart && sunEnd ? sunEnd : "",
-      };
+      await hrApiPatchEmployee(user.id, {
+        name,
+        email: accountEmail || user.email || "",
+        office_id: officeId,
+        position: position || "",
+        department: department || "",
+        division: division || "",
+        phone: phone || "",
+        address: address || "",
+        employee_code: employeeCode || "",
+        join_date: joinDate || "",
+        late_tolerance: lateToleranceInput || "",
+        shift_start: shiftStart || "",
+        shift_end: shiftEnd || "",
+        shift_start_saturday: shiftStartSaturday || "",
+        shift_end_saturday: shiftEndSaturday || "",
+        shift_start_sunday: shiftStartSunday || "",
+        shift_end_sunday: shiftEndSunday || "",
+        require_checkin_selfie: requireCheckinSelfie,
+        leave_bookings_quota: leaveBookingsQuota || "",
+        ...(!isSelfProfile && !managerIsDerived
+          ? { org_position_id: orgPositionId || null }
+          : {}),
+        ...(!managerIsDerived && !orgPositionId && canAssignManager && !isSelfProfile
+          ? { manager_user_id: managerUserId || null }
+          : {}),
+        ...(canAssignMembership && primaryEntityId
+          ? { primary_entity_id: primaryEntityId }
+          : {}),
+        ...(canViewSensitive
+          ? {
+              salary_digits: salaryDigits || "",
+              nik: nik || "",
+              npwp: npwp || "",
+              leave_daily_rate: leaveDailyRate || "",
+              extra_bonus_amount: extraBonusAmount || "",
+              extra_bonus_enabled: extraBonusEnabled,
+              late_deduction_per_minute: lateDeductionPerMinute || "",
+              absence_deduction_per_day: absenceDeductionPerDay || "",
+            }
+          : {}),
+      });
 
-      const quotaNum =
-        parseLeaveBookingsQuotaFromProfile(leaveBookingsQuota) ?? getMaxBookingsPerMonth();
-
-      const lateTol = Math.min(
-        999,
-        Math.max(0, parseInt(lateToleranceInput.replace(/\D/g, "") || "0", 10) || 0)
-      );
-
-      // Keep users.name aligned with HR profile name.
-      await pb.collection("users").update(user.id, { name });
-
-      let savedRecord: Record<string, unknown>;
-
-      if (!profile) {
-        savedRecord = (await pb.collection("profiles").create({
-          user: user.id,
-          name,
-          position,
-          department,
-          salary: salaryNum,
-          office_id: officeId,
-          phone,
-          address,
-          division,
-          nik,
-          npwp,
-          employee_code: employeeCode,
-          profile_status: profileStatus,
-          shift_start: shiftStartNorm,
-          shift_end: shiftEndNorm,
-          late_tolerance: lateTol,
-          join_date: joinDateToPocketBase(joinDate),
-          require_checkin_selfie: requireCheckinSelfie,
-          [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: quotaNum,
-          leave_daily_rate: parseIntegerInput(leaveDailyRate),
-          extra_bonus_amount: parseIntegerInput(extraBonusAmount),
-          extra_bonus_enabled: extraBonusEnabled,
-          [PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD]: parseIntegerInput(lateDeductionPerMinute),
-          [PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD]: parseIntegerInput(absenceDeductionPerDay),
-          ...shiftSatSunPayload,
-        })) as unknown as Record<string, unknown>;
-
-        successMessage = t("hr.employees.detail.profileCreated");
-      } else {
-        savedRecord = (await pb.collection("profiles").update(profile.id, {
-          name,
-          position,
-          department,
-          salary: salaryNum,
-          office_id: officeId,
-          phone,
-          address,
-          division,
-          nik,
-          npwp,
-          employee_code: employeeCode,
-          profile_status: profileStatus,
-          shift_start: shiftStartNorm,
-          shift_end: shiftEndNorm,
-          late_tolerance: lateTol,
-          join_date: joinDateToPocketBase(joinDate),
-          require_checkin_selfie: requireCheckinSelfie,
-          [PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD]: quotaNum,
-          leave_daily_rate: parseIntegerInput(leaveDailyRate),
-          extra_bonus_amount: parseIntegerInput(extraBonusAmount),
-          extra_bonus_enabled: extraBonusEnabled,
-          [PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD]: parseIntegerInput(lateDeductionPerMinute),
-          [PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD]: parseIntegerInput(absenceDeductionPerDay),
-          ...shiftSatSunPayload,
-        })) as unknown as Record<string, unknown>;
-
-        successMessage = t("hr.employees.detail.saved");
-      }
-
-      const weekendErr = weekendShiftRoundTripError(
-        savedRecord,
-        satStart,
-        satEnd,
-        sunStart,
-        sunEnd
-      );
-      if (weekendErr) {
-        successMessage = null;
-        alert(
-          t("hr.employees.detail.weekendNotSaved", {
-            day: t(`hr.employees.detail.${weekendErr}`),
-          })
-        );
-        return;
-      }
-
+      successMessage = profile
+        ? t("hr.employees.detail.saved")
+        : t("hr.employees.detail.profileCreated");
       shouldNavigateToList = true;
     } catch (err: unknown) {
       const maybeAbort = typeof err === "object" && err !== null && "isAbort" in err && Boolean((err as { isAbort?: unknown }).isAbort);
@@ -638,6 +623,8 @@ export default function EmployeeDetailPage() {
 
   if (!user) return null;
 
+  const dashboardAccess = isDashboardAccessEnabled(user);
+
   // =========================
   // UI
   // =========================
@@ -655,12 +642,23 @@ export default function EmployeeDetailPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => router.back()}
-          className="shrink-0 self-start text-sm text-slate-500 transition hover:text-slate-800"
-        >
-          {t("hr.employees.detail.back")}
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2 self-start">
+          {canViewEmployee && (
+            <button
+              type="button"
+              onClick={() => router.push(`/hr/employees/${id}/access-preview`)}
+              className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100"
+            >
+              Access Preview
+            </button>
+          )}
+          <button
+            onClick={() => router.back()}
+            className="text-sm text-slate-500 transition hover:text-slate-800"
+          >
+            {t("hr.employees.detail.back")}
+          </button>
+        </div>
       </div>
 
       {/* WARNING IF PROFILE DOESN'T EXIST */}
@@ -680,8 +678,12 @@ export default function EmployeeDetailPage() {
         <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
 
           <Input label={t("hr.employees.detail.name")} value={name} onChange={setName} />
-          <Input label={t("hr.employees.detail.email")} value={user.email || ""} disabled />
-          <Input label={t("hr.employees.detail.role")} value={user.role || ""} disabled />
+          <Input label={t("hr.employees.detail.email")} value={accountEmail} disabled />
+          <Input
+            label={t("hr.employees.detail.dashboardAccess")}
+            value={dashboardAccess ? t("hr.common.yes") : t("hr.common.no")}
+            disabled
+          />
           <Input
             label={t("hr.employees.detail.status")}
             value={user.status || "active"}
@@ -699,51 +701,174 @@ export default function EmployeeDetailPage() {
 
         <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
 
-          <SelectField
-            label={t("hr.employees.detail.position")}
-            hint={t("hr.employees.detail.positionHint")}
-            value={position}
-            onChange={setPosition}
-            options={positionOptions}
-            placeholder={t("hr.employees.detail.positionPlaceholder")}
-            legacySuffix={t("hr.employees.detail.legacyData")}
-            emptyOptional={t("hr.employees.detail.selectEmpty")}
-            emptyRequired={t("hr.employees.detail.selectChoose")}
+          <HrEntitySelectField
+            value={primaryEntityId}
+            onChange={setPrimaryEntityId}
+            allowView={canViewEntities}
+            allowAssign={canAssignMembership}
+            disabled={!canUpdateEmployee || !canAssignMembership}
           />
 
-          <SelectField
+          <div className="min-w-0">
+            <label className="text-sm text-slate-500 block mb-1">
+              {t("hr.employees.detail.office")}{" "}
+              {!officeId && <span className="text-red-500">{t("hr.employees.detail.officeRequired")}</span>}
+            </label>
+            <p className="mb-1 text-xs text-slate-500">
+              Lokasi kantor untuk validasi GPS saat absensi. Atur di menu HR → Kantor jika belum ada.
+            </p>
+            <StyledSelect value={officeId} onChange={setOfficeId} placeholderTone>
+              <option value="">{t("hr.employees.detail.officePlaceholder")}</option>
+              {offices.map((office) => (
+                <option key={office.id} value={office.id}>
+                  {office.name}
+                </option>
+              ))}
+            </StyledSelect>
+            {offices.length === 0 && (
+              <p className="text-xs text-red-500 mt-1">
+                {t("hr.employees.detail.noActiveOffice")}
+              </p>
+            )}
+          </div>
+
+          {orgPositionId ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Jabatan</label>
+              <input
+                readOnly
+                value={
+                  orgPositions.find((p) => p.id === orgPositionId)?.name ||
+                  position ||
+                  ""
+                }
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                SSOT dari Struktur Organisasi / assignment (konteks working entity
+                {orgContextCompanyId ? ` · ${orgContextCompanyId}` : ""}).
+                {isSelfProfile ? " Tidak dapat diubah sendiri." : " Ubah via Pengaturan → Struktur Organisasi."}
+              </p>
+              {otherOrgAssignments.length > 0 ? (
+                <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <p className="font-medium text-slate-700">Assignment lain</p>
+                  <ul className="mt-1 list-disc pl-4">
+                    {otherOrgAssignments.map((a) => (
+                      <li key={`${a.companyId}-${a.orgPositionId}`}>
+                        {a.companyId} → {a.orgPositionId}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Jabatan organisasi
+                </label>
+                <StyledSelect
+                  value={orgPositionId}
+                  onChange={(nextId) => {
+                    setOrgPositionId(nextId);
+                    setManagerIsDerived(Boolean(nextId));
+                    setDerivedSuperiorLabel(
+                      superiorLabelFromOrgStructure(nextId, orgPositions),
+                    );
+                    const selected = orgPositions.find((p) => p.id === nextId);
+                    if (selected?.name) setPosition(selected.name);
+                  }}
+                  disabled={!canUpdateEmployee || isSelfProfile}
+                >
+                  <option value="">— Belum di-link ke struktur —</option>
+                  {orgPositions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.filled ? "" : " (vacant slot OK)"}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <p className="mt-1 text-xs text-slate-500">
+                  Hierarki Parent→Child di Struktur Organisasi.{" "}
+                  {isSelfProfile ? "Tidak dapat mengubah jabatan sendiri." : null}
+                </p>
+              </div>
+
+              <HrManageableSelectField
+                category="position"
+                label={t("hr.employees.detail.position")}
+                hint="Label legacy (diselaraskan otomatis saat jabatan organisasi dipilih)."
+                value={position}
+                onChange={setPosition}
+                options={positionOptions}
+                onOptionsChange={reloadHrOptions}
+                canManage={canManageHrOptions && !isSelfProfile}
+                placeholder={t("hr.employees.detail.positionPlaceholder")}
+                labels={{ ...hrManageLabels, addNew: t("hr.employees.detail.addNewPosition") }}
+              />
+            </>
+          )}
+
+          <HrManageableSelectField
+            category="department"
             label={t("hr.employees.detail.department")}
             hint={t("hr.employees.detail.departmentHint")}
             value={department}
             onChange={setDepartment}
             options={departmentOptions}
+            onOptionsChange={reloadHrOptions}
+            canManage={canManageHrOptions && !isSelfProfile}
             placeholder={t("hr.employees.detail.departmentPlaceholder")}
-            legacySuffix={t("hr.employees.detail.legacyData")}
-            emptyOptional={t("hr.employees.detail.selectEmpty")}
-            emptyRequired={t("hr.employees.detail.selectChoose")}
+            labels={{ ...hrManageLabels, addNew: t("hr.employees.detail.addNewDepartment") }}
           />
 
-          <SalaryInput
-            label={t("hr.employees.detail.salary")}
-            digits={salaryDigits}
-            onDigitsChange={setSalaryDigits}
-            placeholder={t("hr.employees.detail.salaryPlaceholder")}
-            formatHint={t("hr.employees.detail.salaryFormatHint")}
-          />
+          {managerIsDerived || orgPositionId ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Atasan langsung</label>
+              <input
+                readOnly
+                value={derivedSuperiorLabel}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Diturunkan dari jabatan induk (bukan pilihan manual HR). Kelola di Pengaturan → Struktur Organisasi.
+              </p>
+            </div>
+          ) : (
+            <HrManagerPickerField
+              label="Atasan langsung (legacy)"
+              hint="Hanya jika belum di-link ke jabatan organisasi. Prefer Pengaturan → Struktur Organisasi."
+              value={managerUserId}
+              onChange={setManagerUserId}
+              excludeUserId={user?.id}
+              allowAssign={canAssignManager && !isSelfProfile}
+              disabled={!canUpdateEmployee || isSelfProfile}
+            />
+          )}
 
           <Input label={t("hr.employees.detail.phone")} value={phone} onChange={setPhone} />
           <Input label={t("hr.employees.detail.address")} value={address} onChange={setAddress} />
-          <SelectField
+          <HrManageableSelectField
+            category="division"
             label={t("hr.employees.detail.division")}
             hint={t("hr.employees.detail.divisionHint")}
             value={division}
             onChange={setDivision}
             options={divisionOptions}
+            onOptionsChange={reloadHrOptions}
+            canManage={canManageHrOptions}
             placeholder={t("hr.employees.detail.divisionPlaceholder")}
             optional
-            legacySuffix={t("hr.employees.detail.legacyData")}
-            emptyOptional={t("hr.employees.detail.selectEmpty")}
-            emptyRequired={t("hr.employees.detail.selectChoose")}
+            labels={{ ...hrManageLabels, addNew: t("hr.employees.detail.addNewDivision") }}
+          />
+
+          {canViewSensitive ? (
+            <>
+          <SalaryInput
+            label={t("hr.employees.detail.salary")}
+            digits={salaryDigits}
+            onDigitsChange={setSalaryDigits}
           />
           <Input
             label={t("hr.employees.detail.leaveQuota")}
@@ -751,21 +876,19 @@ export default function EmployeeDetailPage() {
             type="number"
             value={leaveBookingsQuota}
             onChange={setLeaveBookingsQuota}
-            placeholder={`${getMaxBookingsPerMonth()}`}
+            placeholder=""
           />
           <IntegerDigitsInput
             label={t("hr.employees.detail.leaveDailyRate")}
             hint={t("hr.employees.detail.leaveDailyRateHint")}
             digits={leaveDailyRate}
             onDigitsChange={setLeaveDailyRate}
-            placeholder={t("hr.employees.detail.leaveDailyRatePlaceholder")}
           />
           <IntegerDigitsInput
             label={t("hr.employees.detail.extraBonus")}
             hint={t("hr.employees.detail.extraBonusHint")}
             digits={extraBonusAmount}
             onDigitsChange={setExtraBonusAmount}
-            placeholder={t("hr.employees.detail.extraBonusPlaceholder")}
           />
           <label className="col-span-2 flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
             <input
@@ -781,17 +904,27 @@ export default function EmployeeDetailPage() {
             hint={t("hr.employees.detail.lateDeductionHint")}
             digits={lateDeductionPerMinute}
             onDigitsChange={setLateDeductionPerMinute}
-            placeholder="0"
           />
           <IntegerDigitsInput
             label={t("hr.employees.detail.absenceDeduction")}
             hint={t("hr.employees.detail.absenceDeductionHint")}
             digits={absenceDeductionPerDay}
             onDigitsChange={setAbsenceDeductionPerDay}
-            placeholder="0"
           />
           <Input label={t("hr.employees.detail.nik")} value={nik} onChange={setNik} />
           <Input label={t("hr.employees.detail.npwp")} value={npwp} onChange={setNpwp} />
+            </>
+          ) : (
+            <Input
+              label={t("hr.employees.detail.leaveQuota")}
+              hint={t("hr.employees.detail.leaveQuotaHint", { default: String(getMaxBookingsPerMonth()) })}
+              type="number"
+              value={leaveBookingsQuota}
+              onChange={setLeaveBookingsQuota}
+              placeholder=""
+            />
+          )}
+
           <Input label={t("hr.employees.detail.employeeCode")} value={employeeCode} onChange={setEmployeeCode} />
           
           {/* TANGGAL BERGABUNG */}
@@ -925,9 +1058,13 @@ export default function EmployeeDetailPage() {
                         setLateToleranceInput(digits);
                       }}
                       onBlur={() => {
-                        const n = parseInt(lateToleranceInput || "0", 10);
+                        if (!lateToleranceInput.trim()) {
+                          setLateToleranceInput("");
+                          return;
+                        }
+                        const n = parseInt(lateToleranceInput, 10);
                         const c = Number.isNaN(n) ? 0 : Math.min(999, Math.max(0, n));
-                        setLateToleranceInput(String(c));
+                        setLateToleranceInput(c > 0 ? String(c) : "");
                       }}
                       placeholder={t("hr.employees.detail.lateTolerancePlaceholder")}
                     />
@@ -949,25 +1086,7 @@ export default function EmployeeDetailPage() {
             </span>
           </label>
 
-          {/* OFFICE DROPDOWN */}
-          <div className="min-w-0 md:col-span-2">
-            <label className="text-sm text-slate-500 block mb-1">
-              {t("hr.employees.detail.office")} {!officeId && <span className="text-red-500">{t("hr.employees.detail.officeRequired")}</span>}
-            </label>
-            <StyledSelect value={officeId} onChange={setOfficeId} placeholderTone>
-              <option value="">{t("hr.employees.detail.officePlaceholder")}</option>
-              {offices.map((office) => (
-                <option key={office.id} value={office.id}>
-                  {office.name}
-                </option>
-              ))}
-            </StyledSelect>
-            {offices.length === 0 && (
-              <p className="text-xs text-red-500 mt-1">
-                {t("hr.employees.detail.noActiveOffice")}
-              </p>
-            )}
-          </div>
+          {/* office moved to top of HR section */}
 
         </div>
 
@@ -981,7 +1100,7 @@ export default function EmployeeDetailPage() {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !officeId}
+            disabled={saving || !officeId || !canUpdateEmployee}
             className="bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? t("hr.common.saving") : t("hr.employees.detail.saveChanges")}
@@ -1019,20 +1138,25 @@ function StyledSelect({
   onChange,
   children,
   placeholderTone,
+  disabled = false,
 }: {
   value: string;
   onChange: (next: string) => void;
   children: ReactNode;
   /** true = teks placeholder abu saat belum ada pilihan */
   placeholderTone?: boolean;
+  disabled?: boolean;
 }) {
   const empty = placeholderTone !== false && value === "";
   return (
     <div className="relative mt-1 min-w-0">
       <select
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className={`${FORM_CONTROL} appearance-none overflow-x-auto text-left pr-10 ${empty ? "text-slate-400" : "text-slate-800"}`}
+        className={`${FORM_CONTROL} appearance-none overflow-x-auto text-left pr-10 ${empty ? "text-slate-400" : "text-slate-800"} ${
+          disabled ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
+        }`}
       >
         {children}
       </select>
@@ -1044,73 +1168,6 @@ function StyledSelect({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </span>
-    </div>
-  );
-}
-
-// =========================
-// SELECT FIELD (Bahasa Indonesia + opsi tetap)
-// =========================
-function SelectField({
-  label,
-  hint,
-  value,
-  onChange,
-  options,
-  placeholder,
-  optional = false,
-  legacySuffix = "(data tersimpan)",
-  emptyOptional = "— Kosongkan jika tidak dipakai —",
-  emptyRequired = "— Pilih —",
-}: {
-  label: string;
-  hint?: string;
-  value: string;
-  onChange: (next: string) => void;
-  options: SelectOption[];
-  placeholder?: string;
-  optional?: boolean;
-  legacySuffix?: string;
-  emptyOptional?: string;
-  emptyRequired?: string;
-}) {
-  const known = optionValuesSet(options);
-  const isLegacy = Boolean(value && !known.has(value));
-
-  return (
-    <div className="min-w-0">
-      <label className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium text-slate-700 sm:font-normal sm:text-slate-500">
-        <span className="min-w-0 break-words">{label}</span>
-        {hint ? (
-          <span
-            className="inline-flex h-5 w-5 shrink-0 cursor-help items-center justify-center rounded-full border border-slate-400 text-[11px] font-semibold leading-none text-slate-500"
-            title={hint}
-            aria-label={hint}
-            role="img"
-          >
-            ?
-          </span>
-        ) : null}
-      </label>
-      <StyledSelect
-        value={value}
-        onChange={onChange}
-        placeholderTone
-      >
-        <option value="">
-          {placeholder || (optional ? emptyOptional : emptyRequired)}
-        </option>
-        {isLegacy && (
-          <option value={value}>
-            {value} {legacySuffix}
-          </option>
-        )}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </StyledSelect>
     </div>
   );
 }

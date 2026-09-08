@@ -1,552 +1,529 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pb } from "@/lib/pocketbase";
-import Image from "next/image";
+import { Camera, KeyRound, Save } from "lucide-react";
 import {
-  User,
-  Phone,
-  MapPin,
-  Building2,
-  Calendar,
-  Camera,
-  Save,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  Briefcase,
-  Wallet,
-  Shield,
-  Layers,
-  KeyRound,
-} from "lucide-react";
-import { ensureAndSyncProfile, syncUserDataToProfile } from "@/lib/profile";
-import { normalizeAuthModel } from "@/lib/rbac";
-import { getErrorMessage } from "@/lib/errors";
+  fetchSelfProfileApi,
+  patchSelfProfileApi,
+  resolveSelfAvatarPreviewUrl,
+  uploadSelfAvatarApi,
+  type SelfProfileData,
+} from "@/lib/profile-self-api";
+import { getErrorMessage, isPocketBaseAuthError } from "@/lib/errors";
 import { blurActiveElement } from "@/lib/blur-active-input";
+import { useLocale } from "@/components/LocaleProvider";
+import { AccountPreferencesPanel } from "@/components/profile/AccountPreferencesPanel";
+import { EmployeePrivateDocumentsPanel } from "@/components/profile/EmployeePrivateDocumentsSection";
+import { PayrollBankAccountSection } from "@/components/profile/PayrollBankAccountSection";
+import { UserAvatar } from "@/components/UserAvatar";
+import { PageShell } from "@/components/layout/page-shell";
+import {
+  ActionBar,
+  Button,
+  Card,
+  CardHeader,
+  ErrorState,
+  FormField,
+  FormSection,
+  FormSectionFullWidth,
+  Input,
+  LoadingState,
+  SectionHeader,
+  TabPanel,
+  Tabs,
+  Textarea,
+  useToast,
+  type TabItem,
+} from "@/components/ui";
 
-function roleLabelStaff(user: Record<string, unknown> | null | undefined): string {
-  if (!user) return "-";
-  const auth = normalizeAuthModel(user);
-  if (auth.accountType === "owner") return "Owner";
+type ProfileTab = "ringkasan" | "pribadi" | "dokumen" | "keamanan";
+
+const TAB_DEFS: { id: ProfileTab; legacyHashes: string[] }[] = [
+  { id: "ringkasan", legacyHashes: [] },
+  { id: "pribadi", legacyHashes: [] },
+  { id: "dokumen", legacyHashes: ["dokumen-pribadi"] },
+  { id: "keamanan", legacyHashes: ["keamanan-slip-gaji"] },
+];
+
+function roleLabelFromEmployment(
+  employment: SelfProfileData["employment"],
+  t: ReturnType<typeof import("@/lib/i18n").createTranslator>,
+): string {
+  if (employment.account_type === "owner") return t("hr.profile.self.roles.owner");
   const map: Record<string, string> = {
-    hr: "SDM / HR",
-    manager: "Manajer",
-    staff: "Staff",
-    "staff-basic": "Staff",
-    security: "Satpam",
-    ob: "OB / Kebersihan",
+    hr: t("hr.profile.self.roles.hr"),
+    manager: t("hr.profile.self.roles.manager"),
+    staff: t("hr.profile.self.roles.staff"),
+    "staff-basic": t("hr.profile.self.roles.staff"),
+    security: t("hr.profile.self.roles.security"),
+    ob: t("hr.profile.self.roles.ob"),
   };
-  const code = auth.roleCode;
-  if (code && map[code]) return map[code];
-  const raw = ((user.role_code as string) || (user.role as string) || "").toString().toLowerCase();
-  return map[raw] || (user.role_code as string) || (user.role as string) || "-";
+  return map[employment.role_code ?? ""] || employment.role_code || "—";
 }
 
-type StaffProfile = {
-  id: string;
-  avatar?: string;
-  phone?: string;
-  address?: string;
-  date_of_birth?: string;
-  bio?: string;
-  division?: string;
-  department?: string;
-  position?: string;
-  salary?: number;
-  join_date?: string;
-};
-
-function formatJoinDateId(raw: string | undefined): string {
-  if (!raw) return "—";
+function formatJoinDate(raw: string | undefined, locale: "id" | "en"): string {
+  if (!raw?.trim()) return "—";
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  return d.toLocaleDateString(locale === "en" ? "en-US" : "id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
-/** Profil diri sendiri — dipakai di `/profile` (luar dashboard) dan bisa direuse. */
-export function EmployeeSelfProfile() {
-  const currentUser = pb.authStore.model;
-  const currentUserId = currentUser?.id;
+function displayOrDash(value: string | undefined | null): string {
+  return value?.trim() ? value.trim() : "—";
+}
 
-  const [profile, setProfile] = useState<StaffProfile | null>(null);
+function resolveTabFromHash(): ProfileTab {
+  if (typeof window === "undefined") return "ringkasan";
+  const h = window.location.hash.replace("#", "").trim();
+  if (!h) return "ringkasan";
+  for (const tab of TAB_DEFS) {
+    if (tab.id === h || tab.legacyHashes.includes(h)) return tab.id;
+  }
+  return "ringkasan";
+}
+
+function SummaryField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-erp-border bg-erp-surface-muted/60 px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-erp-text-muted">{label}</p>
+      <p className="mt-0.5 text-sm font-medium text-erp-text">{value}</p>
+    </div>
+  );
+}
+
+export function EmployeeSelfProfile() {
+  const { t, locale } = useLocale();
+  const { toast } = useToast();
+  const currentUser = pb.authStore.model;
+
+  const [profile, setProfile] = useState<SelfProfileData | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState("");
+  const [tab, setTab] = useState<ProfileTab>("ringkasan");
+
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [success, setSuccess] = useState("");
-  const [error, setError] = useState("");
-
-  const [formData, setFormData] = useState({
-    phone: "",
-    address: "",
-    date_of_birth: "",
-    bio: "",
-  });
+  const [formData, setFormData] = useState({ phone: "", address: "", date_of_birth: "", bio: "" });
 
   const [passwordOld, setPasswordOld] = useState("");
   const [passwordNew, setPasswordNew] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
-  const [passwordSuccess, setPasswordSuccess] = useState("");
-  const [passwordError, setPasswordError] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const tabItems: TabItem[] = useMemo(
+    () => [
+      { id: "ringkasan", label: t("profile.tabs.ringkasan") },
+      { id: "pribadi", label: t("profile.tabs.pribadi") },
+      { id: "dokumen", label: t("profile.tabs.dokumen") },
+      { id: "keamanan", label: t("profile.tabs.keamanan") },
+    ],
+    [t],
+  );
+
+  const showToast = useCallback(
+    (kind: "success" | "error", title: string, detail?: string) => {
+      toast({ tone: kind === "success" ? "success" : "error", title, detail });
+    },
+    [toast],
+  );
+
+  const applyProfile = useCallback((data: SelfProfileData) => {
+    setProfile(data);
+    setAvatarPreview(resolveSelfAvatarPreviewUrl(data));
+    setFormData({
+      phone: data.phone || "",
+      address: data.address || "",
+      date_of_birth: data.date_of_birth || "",
+      bio: data.bio || "",
+    });
+  }, []);
 
   const loadProfile = useCallback(async () => {
-    if (!currentUserId) return;
-
+    if (!pb.authStore.isValid) return;
     setLoading(true);
+    setProfileLoadError("");
     try {
-      const synced = await ensureAndSyncProfile(currentUserId);
-      const profileData = synced.profile;
-      if (!profileData) {
-        setProfile(null);
-        return;
-      }
-
-      setProfile(profileData as unknown as StaffProfile);
-      setFormData({
-        phone: profileData.phone || "",
-        address: profileData.address || "",
-        date_of_birth: profileData.date_of_birth || "",
-        bio: profileData.bio || "",
-      });
+      applyProfile(await fetchSelfProfileApi());
     } catch (err) {
-      console.error("Failed to load profile:", err);
+      setProfile(null);
+      setProfileLoadError(
+        isPocketBaseAuthError(err)
+          ? t("hr.profile.self.loginAgain")
+          : getErrorMessage(err, "Gagal memuat profil."),
+      );
     } finally {
       setLoading(false);
     }
-  }, [currentUserId]);
+  }, [applyProfile, t]);
 
   useEffect(() => {
-    loadProfile();
+    void loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    const syncTab = () => setTab(resolveTabFromHash());
+    syncTab();
+    window.addEventListener("hashchange", syncTab);
+    return () => window.removeEventListener("hashchange", syncTab);
+  }, []);
+
+  const navigateTab = (next: string) => {
+    const tabId = next as ProfileTab;
+    setTab(tabId);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `#${tabId}`);
+    }
+  };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !profile) return;
-
     if (!file.type.startsWith("image/")) {
-      setError("File harus berupa gambar");
+      showToast("error", t("hr.profile.self.avatarInvalid"));
       return;
     }
-
     if (file.size > 5 * 1024 * 1024) {
-      setError("Ukuran file maksimal 5MB");
+      showToast("error", t("hr.profile.self.avatarTooLarge"));
       return;
     }
-
     setUploadingAvatar(true);
-    setError("");
-
     try {
-      const fd = new FormData();
-      fd.append("avatar", file);
+      applyProfile(await uploadSelfAvatarApi(file));
+      showToast("success", t("hr.profile.self.avatarUpdated"));
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Gagal upload avatar");
+    } finally {
+      setUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
 
-      const updated = await pb.collection("profiles").update(profile.id, fd);
-      setProfile(updated as unknown as StaffProfile);
-      setSuccess("Avatar berhasil diupdate!");
-
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Gagal upload avatar");
+  const handleAvatarDelete = async () => {
+    if (!profile?.avatar || !window.confirm("Hapus foto profil?")) return;
+    setUploadingAvatar(true);
+    try {
+      applyProfile(await uploadSelfAvatarApi(null));
+      showToast("success", "Foto profil dihapus");
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Gagal menghapus foto");
     } finally {
       setUploadingAvatar(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handlePersonalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
-
     setSaving(true);
-    setError("");
-    setSuccess("");
-
     try {
-      await pb.collection("profiles").update(profile.id, formData);
-      if (currentUserId) {
-        await syncUserDataToProfile(currentUserId);
-      }
-      setSuccess("Profil berhasil diupdate!");
-      await loadProfile();
-
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Gagal update profil");
+      applyProfile(await patchSelfProfileApi(formData));
+      showToast("success", t("hr.profile.self.profileUpdated"));
+    } catch (err) {
+      showToast("error", t("profile.saveError"), getErrorMessage(err));
     } finally {
       blurActiveElement();
       setSaving(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUserId) return;
-
-    setPasswordError("");
-    setPasswordSuccess("");
-
     if (passwordNew.length < 8) {
-      setPasswordError("Kata sandi baru minimal 8 karakter.");
+      showToast("error", t("hr.profile.self.passwordMin"));
       return;
     }
     if (passwordNew !== passwordConfirm) {
-      setPasswordError("Konfirmasi kata sandi baru tidak sama.");
+      showToast("error", t("hr.profile.self.passwordMismatch"));
       return;
     }
     if (!passwordOld.trim()) {
-      setPasswordError("Isi kata sandi saat ini (dari Owner/HR).");
+      showToast("error", t("hr.profile.self.passwordCurrentRequired"));
       return;
     }
-
     setPasswordSaving(true);
     try {
-      await pb.collection("users").update(currentUserId, {
-        oldPassword: passwordOld,
-        password: passwordNew,
-        passwordConfirm: passwordNew,
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (pb.authStore.token) headers.Authorization = `Bearer ${pb.authStore.token}`;
+      const res = await fetch("/api/profile/self/password", {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          oldPassword: passwordOld,
+          password: passwordNew,
+          passwordConfirm: passwordNew,
+        }),
       });
-      setPasswordSuccess("Kata sandi berhasil diubah. Gunakan sandi baru saat login berikutnya.");
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Gagal mengubah kata sandi.");
       setPasswordOld("");
       setPasswordNew("");
       setPasswordConfirm("");
-      setTimeout(() => setPasswordSuccess(""), 6000);
-    } catch (err: unknown) {
-      setPasswordError(getErrorMessage(err, "Gagal mengubah kata sandi. Periksa sandi lama atau rule PocketBase."));
+      showToast("success", t("hr.profile.self.passwordChangedHint"));
+    } catch (err) {
+      showToast("error", getErrorMessage(err, "Gagal mengubah kata sandi."));
     } finally {
       blurActiveElement();
       setPasswordSaving(false);
     }
   };
 
-  const getAvatarUrl = () => {
-    if (!profile || !profile.avatar) {
-      return null;
-    }
-    return pb.files.getURL(profile, profile.avatar, { thumb: "200x200" });
-  };
-
   if (loading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-6">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-      </div>
+      <PageShell maxWidth="max-w-4xl" className="p-4 sm:p-6">
+        <LoadingState label={t("design.loading")} className="min-h-[320px] justify-center" />
+      </PageShell>
     );
   }
 
   if (!profile) {
     return (
-      <div className="p-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-          Profil tidak ditemukan. Silakan hubungi HR.
-        </div>
-      </div>
+      <PageShell maxWidth="max-w-4xl" className="p-4 sm:p-6">
+        <ErrorState title={t("hr.profile.self.loadErrorTitle")} description={profileLoadError} />
+      </PageShell>
     );
   }
 
+  const employment = profile.employment;
+  const primary = employment.primary_entity;
+  const salaryText =
+    employment.salary != null && employment.salary > 0
+      ? `Rp ${employment.salary.toLocaleString(locale === "en" ? "en-US" : "id-ID")}`
+      : "—";
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">Profil saya</h1>
-        <p className="mt-1 text-slate-500">Kelola informasi profil dan avatar Anda</p>
-      </div>
-
-      {success && (
-        <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
-          <CheckCircle className="h-5 w-5" />
-          <span>{success}</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-          <AlertCircle className="h-5 w-5" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-1">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="text-center">
-              <div className="relative inline-block">
-                {getAvatarUrl() ? (
-                  <Image
-                    src={getAvatarUrl()!}
-                    alt="Avatar"
-                    width={128}
-                    height={128}
-                    className="h-32 w-32 rounded-full border-4 border-indigo-100 object-cover"
-                  />
-                ) : (
-                  <div className="flex h-32 w-32 items-center justify-center rounded-full border-4 border-indigo-100 bg-gradient-to-br from-indigo-100 to-purple-100">
-                    <User className="h-16 w-16 text-indigo-600" />
-                  </div>
-                )}
-
-                <label
-                  htmlFor="avatar-upload-global"
-                  className="absolute bottom-0 right-0 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-indigo-600 shadow-lg transition hover:bg-indigo-700"
-                >
-                  {uploadingAvatar ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-white" />
-                  ) : (
-                    <Camera className="h-5 w-5 text-white" />
-                  )}
-                </label>
-                <input
-                  id="avatar-upload-global"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarUpload}
-                  className="hidden"
-                  disabled={uploadingAvatar}
-                />
-              </div>
-
-              <h2 className="mt-4 text-xl font-bold text-slate-800">{currentUser?.name || "Pengguna"}</h2>
-              <p className="text-sm text-slate-500">{currentUser?.email}</p>
-
-              <div className="mt-5 border-t border-slate-200 pt-5 text-left">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Data kepegawaian</p>
-                <p className="mb-4 text-[11px] leading-relaxed text-slate-400">Informasi ini hanya dapat diubah oleh HR.</p>
-                <ul className="space-y-3">
-                  <li className="flex gap-3 text-sm">
-                    <Layers className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Divisi</p>
-                      <p className="break-words font-medium leading-snug text-slate-800">{profile.division?.trim() || "—"}</p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3 text-sm">
-                    <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Departemen</p>
-                      <p className="break-words font-medium leading-snug text-slate-800">{profile.department?.trim() || "—"}</p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3 text-sm">
-                    <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Jabatan</p>
-                      <p className="break-words font-medium leading-snug text-slate-800">{profile.position?.trim() || "—"}</p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3 text-sm">
-                    <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Gaji pokok</p>
-                      <p className="font-medium leading-snug text-slate-800">
-                        {profile.salary != null && Number(profile.salary) > 0
-                          ? `Rp ${Number(profile.salary).toLocaleString("id-ID")}`
-                          : "—"}
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3 text-sm">
-                    <Shield className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Peran akun</p>
-                      <p className="font-medium leading-snug text-slate-800">
-                        {roleLabelStaff(currentUser as unknown as Record<string, unknown>)}
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3 text-sm">
-                    <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Tanggal bergabung</p>
-                      <p className="font-medium leading-snug text-slate-800">{formatJoinDateId(profile.join_date)}</p>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-            <p className="mb-2 text-sm font-medium text-blue-800">Tips</p>
-            <ul className="space-y-1 text-xs text-blue-700">
-              <li>• Ukuran foto maksimal 5MB</li>
-              <li>• Format: JPG, PNG, atau GIF</li>
-              <li>• Update biodata secara berkala</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2">
-          <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-2">
-              <h3 className="text-lg font-semibold text-slate-800">Informasi personal</h3>
-              <p className="mt-1 text-xs text-slate-500">Hanya bagian ini yang bisa Anda ubah sendiri.</p>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                <Phone className="mr-2 inline h-4 w-4" />
-                Nomor Telepon
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="08123456789"
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                <MapPin className="mr-2 inline h-4 w-4" />
-                Alamat
-              </label>
-              <textarea
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                rows={3}
-                placeholder="Masukkan alamat lengkap..."
-                className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                <Calendar className="mr-2 inline h-4 w-4" />
-                Tanggal Lahir
-              </label>
-              <input
-                type="date"
-                name="date_of_birth"
-                value={formData.date_of_birth}
-                onChange={handleChange}
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Bio / Tentang Saya</label>
-              <textarea
-                name="bio"
-                value={formData.bio}
-                onChange={handleChange}
-                rows={4}
-                placeholder="Ceritakan tentang diri Anda..."
-                className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              />
-              <p className="mt-1 text-xs text-slate-500">{formData.bio.length} karakter</p>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Menyimpan...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-5 w-5" />
-                    Simpan Perubahan
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-
-          <form
-            onSubmit={handlePasswordSubmit}
-            className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-          >
-            <div className="mb-2 flex items-start gap-2">
-              <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" aria-hidden />
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800">Ubah kata sandi</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  Setelah Owner membuat akun dengan sandi standar, Anda bisa menggantinya di sini. Sandi baru minimal 8
-                  karakter.
-                </p>
-              </div>
-            </div>
-
-            {passwordSuccess && (
-              <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-                <CheckCircle className="h-4 w-4 shrink-0" />
-                {passwordSuccess}
-              </div>
-            )}
-            {passwordError && (
-              <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                {passwordError}
-              </div>
-            )}
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-800">Kata sandi saat ini</label>
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={passwordOld}
-                onChange={(e) => setPasswordOld(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-                placeholder="Sandi dari Owner / HR"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-800">Kata sandi baru</label>
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={passwordNew}
-                onChange={(e) => setPasswordNew(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-                placeholder="Minimal 8 karakter"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-800">Ulangi kata sandi baru</label>
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={passwordConfirm}
-                onChange={(e) => setPasswordConfirm(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-                placeholder="Sama dengan di atas"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={passwordSaving}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 py-3 text-sm font-semibold text-indigo-900 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+    <PageShell maxWidth="max-w-6xl" className="space-y-5 p-4 sm:p-6">
+      <div className="grid gap-5 lg:grid-cols-12 lg:items-start">
+        <div className="space-y-5 lg:col-span-8">
+      <Card padding="p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="relative shrink-0 self-center sm:self-start">
+            <UserAvatar
+              name={profile.name || String(currentUser?.name ?? "User")}
+              src={avatarPreview}
+              size={80}
+              className="border-2 border-erp-border"
+            />
+            <label
+              htmlFor="avatar-upload-profile"
+              className={`absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm ${uploadingAvatar ? "pointer-events-none opacity-70" : "cursor-pointer hover:bg-indigo-700"}`}
+              title={t("hr.profile.self.changeAvatar")}
             >
-              {passwordSaving ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Menyimpan…
-                </>
-              ) : (
-                <>
-                  <KeyRound className="h-5 w-5" />
-                  Simpan kata sandi baru
-                </>
-              )}
-            </button>
-          </form>
+              <Camera className="h-4 w-4" aria-hidden />
+              <span className="sr-only">{t("hr.profile.self.changeAvatar")}</span>
+            </label>
+            <input
+              ref={avatarInputRef}
+              id="avatar-upload-profile"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              disabled={uploadingAvatar}
+              onChange={handleAvatarUpload}
+            />
+          </div>
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <h1 className="text-xl font-bold text-erp-text">
+              {profile.name || String(currentUser?.name ?? t("hr.profile.self.userLabel"))}
+            </h1>
+            <p className="text-sm text-erp-text-muted">{profile.email || String(currentUser?.email ?? "")}</p>
+            <p className="mt-0.5 text-sm font-medium text-indigo-700">{roleLabelFromEmployment(employment, t)}</p>
+            <p className="text-sm text-erp-text-muted">{primary.label}</p>
+            <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+              >
+                {t("profile.changePhoto")}
+              </Button>
+              {profile.avatar ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void handleAvatarDelete()}
+                  disabled={uploadingAvatar}
+                  className="text-erp-danger hover:text-red-700"
+                >
+                  {t("profile.removePhoto")}
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </div>
+      </Card>
+
+      <Card padding="p-0">
+        <div className="px-4 pt-2 sm:px-5">
+          <Tabs items={tabItems} value={tab} onChange={navigateTab} />
+        </div>
+
+        <div className="px-4 pb-5 sm:px-5">
+          <TabPanel id="ringkasan" activeId={tab}>
+            <section id="ringkasan">
+              <SectionHeader
+                title={t("hr.profile.self.employmentTitle")}
+                description={t("hr.profile.self.employmentHint")}
+              />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <SummaryField label={t("hr.profile.self.userLabel")} value={displayOrDash(profile.name)} />
+                <SummaryField label={t("hr.profile.self.adminEntity")} value={primary.label} />
+                <SummaryField label={t("hr.profile.self.division")} value={displayOrDash(employment.division)} />
+                <SummaryField label={t("hr.profile.self.department")} value={displayOrDash(employment.department)} />
+                <SummaryField label={t("hr.profile.self.position")} value={displayOrDash(employment.position)} />
+                <SummaryField label={t("hr.profile.self.role")} value={roleLabelFromEmployment(employment, t)} />
+                <SummaryField
+                  label={t("hr.profile.self.joinDate")}
+                  value={formatJoinDate(employment.join_date, locale)}
+                />
+                <SummaryField label={t("hr.profile.self.salary")} value={salaryText} />
+              </div>
+            </section>
+          </TabPanel>
+
+          <TabPanel id="pribadi" activeId={tab}>
+            <div id="pribadi" className="space-y-5">
+              <Card>
+                <CardHeader
+                  title={t("hr.profile.self.personalTitle")}
+                  description={t("hr.profile.self.personalHint")}
+                />
+                <form onSubmit={handlePersonalSubmit} className="space-y-6">
+                  <FormSection title={t("profile.sections.personalData")}>
+                    <FormField label={t("hr.profile.self.dateOfBirth")} htmlFor="profile-dob">
+                      <Input
+                        id="profile-dob"
+                        type="date"
+                        name="date_of_birth"
+                        value={formData.date_of_birth}
+                        onChange={(e) => setFormData((f) => ({ ...f, date_of_birth: e.target.value }))}
+                      />
+                    </FormField>
+                    <FormSectionFullWidth>
+                      <FormField label={t("hr.profile.self.bio")} htmlFor="profile-bio">
+                        <Textarea
+                          id="profile-bio"
+                          name="bio"
+                          value={formData.bio}
+                          onChange={(e) => setFormData((f) => ({ ...f, bio: e.target.value }))}
+                          rows={3}
+                        />
+                      </FormField>
+                    </FormSectionFullWidth>
+                  </FormSection>
+                  <FormSection title={t("profile.sections.contact")}>
+                    <FormField label={t("hr.profile.self.phone")} htmlFor="profile-phone">
+                      <Input
+                        id="profile-phone"
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={(e) => setFormData((f) => ({ ...f, phone: e.target.value }))}
+                      />
+                    </FormField>
+                    <FormSectionFullWidth>
+                      <FormField label={t("hr.profile.self.address")} htmlFor="profile-address">
+                        <Textarea
+                          id="profile-address"
+                          name="address"
+                          value={formData.address}
+                          onChange={(e) => setFormData((f) => ({ ...f, address: e.target.value }))}
+                          rows={2}
+                        />
+                      </FormField>
+                    </FormSectionFullWidth>
+                  </FormSection>
+                  <ActionBar className="relative -mx-5 border-t border-erp-border px-5 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+                    <Button type="submit" loading={saving} className="w-full sm:w-auto">
+                      <Save className="h-4 w-4" aria-hidden />
+                      {saving ? t("profile.saving") : t("hr.profile.self.saveProfile")}
+                    </Button>
+                  </ActionBar>
+                </form>
+              </Card>
+              <PayrollBankAccountSection onToast={showToast} />
+            </div>
+          </TabPanel>
+
+          <TabPanel id="dokumen" activeId={tab}>
+            <EmployeePrivateDocumentsPanel />
+          </TabPanel>
+
+          <TabPanel id="keamanan" activeId={tab}>
+            <section id="keamanan">
+              <CardHeader
+                title={t("hr.profile.self.accountTitle")}
+                description={t("hr.profile.self.accountHint")}
+              />
+              <FormField label={t("profile.emailLogin")} htmlFor="profile-email" className="mt-4">
+                <Input id="profile-email" type="email" disabled value={profile.email || ""} readOnly />
+              </FormField>
+
+              <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4 border-t border-erp-border pt-5">
+                <SectionHeader
+                  title={t("hr.profile.self.passwordTitle")}
+                  description={t("hr.profile.self.passwordDesc")}
+                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormSectionFullWidth>
+                    <FormField label={t("hr.profile.self.passwordOld")} htmlFor="profile-password-old">
+                      <Input
+                        id="profile-password-old"
+                        type="password"
+                        autoComplete="current-password"
+                        value={passwordOld}
+                        onChange={(e) => setPasswordOld(e.target.value)}
+                      />
+                    </FormField>
+                  </FormSectionFullWidth>
+                  <FormField label={t("hr.profile.self.passwordNew")} htmlFor="profile-password-new">
+                    <Input
+                      id="profile-password-new"
+                      type="password"
+                      autoComplete="new-password"
+                      value={passwordNew}
+                      onChange={(e) => setPasswordNew(e.target.value)}
+                    />
+                  </FormField>
+                  <FormField label={t("hr.profile.self.passwordConfirm")} htmlFor="profile-password-confirm">
+                    <Input
+                      id="profile-password-confirm"
+                      type="password"
+                      autoComplete="new-password"
+                      value={passwordConfirm}
+                      onChange={(e) => setPasswordConfirm(e.target.value)}
+                    />
+                  </FormField>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" loading={passwordSaving} className="w-full sm:w-auto">
+                    <KeyRound className="h-4 w-4" aria-hidden />
+                    {passwordSaving ? t("profile.saving") : t("hr.profile.self.passwordSave")}
+                  </Button>
+                </div>
+              </form>
+              <div className="mt-6 lg:hidden">
+                <AccountPreferencesPanel />
+              </div>
+            </section>
+          </TabPanel>
+        </div>
+      </Card>
+        </div>
+
+        <aside className="hidden lg:block lg:col-span-4">
+          <AccountPreferencesPanel />
+        </aside>
       </div>
-    </div>
+    </PageShell>
   );
 }

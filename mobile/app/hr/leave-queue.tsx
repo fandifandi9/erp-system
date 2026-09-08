@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { pb } from "@/lib/pocketbase";
 import { approveLeaveRequestByHr, rejectLeaveRequestByHr } from "@/lib/leave";
 import { getErrorMessage } from "@/lib/errors";
 import { PWA } from "@/constants/pwaTheme";
@@ -72,13 +71,14 @@ export default function HrLeaveQueueScreen() {
 
   const load = useCallback(async () => {
     try {
-      const list = await pb.collection("leave_requests").getFullList({
-        filter: 'status="pending"',
-        sort: "-created",
-        expand: "user",
-        requestKey: null,
-      });
-      setItems((list as unknown as Record<string, unknown>[]).map(mapRow));
+      const { mobileFetchLeaveQueue } = await import("@/lib/hr-queue-api");
+      const res = await mobileFetchLeaveQueue();
+      if (!res.ok) {
+        Alert.alert("Gagal memuat", res.error || "Tidak bisa mengambil antrean cuti.");
+        setItems([]);
+        return;
+      }
+      setItems(res.items.map(mapRow));
     } catch (e) {
       console.error(e);
       Alert.alert("Gagal memuat", getErrorMessage(e, "Tidak bisa mengambil antrean cuti."));

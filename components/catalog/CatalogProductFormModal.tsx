@@ -232,6 +232,14 @@ export function CatalogProductFormModal({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-10">
       <form
         onSubmit={(e) => void submit(e)}
+        onKeyDown={(e) => {
+          // Scanner barcode kirim Enter di akhir — jangan submit form, cukup isi field.
+          if (e.key !== "Enter") return;
+          const el = e.target;
+          if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement) {
+            e.preventDefault();
+          }
+        }}
         className={
           "w-full rounded-2xl bg-white shadow-2xl " +
           (tab === "pricing" ? "max-w-4xl" : "max-w-lg")
@@ -315,9 +323,19 @@ export function CatalogProductFormModal({
             </div>
           </div>
 
-          <Field label={`${t("catalog.common.sku")} *`} value={form.sku} onChange={(v) => setForm({ ...form, sku: v })} />
+          <Field
+            label={`${t("catalog.common.sku")} *`}
+            value={form.sku}
+            onChange={(v) => setForm({ ...form, sku: v })}
+            mono
+          />
           <Field label={`${t("catalog.common.name")} *`} value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-          <Field label={t("catalog.common.barcode")} value={form.barcode} onChange={(v) => setForm({ ...form, barcode: v })} />
+          <Field
+            label={t("catalog.common.barcode")}
+            value={form.barcode}
+            onChange={(v) => setForm({ ...form, barcode: v })}
+            mono
+          />
 
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-700">{t("catalog.common.category")}</span>
@@ -495,10 +513,13 @@ function Field({
   label,
   value,
   onChange,
+  mono,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  /** Font monospace — field scan barcode/SKU */
+  mono?: boolean;
 }) {
   return (
     <label className="block text-sm">
@@ -507,7 +528,10 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={label.includes("*")}
-        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+        className={
+          "w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 " +
+          (mono ? "font-mono" : "")
+        }
       />
     </label>
   );

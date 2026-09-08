@@ -92,9 +92,22 @@ export interface User {
 /**
  * Buat satu record `profiles` baru untuk user (shift default + kantor aktif pertama).
  * Dipakai `ensureProfile` dan halaman HR buat karyawan — payload harus sama agar produksi tidak gagal hanya di salah satu alur.
+ *
+ * `seed` — isi dari form HR saat buat karyawan. PocketBase sering tidak mengembalikan
+ * field `email` user lain ke client, jadi harus disimpan eksplisit ke `profiles.email`.
  */
-export async function createDefaultProfileForUser(userId: string): Promise<Profile> {
-  const user = await pb.collection("users").getOne(userId);
+export async function createDefaultProfileForUser(
+  userId: string,
+  seed?: { email?: string; name?: string },
+): Promise<Profile> {
+  let displayName = seed?.name?.trim() || "";
+  let displayEmail = seed?.email?.trim() || "";
+
+  if (!displayName || !displayEmail) {
+    const user = await pb.collection("users").getOne(userId);
+    displayName = displayName || (user.name as string) || "";
+    displayEmail = displayEmail || (user.email as string) || "";
+  }
 
   let defaultOfficeId: string | null = null;
   try {
@@ -109,11 +122,11 @@ export async function createDefaultProfileForUser(userId: string): Promise<Profi
 
   const newProfile = await pb.collection("profiles").create({
     user: userId,
-    name: (user.name as string) || "",
-    email: (user.email as string) || "",
+    name: displayName,
+    email: displayEmail,
     office_id: defaultOfficeId,
-    shift_start: "08:00",
-    shift_end: "17:00",
+    shift_start: "",
+    shift_end: "",
     profile_status: "incomplete",
   });
 

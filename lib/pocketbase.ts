@@ -1,17 +1,19 @@
 import PocketBase from "pocketbase";
 
-// ✅ SECURE: Use environment variable instead of hardcoded URL
-const POCKETBASE_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || "http://72.62.194.224:8091";
+function requirePocketBaseUrl(): string {
+  const url = (process.env.NEXT_PUBLIC_POCKETBASE_URL || process.env.POCKETBASE_URL || "").trim();
+  if (!url) {
+    throw new Error(
+      "NEXT_PUBLIC_POCKETBASE_URL belum diset. Tambahkan ke .env.local sebelum menjalankan aplikasi.",
+    );
+  }
+  return url;
+}
+
+const POCKETBASE_URL = requirePocketBaseUrl();
 
 export const pb = new PocketBase(POCKETBASE_URL);
 
-// 🔍 DEBUG: Log PocketBase URL to verify connection
-console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-console.log("🔗 POCKETBASE CONNECTION");
-console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-console.log("URL:", POCKETBASE_URL);
-console.log("Auth Store:", pb.authStore.isValid ? "✅ Valid" : "❌ Invalid");
-console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-// Optional: Enable auto-cancellation for better performance
 pb.autoCancellation(false);
+
+export { POCKETBASE_URL };

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, Loader2, PackageOpen, RotateCcw, AlertTriangle } from "lucide-react";
+import { Loader2, PackageOpen, RotateCcw, AlertTriangle } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 import { BISNIS_COLLECTIONS, type Retur } from "@/lib/bisnis/types";
@@ -10,6 +10,7 @@ import { fetchCompanyProfiles } from "@/lib/bisnis/company-client";
 import type { CompanyProfile } from "@/lib/bisnis/types";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
+import { useLocale } from "@/components/LocaleProvider";
 
 type TransitRow = {
   id: string;
@@ -19,6 +20,7 @@ type TransitRow = {
 };
 
 export default function GudangSortirPage() {
+  const { t } = useLocale();
   const [loading, setLoading] = useState(true);
   const [transitWarehouses, setTransitWarehouses] = useState<TransitRow[]>([]);
   const [pendingReturs, setPendingReturs] = useState<Retur[]>([]);
@@ -33,12 +35,12 @@ export default function GudangSortirPage() {
           sort: "name",
           requestKey: null,
         }),
-        pb.collection(BISNIS_COLLECTIONS.returs).getFullList<Retur>({
+        pb.collection(BISNIS_COLLECTIONS.returs).getList<Retur>(1, 50, {
           filter:
             'type = "penjualan" && status = "completed" && wms_receive_status != "complete"',
           sort: "-completed_at",
           requestKey: null,
-        }),
+        }).then((r) => r.items),
         fetchCompanyProfiles(true).catch(() => [] as CompanyProfile[]),
       ]);
       setTransitWarehouses(wh);
@@ -54,23 +56,18 @@ export default function GudangSortirPage() {
   }, [load]);
 
   const companyName = (id?: string) =>
-    companies.find((c) => c.id === id)?.company_name ?? "Entitas";
+    companies.find((c) => c.id === id)?.company_name ?? t("inventory.common.entity");
 
   return (
     <InventoryGate>
-      <InventoryShell title="Sortir & Disposisi">
+      <InventoryShell title={t("inventory.sortir.title")}>
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
           <div className="mb-6">
             <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-              <PackageOpen className="h-6 w-6 text-amber-600" /> Sortir & Disposisi
+              <PackageOpen className="h-6 w-6 text-amber-600" /> {t("inventory.sortir.title")}
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500">
-              Barang di <strong>gudang sementara</strong> menunggu sortir: retur penjualan (kondisi
-              baik) dan sisa proses manual. Pindahkan ke gudang penjualan, entitas, atau rusak via{" "}
-              <Link href="/gudang/transfer" className="font-medium text-indigo-600 hover:underline">
-                Transfer Gudang
-              </Link>
-              . Penerimaan pembelian WMS otomatis disposition saat QC komplit.
+              {t("inventory.sortir.subtitle")}
             </p>
           </div>
 
@@ -82,7 +79,7 @@ export default function GudangSortirPage() {
             <div className="space-y-8">
               <section>
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-rose-800">
-                  <AlertTriangle className="h-4 w-4" /> Gudang Rusak — Servis teknisi
+                  <AlertTriangle className="h-4 w-4" /> {t("inventory.sortir.damagedLink")}
                 </h2>
                 <p className="mb-3 text-xs text-slate-500">
                   Barang sudah di karantina gudang rusak menunggu keputusan teknisi: perbaiki (kembali
@@ -103,9 +100,9 @@ export default function GudangSortirPage() {
                 </h2>
                 {transitWarehouses.length === 0 ? (
                   <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/50 px-4 py-3 text-sm text-amber-900">
-                    Belum ada gudang sementara — buat di{" "}
+                    {t("inventory.sortir.emptyTransit")}{" "}
                     <Link href="/gudang/daftar" className="font-semibold underline">
-                      Daftar Gudang
+                      {t("inventory.daftar.title")}
                     </Link>
                     .
                   </p>
@@ -123,18 +120,22 @@ export default function GudangSortirPage() {
                         ) : null}
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Link
-                            href={`/inventory/movements/new?from=${w.id}`}
-                            className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                            href={`/gudang/stok?warehouse=${w.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-50"
                           >
-                            <ArrowRightLeft className="h-3.5 w-3.5" /> Transfer dari sini
+                            Lihat antrian stok
                           </Link>
                           <Link
-                            href={`/gudang/stok?warehouse=${w.id}`}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                            href="/gudang/penerimaan"
+                            className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
                           >
-                            Lihat stok
+                            Penerimaan &amp; QC →
                           </Link>
                         </div>
+                        <p className="mt-2 text-[11px] leading-relaxed text-amber-800/90">
+                          Stok di sini sementara — pindah ke entitas/rusak otomatis setelah QC komplit,
+                          bukan lewat mutasi manual.
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -147,7 +148,7 @@ export default function GudangSortirPage() {
                 </h2>
                 {pendingReturs.length === 0 ? (
                   <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Tidak ada retur penjualan yang menunggu penerimaan fisik di gudang sementara.
+                    {t("inventory.sortir.emptyRetur")}
                   </p>
                 ) : (
                   <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">

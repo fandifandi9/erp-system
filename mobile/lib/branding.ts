@@ -1,7 +1,7 @@
-/** Logo & nama app — satu sumber visual (SDI) untuk launcher, splash, login. */
+/** Logo & nama app — satu sumber visual SERBA System untuk launcher, splash, login. */
 export const APP_DISPLAY_NAME = "SERBA System";
 
-/** Logo horizontal SDI */
+/** Logo horizontal SERBA System */
 export const SYSTEM_LOGO_WIDE = require("@/assets/systemLogoWide.png");
 
 /** Ikon persegi (launcher, splash) */

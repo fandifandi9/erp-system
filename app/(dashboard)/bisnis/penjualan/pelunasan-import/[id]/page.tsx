@@ -34,10 +34,10 @@ const fmtDate = (d?: string) =>
 
 const LINE_STATUS: Record<string, { label: string; className: string }> = {
   valid: { label: "Valid", className: "text-emerald-700" },
-  error: { label: "Error", className: "text-red-600" },
-  posted: { label: "Posted", className: "text-indigo-700" },
+  error: { label: "Gagal", className: "text-red-600" },
+  posted: { label: "Dibukukan", className: "text-indigo-700" },
   skipped: { label: "Dilewati", className: "text-amber-700" },
-  pending: { label: "Pending", className: "text-slate-500" },
+  pending: { label: "Menunggu", className: "text-slate-500" },
 };
 
 export default function PelunasanImportDetailPage() {

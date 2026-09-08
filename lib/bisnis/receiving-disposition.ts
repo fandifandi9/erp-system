@@ -1,10 +1,12 @@
+import type PocketBase from "pocketbase";
 import { pb } from "@/lib/pocketbase";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 import {
   getDamagedWarehouse,
   getTransitWarehouse,
 } from "@/lib/bisnis/entity-modules";
-import { createAutoTransferMovement } from "@/lib/bisnis/client";
+import { postTransferStockMovementServer } from "@/lib/inventory/transfer-stock-server";
+import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import {
   parseReceivingWorkflow,
   type ReceivingWorkflow,
@@ -22,14 +24,22 @@ function aggregateLines(lines: DispositionLine[]): DispositionLine[] {
   return [...map.entries()].map(([product, qty]) => ({ product, qty }));
 }
 
+async function resolveDb(pbInstance?: PocketBase): Promise<PocketBase> {
+  if (pbInstance) return pbInstance;
+  if (typeof window === "undefined") return getInventoryAdminPb();
+  return pb;
+}
+
 /** Resolve entitas pemilik PO — dari field company atau gudang entitas. */
 export async function resolvePurchaseOrderCompanyId(
   po: Pick<PurchaseOrder, "company" | "warehouse">,
+  pbInstance?: PocketBase,
 ): Promise<string> {
   if (po.company) return po.company;
   if (!po.warehouse) return "";
   try {
-    const wh = await pb.collection(INV_COLLECTIONS.warehouses).getOne<{ company?: string }>(
+    const db = await resolveDb(pbInstance);
+    const wh = await db.collection(INV_COLLECTIONS.warehouses).getOne<{ company?: string }>(
       po.warehouse,
       { fields: "company", requestKey: null },
     );
@@ -42,15 +52,17 @@ export async function resolvePurchaseOrderCompanyId(
 /** Gudang tujuan posting stok pembelian: transit untuk WMS, main untuk non-WMS. */
 export async function resolvePurchaseStockWarehouse(
   po: Pick<PurchaseOrder, "company" | "warehouse" | "send_to_warehouse_at">,
+  pbInstance?: PocketBase,
 ): Promise<string> {
   if (!po.warehouse) return "";
   if (!po.send_to_warehouse_at) return po.warehouse;
 
-  const companyId = await resolvePurchaseOrderCompanyId(po);
+  const db = await resolveDb(pbInstance);
+  const companyId = await resolvePurchaseOrderCompanyId(po, db);
   if (!companyId) {
     throw new Error("PO lewat WMS wajib punya entitas — tentukan entitas pembeli.");
   }
-  const transit = await getTransitWarehouse(companyId);
+  const transit = await getTransitWarehouse(companyId, db);
   if (!transit) {
     throw new Error(
       "Buat gudang sementara untuk entitas ini (Gudang → Daftar Gudang) sebelum menyelesaikan penerimaan WMS.",
@@ -71,11 +83,12 @@ export async function applyReceivingDisposition(
 ): Promise<void> {
   if (!po.send_to_warehouse_at || !po.warehouse) return;
 
+  const db = await resolveDb();
   const workflow = wf ?? parseReceivingWorkflow(po.receiving_workflow_json);
-  const companyId = await resolvePurchaseOrderCompanyId(po);
+  const companyId = await resolvePurchaseOrderCompanyId(po, db);
   if (!companyId) return;
 
-  const transit = await getTransitWarehouse(companyId);
+  const transit = await getTransitWarehouse(companyId, db);
   if (!transit) return;
 
   const passLines: DispositionLine[] = [];
@@ -92,33 +105,35 @@ export async function applyReceivingDisposition(
   }
 
   if (damagedLines.length) {
-    const damagedWh = await getDamagedWarehouse(companyId);
+    const damagedWh = await getDamagedWarehouse(companyId, db);
     if (!damagedWh) {
       throw new Error(
         "Ada barang rusak di QC — buat gudang rusak untuk entitas ini atau set qty rusak = 0.",
       );
     }
-    await createAutoTransferMovement({
+    await postTransferStockMovementServer({
       from_warehouse: transit.id,
       to_warehouse: damagedWh.id,
       reference_type: "PURCHASE_QC_DAMAGED",
       reference_id: po.id,
       reference_no: po.po_no,
       lines: aggregateLines(damagedLines),
-      note_suffix: "QC rusak → gudang rusak",
+      userId,
+      noteSuffix: "QC rusak → gudang rusak",
     });
   }
 
   const aggregatedPass = aggregateLines(passLines);
   if (aggregatedPass.length) {
-    await createAutoTransferMovement({
+    await postTransferStockMovementServer({
       from_warehouse: transit.id,
       to_warehouse: po.warehouse,
       reference_type: "PURCHASE_QC_PASS",
       reference_id: po.id,
       reference_no: po.po_no,
       lines: aggregatedPass,
-      note_suffix: "QC lulus → gudang entitas",
+      userId,
+      noteSuffix: "QC lulus → gudang entitas",
     });
   }
 }

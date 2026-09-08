@@ -9,14 +9,25 @@ const PHOTO_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"]);
 
 export type UnboxingEntityKind = "sales_return" | "purchase_receiving" | "purchase_return";
 
-function mediaRoot(): string {
+export function getUnboxingMediaRoot(): string {
   const root = process.env.LOCAL_UNBOXING_VIDEO_DIR?.trim();
-  if (!root) {
-    throw new Error(
-      "LOCAL_UNBOXING_VIDEO_DIR belum diatur — unggah bukti ke HDD lokal (lihat .env.example) atau lewati tanpa bukti.",
-    );
-  }
-  return path.resolve(root);
+  // Default: data/unboxing-videos di root project (aman untuk dev lintas mesin)
+  return path.resolve(root || path.join(process.cwd(), "data", "unboxing-videos"));
+}
+
+function mediaRoot(): string {
+  return getUnboxingMediaRoot();
+}
+
+/** Pastikan path file berada di bawah root bukti unboxing. */
+export function resolveSafeUnboxingFilePath(storedPath: string): string | null {
+  const trimmed = storedPath?.trim();
+  if (!trimmed) return null;
+  const root = path.resolve(mediaRoot());
+  const resolved = path.resolve(trimmed);
+  const rel = path.relative(root, resolved);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  return resolved;
 }
 
 async function saveFile(input: {

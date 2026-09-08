@@ -1,0 +1,28 @@
+{
+  "at": "2026-08-31T06:23:24.431Z",
+  "pass": [
+    "exists: docs/PHASE_33B_WORK_SCHEDULE_IMPLEMENTATION_REPORT.md",
+    "exists: scripts/test-phase33b-work-schedule.mjs",
+    "exists: scripts/migrate-local-hr-phase33b.mjs",
+    "exists: lib/hr/work-schedule-calc.ts",
+    "exists: lib/hr/work-schedule-server.ts",
+    "package.json test:phase33b-work-schedule",
+    "package.json migrate:local-hr-phase33b",
+    "PB admin auth",
+    "collection exists: hr_work_schedules",
+    "collection exists: hr_work_schedule_days",
+    "collection exists: hr_employee_work_schedules",
+    "attendance_logs collection preserved",
+    "attendance_logs readable (totalItems=0)",
+    "users.updateRule Phase 33A guard present",
+    "mobile attendance shows schedule context",
+    "API route: app\\api\\hr\\work-schedules\\assignments\\route.ts",
+    "API route: app\\api\\hr\\work-schedules\\assignments\\[id]\\route.ts",
+    "API route: app\\api\\hr\\work-schedules\\employee\\[userId]\\route.ts",
+    "API route: app\\api\\hr\\work-schedules\\route.ts",
+    "API route: app\\api\\hr\\work-schedules\\[id]\\days\\route.ts",
+    "API route: app\\api\\hr\\work-schedules\\[id]\\route.ts"
+  ],
+  "fail": [],
+  "skip": []
+}

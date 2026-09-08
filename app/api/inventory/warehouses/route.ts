@@ -57,63 +57,17 @@ export async function POST(req: Request) {
     const storeId = body.store?.trim();
     const role =
       body.warehouse_role?.trim() ||
-      (storeId ? "retail" : companyId ? "main" : "retail");
+      (storeId ? "retail" : "");
 
-    if (companyId && role === "main") {
-      const existingMain = await pb.collection(INV_COLLECTIONS.warehouses).getFullList({
-        filter: `company = "${companyId}" && is_active = true && warehouse_role = "main"`,
-        fields: "id",
-      });
-      if (existingMain.length > 0) {
-        throw new InventoryApiError(
-          "Entitas ini sudah punya gudang entitas. Satu entitas = satu gudang penerimaan. Buat gudang penjualan untuk toko.",
-          400,
-        );
-      }
+    if (role !== "retail") {
+      throw new InventoryApiError(
+        "Gudang entitas, sementara, dan rusak hanya dibuat otomatis saat menambah entitas di Pengaturan → Perusahaan. Di sini hanya bisa menambah gudang penjualan (toko).",
+        400,
+      );
     }
 
     if (role === "retail" && !storeId) {
       throw new InventoryApiError("Gudang penjualan wajib dipilih tokonya.", 400);
-    }
-
-    if (companyId && role === "transit") {
-      const existingTransit = await pb.collection(INV_COLLECTIONS.warehouses).getFullList({
-        filter: `company = "${companyId}" && is_active = true && warehouse_role = "transit"`,
-        fields: "id",
-      });
-      if (existingTransit.length > 0) {
-        throw new InventoryApiError(
-          "Entitas ini sudah punya gudang sementara. Satu entitas = satu gudang sementara.",
-          400,
-        );
-      }
-    }
-
-    if (companyId && role === "damaged") {
-      const existingDamaged = await pb.collection(INV_COLLECTIONS.warehouses).getFullList({
-        filter: `company = "${companyId}" && is_active = true && warehouse_role = "damaged"`,
-        fields: "id",
-      });
-      if (existingDamaged.length > 0) {
-        throw new InventoryApiError(
-          "Entitas ini sudah punya gudang rusak. Satu entitas = satu gudang rusak.",
-          400,
-        );
-      }
-    }
-
-    if ((role === "transit" || role === "damaged") && storeId) {
-      throw new InventoryApiError("Gudang sementara/rusak tidak boleh ditautkan ke toko.", 400);
-    }
-
-    if (body.is_primary === true && companyId && role === "main") {
-      const primaries = await pb.collection(INV_COLLECTIONS.warehouses).getFullList({
-        filter: `company = "${companyId}" && is_primary = true`,
-        fields: "id",
-      });
-      for (const row of primaries) {
-        await pb.collection(INV_COLLECTIONS.warehouses).update(row.id, { is_primary: false });
-      }
     }
 
     const warehouse = await pb.collection(INV_COLLECTIONS.warehouses).create({
@@ -123,7 +77,7 @@ export async function POST(req: Request) {
       company: companyId || undefined,
       store: storeId || undefined,
       warehouse_role: role,
-      is_primary: role === "main" ? true : false,
+      is_primary: false,
       is_active: true,
       timezone: "Asia/Jakarta",
     });

@@ -165,6 +165,7 @@ export async function preparePurchaseReturnAtWms(
   const updated = await pb.collection(BISNIS_COLLECTIONS.returs).update<Retur>(returId, {
     workflow_phase: "awaiting_business",
     unboxing_video_path: opts?.unboxing_video_path || retur.unboxing_video_path,
+    ...(opts?.wms_note?.trim() ? { wms_note: opts.wms_note.trim() } : {}),
     reminder_due_at: new Date(Date.now() + 3 * 86400000).toISOString(),
   });
 

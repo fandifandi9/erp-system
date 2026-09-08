@@ -2,11 +2,30 @@
 
 import type { InvoiceRelatedIndicators } from "@/lib/bisnis/sales-document-chain";
 
-const BADGE_CLS: Record<InvoiceRelatedIndicators["badges"][number], string> = {
-  RET: "bg-amber-50 text-amber-800 ring-amber-200",
-  CN: "bg-rose-50 text-rose-800 ring-rose-200",
-  REFUND: "bg-orange-50 text-orange-800 ring-orange-200",
-  RECOVERY: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+const BADGE_META: Record<
+  InvoiceRelatedIndicators["badges"][number],
+  { label: string; title: string; cls: string }
+> = {
+  RET: {
+    label: "Retur",
+    title: "Ada dokumen retur terkait",
+    cls: "bg-amber-50 text-amber-800 ring-amber-200/80",
+  },
+  CN: {
+    label: "CN",
+    title: "Ada credit note",
+    cls: "bg-rose-50 text-rose-800 ring-rose-200/80",
+  },
+  REFUND: {
+    label: "Pengembalian",
+    title: "Ada refund",
+    cls: "bg-orange-50 text-orange-800 ring-orange-200/80",
+  },
+  RECOVERY: {
+    label: "Pemulihan",
+    title: "Ada recovery pembayaran",
+    cls: "bg-teal-50 text-teal-800 ring-teal-200/80",
+  },
 };
 
 type Props = {
@@ -16,24 +35,23 @@ type Props = {
 export function SalesRelatedDocIndicators({ indicators }: Props) {
   if (!indicators || indicators.totalRelated <= 0) return null;
 
-  if (indicators.badges.length === 1 && indicators.returCount > 0 && indicators.badges[0] === "RET") {
-    return (
-      <span className="text-[11px] font-medium text-slate-500">
-        ↳ RET ×{indicators.returCount}
-      </span>
-    );
-  }
-
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      {indicators.badges.map((b) => (
-        <span
-          key={b}
-          className={`inline-flex rounded px-1 py-px text-[10px] font-semibold ring-1 ring-inset ${BADGE_CLS[b]}`}
-        >
-          {b}
-        </span>
-      ))}
+      {indicators.badges.map((b) => {
+        const meta = BADGE_META[b];
+        const count =
+          b === "RET" && indicators.returCount > 1 ? ` · ${indicators.returCount}` : "";
+        return (
+          <span
+            key={b}
+            title={meta.title}
+            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${meta.cls}`}
+          >
+            {meta.label}
+            {count}
+          </span>
+        );
+      })}
     </span>
   );
 }

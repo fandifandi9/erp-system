@@ -6,12 +6,12 @@ import {
 import { getSalesWmsDisplayStatus } from "./sales-warehouse";
 
 export const WMS_ROUTE_FILTER = [
-  { value: "all", label: "Semua proses gudang" },
-  { value: "bypass", label: "Belum ke antrean WMS" },
-  { value: "active", label: "Lewat gudang" },
-  { value: "wms_pending", label: "Gudang: menunggu" },
-  { value: "wms_progress", label: "Gudang: proses" },
-  { value: "wms_complete", label: "Gudang: komplit" },
+  { value: "all", label: "Semua metode" },
+  { value: "bypass", label: "Penjualan langsung" },
+  { value: "active", label: "Lewat WMS" },
+  { value: "wms_pending", label: "WMS: menunggu" },
+  { value: "wms_progress", label: "WMS: proses" },
+  { value: "wms_complete", label: "WMS: selesai" },
 ] as const;
 
 export type WmsRouteFilterValue = (typeof WMS_ROUTE_FILTER)[number]["value"];

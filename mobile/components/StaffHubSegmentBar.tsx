@@ -2,7 +2,13 @@ import { ScrollView, Pressable, Text, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { PWA } from "@/constants/pwaTheme";
 
-export type StaffHubKey = "attendance" | "leave" | "overtime" | "field";
+export type StaffHubKey =
+  | "attendance"
+  | "leave"
+  | "overtime"
+  | "field"
+  | "izin"
+  | "submissions";
 
 const ITEMS: {
   key: StaffHubKey;
@@ -13,6 +19,8 @@ const ITEMS: {
   { key: "leave", label: "Cuti", icon: "calendar-outline" },
   { key: "overtime", label: "Lembur", icon: "moon-outline" },
   { key: "field", label: "Luar kantor", icon: "navigate-outline" },
+  { key: "izin", label: "Off", icon: "hand-left-outline" },
+  { key: "submissions", label: "Pengajuan", icon: "file-tray-full-outline" },
 ];
 
 type Props = {
@@ -38,7 +46,7 @@ export function StaffHubSegmentBar({ value, onChange }: Props) {
             >
               <Ionicons
                 name={item.icon}
-                size={16}
+                size={18}
                 color={active ? "#fff" : PWA.textSecondary}
               />
               <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>{item.label}</Text>
@@ -66,8 +74,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    minHeight: 44,
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: PWA.border,

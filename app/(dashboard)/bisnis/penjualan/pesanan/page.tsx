@@ -14,14 +14,14 @@ import {
   fetchOpenRetursBySalesOrderIds,
   getSalesOrderDocStatus,
   ORDER_DOC_STATUS_UI,
-  openSalesOrdersListFilterToPb,
-  OPEN_ORDER_DOC_STATUS_FILTER,
+  ORDER_DOC_STATUS_FILTER,
+  salesOrderFilterToPb,
   WMS_ROUTE_FILTER,
   wmsOrderFilterToPb,
   isWmsSchemaFilterError,
   matchesWmsRouteFilter,
 } from "@/lib/bisnis/client";
-import { WmsRouteBadge } from "@/components/bisnis/WmsRouteBadge";
+import { SalesWmsStageCell } from "@/components/bisnis/SalesWmsStageCell";
 import type { SalesOrder, Store, Retur } from "@/lib/bisnis/types";
 import { returDisplayForSalesOrder } from "@/lib/bisnis/retur-workflow";
 import { resolveStoreForSalesOrder } from "@/lib/bisnis/doc-share";
@@ -42,6 +42,7 @@ import { useLocale } from "@/components/LocaleProvider";
 const ORDER_FILTER_KEY: Record<string, string> = {
   all: "sales.filter.allStatus",
   draft: "sales.filter.draft",
+  finished: "sales.filter.finished",
   cancelled: "sales.filter.cancelled",
 };
 
@@ -56,6 +57,7 @@ const WMS_FILTER_KEY: Record<string, string> = {
 
 const ORDER_STATUS_KEY: Record<string, string> = {
   draft: "sales.filter.draft",
+  finished: "sales.filter.finished",
   cancelled: "sales.filter.cancelled",
 };
 
@@ -102,7 +104,7 @@ export default function SalesOrderListPage() {
       const filters: string[] = [];
       const soSearch = buildDocSearchFilter(search, SALES_ORDER_SEARCH_FIELDS);
       if (soSearch) filters.push(soSearch);
-      const statusPb = openSalesOrdersListFilterToPb(statusFilter);
+      const statusPb = salesOrderFilterToPb(statusFilter);
       if (statusPb) filters.push(statusPb);
       const wmsPb = wmsOrderFilterToPb(wmsFilter);
       if (wmsPb) filters.push(wmsPb);
@@ -191,7 +193,7 @@ export default function SalesOrderListPage() {
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-6">
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700">
-            {OPEN_ORDER_DOC_STATUS_FILTER.map((f) => (
+            {ORDER_DOC_STATUS_FILTER.map((f) => (
               <option key={f.value} value={f.value}>{t(ORDER_FILTER_KEY[f.value] ?? f.value)}</option>
             ))}
           </select>
@@ -235,9 +237,7 @@ export default function SalesOrderListPage() {
                   ) : null}
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">{t("sales.list.colTotal")}</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">{t("sales.list.colStatus")}</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">{t("sales.list.colOutboundWh")}</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">{t("sales.list.colWmsProcess")}</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">{t("sales.soList.colRetur")}</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 sm:px-6">{t("sales.list.colActions")}</th>
                 </tr>
               </thead>
@@ -246,11 +246,13 @@ export default function SalesOrderListPage() {
                   const doc = getSalesOrderDocStatus(so);
                   const st = ORDER_DOC_STATUS_UI[doc];
                   const cancelled = doc === "cancelled";
+                  const openRetur = openReturs.get(so.id);
+                  const returDisp = openRetur ? returDisplayForSalesOrder(openRetur) : null;
                   return (
                     <tr key={so.id} className={`hover:bg-slate-50 ${cancelled ? "opacity-60" : ""}`}>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600 sm:px-6">{fmtDate(so.order_date)}</td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <Link href={`/bisnis/penjualan/buat?so=${so.id}`} className="font-medium text-indigo-600 hover:underline">{so.order_no}</Link>
+                        <Link href={`/bisnis/penjualan/${so.id}?view=so`} className="font-medium text-indigo-600 hover:underline">{so.order_no}</Link>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-700">{so.expand?.customer?.name ?? "—"}</td>
                       {stores.length > 1 ? (
@@ -262,29 +264,25 @@ export default function SalesOrderListPage() {
                         {cancelled ? "—" : fmt(so.total ?? 0)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>{t(ORDER_STATUS_KEY[doc] ?? st.label)}</span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
-                        {so.expand?.warehouse?.name ?? <span className="text-slate-400">{t("sales.list.warehouseNotSelected")}</span>}
+                        {returDisp && openRetur ? (
+                          <Link
+                            href={`/bisnis/penjualan/${so.id}?view=so`}
+                            title={t("sales.returStatus.link", { no: openRetur.retur_no })}
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline ${returDisp.cls}`}
+                          >
+                            {t(returDisp.labelId)}
+                          </Link>
+                        ) : (
+                          <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>
+                            {t(ORDER_STATUS_KEY[doc] ?? st.label)}
+                          </span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <WmsRouteBadge order={so} kind="sales" />
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {(() => {
-                          const open = openReturs.get(so.id);
-                          if (!open) return <span className="text-slate-400">—</span>;
-                          const disp = returDisplayForSalesOrder(open);
-                          return (
-                            <Link
-                              href={`/bisnis/penjualan/${so.id}`}
-                              title={t("sales.returStatus.link", { no: open.retur_no })}
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline ${disp.cls}`}
-                            >
-                              {t(disp.labelId)}
-                            </Link>
-                          );
-                        })()}
+                        <SalesWmsStageCell
+                          order={so}
+                          href={`/bisnis/penjualan/${so.id}?view=so`}
+                        />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
                         <SalesOrderActionMenu order={so} store={resolveStoreForSalesOrder(so, stores)} />

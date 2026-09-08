@@ -1,5 +1,7 @@
 import type PocketBase from "pocketbase";
-import { normalizeAuthModel } from "@/lib/auth-model";
+import { isOwnerAccount, isOwnerOrHrAccount } from "@/lib/auth-model";
+
+export { isOwnerAccount };
 
 export const USER_COMPANIES_COLLECTION = "biz_user_companies";
 
@@ -20,15 +22,9 @@ export type CompanyOption = {
   code?: string;
 };
 
-export function isOwnerAccount(user: Record<string, unknown> | null | undefined): boolean {
-  if (!user) return false;
-  return normalizeAuthModel(user).accountType === "owner";
-}
-
 export function canManageCompanyAccess(user: Record<string, unknown> | null | undefined): boolean {
   if (!user) return false;
-  const auth = normalizeAuthModel(user);
-  return auth.accountType === "owner" || auth.roleCode === "hr";
+  return isOwnerOrHrAccount(user);
 }
 
 /** Daftar ID entitas yang boleh diakses user. Owner = semua entitas aktif. */

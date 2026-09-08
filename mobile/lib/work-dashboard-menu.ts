@@ -1,9 +1,10 @@
 import type { ComponentProps } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { canAccess, getOperationalDashboardRoute, normalizeAuthModel } from "@/lib/rbac";
-import { canAccessHrNativeModule } from "@/lib/hr-native-access";
+import { hasCapability } from "@/lib/capabilities";
 import { canAccessInventory } from "@/lib/inventory/access";
 import { hasOperationalBypass, isOperationalModuleLocked } from "@/lib/operational-access-gate";
+import { normalizeAuthModel } from "@/lib/rbac";
+import type { MobileCapability } from "@/lib/capabilities";
 
 type AuthUser = Record<string, unknown>;
 
@@ -20,7 +21,10 @@ export type WorkDashboardTile = {
   iconColor: string;
   group: WorkDashboardTileGroup;
   nativeHref: string;
-  accessPath?: string;
+  /** Capability required to show tile (Phase 31). */
+  requiredCapability?: MobileCapability;
+  /** Phase NEXT — pending count from scoped desk summary API */
+  badgeCount?: number;
 };
 
 export type WorkDashboardSections = {
@@ -29,7 +33,7 @@ export type WorkDashboardSections = {
 };
 
 export function getNativeHomeHref(user: AuthUser | null | undefined): `/(tabs)/${string}` {
-  if (getOperationalDashboardRoute(user)) return "/(tabs)/kerja";
+  if (user && hasCapability(user, "dashboard.operational")) return "/(tabs)/kerja";
   return "/(tabs)/attendance";
 }
 
@@ -41,7 +45,7 @@ function nativeTile(
   iconBg: string,
   iconColor: string,
   nativeHref: string,
-  accessPath?: string
+  requiredCapability?: MobileCapability
 ): WorkDashboardTile {
   return {
     id,
@@ -52,25 +56,21 @@ function nativeTile(
     iconColor,
     nativeHref,
     group: "work-native",
-    accessPath,
+    requiredCapability,
   };
 }
 
+/**
+ * Phase 35I-L — Meja Kerja is action center only.
+ * Personal activity (profil/absensi/cuti/lembur) lives in Absensi/Profil tabs — not here.
+ * Reports/notifications are not Meja Kerja tiles.
+ */
 const PERSONAL_TILES: WorkDashboardTile[] = [];
 
+/** Field / scan actions only — not a mini warehouse ERP catalog. */
 function getInventoryNativeTiles(user: AuthUser): WorkDashboardTile[] {
   if (!canAccessInventory(user)) return [];
   return [
-    nativeTile(
-      "inv-hub",
-      "Gudang",
-      "Zona, scan QR, cek stok",
-      "cube",
-      "#dbeafe",
-      "#1d4ed8",
-      "/inventory",
-      "/inventory"
-    ),
     nativeTile(
       "inv-zone-scan",
       "Scan zona",
@@ -79,47 +79,27 @@ function getInventoryNativeTiles(user: AuthUser): WorkDashboardTile[] {
       "#d1fae5",
       "#047857",
       "/inventory/zone-scan",
-      "/inventory"
+      "inventory.zone_scan"
     ),
     nativeTile(
       "inv-product",
-      "Cek stok",
-      "Scan barcode produk",
+      "Scan produk",
+      "Barcode → produk / lokasi / qty",
       "barcode",
       "#fef3c7",
       "#000000",
       "/inventory/product-scan",
-      "/inventory"
-    ),
-    nativeTile(
-      "inv-packing",
-      "Kemasan",
-      "Checklist order gudang",
-      "cube",
-      "#fce7f3",
-      "#be185d",
-      "/inventory/packing",
-      "/inventory"
+      "inventory.product_scan"
     ),
     nativeTile(
       "inv-opname",
-      "Opname stok",
-      "Hitung fisik stok",
+      "Validasi opname",
+      "Hitung fisik di lapangan",
       "clipboard",
       "#fef3c7",
       "#b45309",
       "/inventory/opname",
-      "/inventory"
-    ),
-    nativeTile(
-      "inv-movement",
-      "Mutasi",
-      "Draf masuk/keluar",
-      "swap-horizontal",
-      "#ede9fe",
-      "#6d28d9",
-      "/inventory/movement-new",
-      "/inventory"
+      "inventory.opname"
     ),
   ];
 }
@@ -135,15 +115,14 @@ function getWmsNativeTiles(user: AuthUser): WorkDashboardTile[] {
       "#cffafe",
       "#0e7490",
       "/wms/workstation-scan",
-      "/wms"
+      "wms.workstation_scan"
     ),
   ];
 }
 
 /** Antrean HR di HP — respons ke pengajuan staf. */
 function getHrNativeWorkTiles(user: AuthUser): WorkDashboardTile[] {
-  if (!canAccessHrNativeModule(user)) return [];
-  return [
+  const tiles: WorkDashboardTile[] = [
     nativeTile(
       "hr-leave-queue",
       "Antrean cuti",
@@ -152,7 +131,7 @@ function getHrNativeWorkTiles(user: AuthUser): WorkDashboardTile[] {
       "#fef3c7",
       "#b45309",
       "/hr/leave-queue",
-      "/hr"
+      "hr.queue.leave"
     ),
     nativeTile(
       "hr-overtime-queue",
@@ -162,7 +141,7 @@ function getHrNativeWorkTiles(user: AuthUser): WorkDashboardTile[] {
       "#fef3c7",
       "#000000",
       "/hr/overtime-queue",
-      "/hr/overtime"
+      "hr.queue.overtime"
     ),
     nativeTile(
       "hr-field-queue",
@@ -172,9 +151,38 @@ function getHrNativeWorkTiles(user: AuthUser): WorkDashboardTile[] {
       "#ccfbf1",
       "#0f766e",
       "/hr/field-queue",
-      "/hr/field-activity"
+      "hr.queue.field_activity"
+    ),
+    nativeTile(
+      "hr-recruitment-queue",
+      "Approval rekrutmen",
+      "Setujui / tolak permintaan rekrutmen",
+      "person-add",
+      "#e0e7ff",
+      "#3730a3",
+      "/hr/recruitment-queue",
+      "hr.queue.leave"
+    ),
+    nativeTile(
+      "hr-findings",
+      "Temuan HR",
+      "Catat temuan + bukti foto",
+      "alert-circle-outline",
+      "#fee2e2",
+      "#991b1b",
+      "/findings",
+      "finding.view"
     ),
   ];
+  return tiles.filter(
+    (t) => !t.requiredCapability || hasCapability(user, t.requiredCapability),
+  );
+}
+
+function filterTilesByCapability(user: AuthUser, tiles: WorkDashboardTile[]): WorkDashboardTile[] {
+  return tiles.filter(
+    (t) => !t.requiredCapability || hasCapability(user, t.requiredCapability),
+  );
 }
 
 export function getWorkDashboardSections(
@@ -183,21 +191,18 @@ export function getWorkDashboardSections(
   const empty: WorkDashboardSections = { personal: [], workNative: [] };
   if (!user) return empty;
 
-  const personal = PERSONAL_TILES.filter((t) => !t.accessPath || canAccess(user, t.accessPath));
+  const personal = filterTilesByCapability(user, PERSONAL_TILES);
 
-  const inventory = getInventoryNativeTiles(user);
-  const wms = getWmsNativeTiles(user);
-  const ops = [...wms, ...inventory];
-
-  if (isHrOrOwnerAccount(user)) {
-    return { personal, workNative: [...getHrNativeWorkTiles(user), ...ops] };
-  }
+  const inventory = filterTilesByCapability(user, getInventoryNativeTiles(user));
+  const wms = filterTilesByCapability(user, getWmsNativeTiles(user));
+  const hrTiles = getHrNativeWorkTiles(user);
+  const ops = [...wms, ...inventory, ...hrTiles];
 
   if (ops.length > 0) {
     return { personal, workNative: ops };
   }
 
-  return empty;
+  return { personal, workNative: [] };
 }
 
 export function getWorkDashboardTiles(user: AuthUser | null | undefined): WorkDashboardTile[] {
@@ -211,8 +216,7 @@ export function hasOperationalWorkModules(user: AuthUser | null | undefined): bo
 
 export function isHrOrOwnerAccount(user: AuthUser | null | undefined): boolean {
   if (!user) return false;
-  const auth = normalizeAuthModel(user);
-  return auth.accountType === "owner" || auth.roleCode === "hr";
+  return hasCapability(user, "hr.queue.leave") || hasCapability(user, "leave.approve");
 }
 
 /** Semua pengguna login melihat tab Meja kerja (konten mengikuti check-in/out). */
@@ -249,31 +253,31 @@ export function getWorkDashboardTitle(user: AuthUser | null | undefined): string
 
 export function getWorkDashboardSubtitle(user: AuthUser | null | undefined): string {
   if (canAccessInventory(user) && !isHrOrOwnerAccount(user)) {
-    return "Scan QR zona gudang dan cek stok produk dari HP.";
+    return "Action center lapangan: scan zona/produk dan validasi — bukan mini ERP.";
   }
   if (isHrOrOwnerAccount(user)) {
-    return "Respons cuti, lembur, dan luar kantor dari staf — pengaturan lengkap di laptop.";
+    return "Approval cepat (cuti/lembur/luar kantor). Workspace HR penuh ada di Desktop.";
   }
   if (hasOperationalBypass(user)) {
-    return "Akses operasional tidak dibatasi check-in untuk peran Anda.";
+    return "Akses operasional tidak dibatasi absen masuk untuk peran Anda.";
   }
   if (isOperationalModuleLocked(user)) {
-    return "Check-in dulu di tab Absensi untuk membuka meja kerja. Check-out menutup lagi.";
+    return "Absen masuk dulu di tab Absensi untuk membuka meja kerja. Absen pulang menutup lagi.";
   }
   const auth = normalizeAuthModel(user);
   if (auth.dashboardAccess) {
-    return "Sesi aktif — gunakan dashboard operasional di laptop untuk modul lengkap.";
+    return "Action center saja. Profil, absensi, cuti, lembur ada di tab Absensi/Profil. ERP penuh di Desktop.";
   }
-  return "Sesi operasional aktif setelah check-in. Cuti & lembur tetap di tab Absensi.";
+  return "Sesi operasional aktif setelah absen masuk. Aktivitas personal tetap di tab Absensi.";
 }
 
 export function getWorkSectionHint(user: AuthUser | null | undefined): string {
   if (isHrOrOwnerAccount(user)) {
-    return "Antrean native — tidak perlu browser.";
+    return "Approval / antrean — otorisasi sama dengan Desktop.";
   }
-  return "Terbuka setelah check-in di tab Absensi.";
+  return "Tindakan lapangan — terbuka setelah absen masuk.";
 }
 
 export function getPersonalSectionHint(): string {
-  return "Cuti, lembur, luar kantor: tab Absensi · slip gaji: tab Profil.";
+  return "Aktivitas personal tidak di Meja Kerja: Absensi · Cuti · Lembur · Profil.";
 }

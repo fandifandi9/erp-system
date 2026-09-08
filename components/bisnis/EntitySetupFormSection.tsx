@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Landmark, Loader2, Pencil, Warehouse } from "lucide-react";
+import { Landmark, Loader2, Pencil, Warehouse, PackageOpen, AlertTriangle } from "lucide-react";
 import {
   fetchAvailableModules,
   fetchEntityModules,
   moduleOptionSub,
-  WAREHOUSE_ROLE_LABELS,
   type AvailableModules,
   type EntityModules,
   type ModuleListItem,
@@ -54,9 +53,8 @@ function CreateSection({ companyName, companyId, value, onChange }: CreateProps)
       title="Modul operasional entitas"
       description={
         <>
-          Satu entitas = <strong>satu gudang</strong> (penerimaan pembelian &amp; penyimpanan WMS) +{" "}
-          <strong>satu rekening bank</strong> (pembayaran pembelian). Pilih modul yang belum punya entitas atau
-          buat baru sebelum simpan.
+          Saat entitas disimpan, sistem otomatis menyiapkan <strong>3 gudang terkunci</strong> (entitas, sementara,
+          rusak) + <strong>satu rekening bank</strong>. Gudang penjualan ditambah nanti lewat menu Toko.
         </>
       }
     />
@@ -74,6 +72,7 @@ function EditSection({
 }: EditProps) {
   const [mods, setMods] = useState<EntityModules | null>(null);
   const [loading, setLoading] = useState(true);
+  const prefillDoneRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -90,23 +89,41 @@ function EditSection({
   }, [load]);
 
   useEffect(() => {
+    prefillDoneRef.current = null;
+  }, [companyId]);
+
+  useEffect(() => {
     if (!mods || stackComplete !== false || !onProvisionChange || !provision) return;
-    const empty =
-      !provision.warehouse.selectedId &&
-      !provision.cashAccount.selectedId;
-    if (!empty) return;
+    if (provision.warehouse.selectedId || provision.cashAccount.selectedId) return;
+
+    const whId = mods.primaryWarehouse?.id ?? "";
+    const caId = mods.primaryCashAccount?.id ?? "";
+    if (!whId && !caId) return;
+
+    const key = `${companyId}:${whId}:${caId}`;
+    if (prefillDoneRef.current === key) return;
+    prefillDoneRef.current = key;
+
     onProvisionChange({
       store: provision.store,
       warehouse: {
-        selectedId: mods.primaryWarehouse?.id ?? "",
+        selectedId: whId,
         newName: mods.primaryWarehouse?.name ?? provision.warehouse.newName,
       },
       cashAccount: {
-        selectedId: mods.primaryCashAccount?.id ?? "",
+        selectedId: caId,
         newName: mods.primaryCashAccount?.name ?? provision.cashAccount.newName,
       },
     });
-  }, [mods, stackComplete, onProvisionChange, provision]);
+  }, [
+    mods,
+    stackComplete,
+    onProvisionChange,
+    provision,
+    companyId,
+    provision?.warehouse.selectedId,
+    provision?.cashAccount.selectedId,
+  ]);
 
   if (loading) {
     return (
@@ -117,7 +134,7 @@ function EditSection({
     );
   }
 
-  const extraWarehouses = (mods?.warehouses.length ?? 0) - (mods?.primaryWarehouse ? 1 : 0);
+  const extraRetailWarehouses = (mods?.warehouses ?? []).filter((w) => w.warehouse_role === "retail").length;
   const extraCash = (mods?.cashAccounts.length ?? 0) - (mods?.primaryCashAccount ? 1 : 0);
 
   return (
@@ -125,7 +142,8 @@ function EditSection({
       <div>
         <p className="text-sm font-semibold text-slate-900">Modul operasional — {companyName}</p>
         <p className="mt-1 text-xs text-slate-500">
-          Satu gudang + satu rekening bank per entitas. Modul terkunci pada entitas ini setelah ditautkan.
+          Saat entitas dibuat, sistem otomatis menyiapkan 3 gudang terkunci (entitas, sementara, rusak) + rekening
+          bank. Gudang penjualan ditambah lewat menu Toko.
         </p>
       </div>
 
@@ -158,15 +176,41 @@ function EditSection({
           <EntityModuleCard
             icon={Warehouse}
             title="Gudang entitas"
-            emptyHint="Belum ada gudang"
+            emptyHint="Belum ada — buat ulang modul operasional"
             editHref="/gudang/daftar"
             item={
               mods.primaryWarehouse
                 ? {
                     label: mods.primaryWarehouse.name,
-                    sub:
-                      WAREHOUSE_ROLE_LABELS[mods.primaryWarehouse.warehouse_role ?? "main"] ??
-                      "Penerimaan pembelian — keluar via Transfer Gudang",
+                    sub: "Penerimaan pembelian — terkunci, 1 per entitas",
+                  }
+                : null
+            }
+          />
+          <EntityModuleCard
+            icon={PackageOpen}
+            title="Gudang sementara"
+            emptyHint="Belum ada — buat ulang modul operasional"
+            editHref="/gudang/daftar"
+            item={
+              mods.transitWarehouse
+                ? {
+                    label: mods.transitWarehouse.name,
+                    sub: "QC penerimaan & retur — terkunci, 1 per entitas",
+                  }
+                : null
+            }
+          />
+          <EntityModuleCard
+            icon={AlertTriangle}
+            title="Gudang rusak"
+            emptyHint="Belum ada — buat ulang modul operasional"
+            editHref="/gudang/daftar"
+            item={
+              mods.damagedWarehouse
+                ? {
+                    label: mods.damagedWarehouse.name,
+                    sub: "Karantina barang cacat — terkunci, 1 per entitas",
                   }
                 : null
             }
@@ -188,12 +232,14 @@ function EditSection({
         </div>
       ) : null}
 
-      {extraWarehouses > 0 || extraCash > 0 ? (
+      {extraRetailWarehouses > 0 || extraCash > 0 ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Ada modul tambahan lama ({extraWarehouses > 0 ? `${extraWarehouses} gudang` : ""}
-          {extraWarehouses > 0 && extraCash > 0 ? ", " : ""}
-          {extraCash > 0 ? `${extraCash} rekening` : ""}) — sistem memakai satu gudang dan satu rekening utama
-          per entitas.
+          {extraRetailWarehouses > 0 ? `${extraRetailWarehouses} gudang penjualan (toko)` : ""}
+          {extraRetailWarehouses > 0 && extraCash > 0 ? " · " : ""}
+          {extraCash > 0 ? `${extraCash} rekening tambahan lama` : ""}
+          {extraRetailWarehouses > 0 || extraCash > 0
+            ? " — kelola gudang penjualan di Pengaturan → Toko."
+            : ""}
         </p>
       ) : null}
 
@@ -205,6 +251,16 @@ function EditSection({
       {mods && !mods.primaryCashAccount ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Belum ada <strong>rekening bank</strong> — pembayaran pembelian membutuhkan rekening entitas.
+        </p>
+      ) : null}
+      {mods && !mods.transitWarehouse ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Belum ada <strong>gudang sementara</strong> — klik &quot;Tautkan / buat modul operasional&quot; di atas.
+        </p>
+      ) : null}
+      {mods && !mods.damagedWarehouse ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Belum ada <strong>gudang rusak</strong> — klik &quot;Tautkan / buat modul operasional&quot; di atas.
         </p>
       ) : null}
     </div>

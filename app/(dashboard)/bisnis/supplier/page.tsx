@@ -110,18 +110,18 @@ export default function SupplierPage() {
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Supplier</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Pemasok</h1>
             <p className="mt-1 text-sm text-slate-500">Database supplier dan riwayat pembelian</p>
           </div>
           <button onClick={openNew}
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
-            <Plus className="h-4 w-4" /> Tambah Supplier
+            <Plus className="h-4 w-4" /> Tambah pemasok
           </button>
         </div>
 
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatCard icon={Truck} color="indigo" label="Total Supplier" value={totalItems} />
-          <StatCard icon={CheckCircle2} color="emerald" label="Supplier Aktif" value={activeCount} />
+          <StatCard icon={Truck} color="indigo" label="Total pemasok" value={totalItems} />
+          <StatCard icon={CheckCircle2} color="emerald" label="Pemasok aktif" value={activeCount} />
         </div>
 
         {error && (
@@ -222,7 +222,7 @@ export default function SupplierPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <h2 className="text-lg font-semibold text-slate-900">{editId ? "Edit Supplier" : "Tambah Supplier"}</h2>
+              <h2 className="text-lg font-semibold text-slate-900">{editId ? "Edit pemasok" : "Tambah pemasok"}</h2>
               <button onClick={() => { setShowModal(false); setForm(EMPTY_FORM); setEditId(null); }}
                 className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
                 <X className="h-5 w-5" />

@@ -8,22 +8,41 @@ import {
   fetchPurchaseOrderLines,
   updatePurchaseOrder,
 } from "./client";
-import { emitBusinessEvent } from "@/lib/tenant/activity-events";
+import { emitBusinessEventServer } from "@/lib/tenant/activity-server";
+import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
+import { BISNIS_COLLECTIONS } from "./types";
 import type {
   PurchaseOrder,
+  PurchaseOrderLine,
   WarehouseProcessMode,
   WarehouseProcessStatus,
 } from "./types";
 
 export const WAREHOUSE_PROCESS_STATUS_UI: Record<
   WarehouseProcessStatus,
-  { label: string; cls: string }
+  { label: string; labelKey: string; cls: string }
 > = {
-  pending: { label: "Menunggu gudang", cls: "bg-slate-100 text-slate-700" },
-  checking: { label: "Sedang dicek", cls: "bg-blue-100 text-blue-800" },
-  hold: { label: "Hold", cls: "bg-amber-100 text-amber-900" },
-  processing: { label: "Sedang diproses", cls: "bg-indigo-100 text-indigo-800" },
-  complete: { label: "Komplit", cls: "bg-emerald-100 text-emerald-800" },
+  pending: {
+    label: "Menunggu gudang",
+    labelKey: "inventory.whStatus.pending",
+    cls: "bg-slate-100 text-slate-700",
+  },
+  checking: {
+    label: "Sedang dicek",
+    labelKey: "inventory.whStatus.checking",
+    cls: "bg-blue-100 text-blue-800",
+  },
+  hold: { label: "Hold", labelKey: "inventory.whStatus.hold", cls: "bg-amber-100 text-amber-900" },
+  processing: {
+    label: "Sedang diproses",
+    labelKey: "inventory.whStatus.processing",
+    cls: "bg-indigo-100 text-indigo-800",
+  },
+  complete: {
+    label: "Selesai",
+    labelKey: "inventory.whStatus.complete",
+    cls: "bg-emerald-100 text-emerald-800",
+  },
 };
 
 export function getWarehouseProcessStatus(
@@ -90,10 +109,15 @@ export function getPurchaseWmsDisplayStatus(
     PurchaseOrder,
     "send_to_warehouse_at" | "warehouse_process_status" | "status"
   >,
-): { badgeId: string; label: string; cls: string } | null {
+): { badgeId: string; label: string; labelKey: string; cls: string } | null {
   if (!po.send_to_warehouse_at && !po.warehouse_process_status) return null;
   if (po.status === "received") {
-    return { badgeId: "po_received", label: "Stok masuk", cls: "bg-emerald-100 text-emerald-800" };
+    return {
+      badgeId: "po_received",
+      label: "Stok masuk",
+      labelKey: "wms.badge.po_received",
+      cls: "bg-emerald-100 text-emerald-800",
+    };
   }
   const wh = getWarehouseProcessStatus(po);
   if (wh) return { ...WAREHOUSE_PROCESS_STATUS_UI[wh], badgeId: `wh_${wh}` };
@@ -127,21 +151,44 @@ export async function sendPurchaseOrderToWarehouse(
 
 export type WarehouseProcessAction = "start_check" | "hold" | "complete";
 
+export type WarehouseProcessOpts = {
+  note?: string;
+  receiving_warehouse?: string;
+  surat_jalan_no?: string;
+  surat_jalan_verified?: boolean;
+  process_mode?: WarehouseProcessMode;
+  /** Wajib saat complete — hindari race dengan autosave QC di browser. */
+  receiving_workflow_json?: string;
+};
+
+/** Browser: panggil API server (admin PB untuk posting stok). */
+export async function updateWarehouseProcessApi(
+  poId: string,
+  action: WarehouseProcessAction,
+  opts?: WarehouseProcessOpts,
+): Promise<PurchaseOrder> {
+  const res = await fetch(`/api/bisnis/purchase-orders/${encodeURIComponent(poId)}/warehouse-process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ action, ...opts }),
+  });
+  const data = (await res.json()) as { ok?: boolean; data?: PurchaseOrder; error?: string };
+  if (!res.ok || !data.ok || !data.data) {
+    throw new Error(data.error || "Gagal menyimpan proses gudang.");
+  }
+  return data.data;
+}
+
 export async function updateWarehouseProcess(
   poId: string,
   userId: string,
   action: WarehouseProcessAction,
-  opts?: {
-    note?: string;
-    receiving_warehouse?: string;
-    surat_jalan_no?: string;
-    surat_jalan_verified?: boolean;
-    process_mode?: WarehouseProcessMode;
-    /** Wajib saat complete — hindari race dengan autosave QC di browser. */
-    receiving_workflow_json?: string;
-  },
+  opts?: WarehouseProcessOpts,
 ): Promise<PurchaseOrder> {
-  let po = await fetchPurchaseOrder(poId);
+  // Server-only: admin PB (kredensial .env.local). Jangan panggil dari browser.
+  const pb = await getInventoryAdminPb();
+  let po = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getOne<PurchaseOrder>(poId);
   if (!po.send_to_warehouse_at) {
     throw new Error("PO belum dikirim ke gudang.");
   }
@@ -150,7 +197,7 @@ export async function updateWarehouseProcess(
   }
 
   const now = new Date().toISOString();
-  const base = {
+  const base: Partial<PurchaseOrder> = {
     warehouse_processed_by: userId,
     warehouse_processed_at: now,
     ...(opts?.surat_jalan_no !== undefined ? { surat_jalan_no: opts.surat_jalan_no } : {}),
@@ -160,7 +207,7 @@ export async function updateWarehouseProcess(
   };
 
   if (action === "start_check") {
-    return updatePurchaseOrder(poId, {
+    return pb.collection(BISNIS_COLLECTIONS.purchaseOrders).update<PurchaseOrder>(poId, {
       ...base,
       warehouse_process_status: "checking",
       warehouse_received_at: po.warehouse_received_at ?? now,
@@ -168,7 +215,7 @@ export async function updateWarehouseProcess(
   }
 
   if (action === "hold") {
-    return updatePurchaseOrder(poId, {
+    return pb.collection(BISNIS_COLLECTIONS.purchaseOrders).update<PurchaseOrder>(poId, {
       ...base,
       warehouse_process_status: "hold",
       warehouse_process_mode: "hold",
@@ -178,10 +225,17 @@ export async function updateWarehouseProcess(
     });
   }
 
-  const poLines = await fetchPurchaseOrderLines(poId);
+  const poLines = await pb
+    .collection(BISNIS_COLLECTIONS.purchaseOrderLines)
+    .getFullList<PurchaseOrderLine>({
+      filter: `purchase_order = "${poId.replace(/"/g, '\\"')}"`,
+      expand: "product",
+      sort: "created",
+      requestKey: null,
+    });
 
   if (opts?.receiving_workflow_json) {
-    po = await updatePurchaseOrder(poId, {
+    po = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).update<PurchaseOrder>(poId, {
       receiving_workflow_json: opts.receiving_workflow_json,
     });
   }
@@ -190,7 +244,11 @@ export async function updateWarehouseProcess(
   const wfErr = validateReceivingWorkflowComplete(poLines, wf);
   if (wfErr) throw new Error(wfErr);
 
-  const updated = await updatePurchaseOrder(poId, {
+  // Posting stok dulu — baru tandai Komplit. Hindari status tersimpan + error stok.
+  const { postWmsPurchaseReceivingToTransit } = await import("./purchase-receiving-finalize");
+  await postWmsPurchaseReceivingToTransit(poId, userId);
+
+  const updated = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).update<PurchaseOrder>(poId, {
     ...base,
     warehouse_process_status: "complete",
     warehouse_process_mode: opts?.process_mode ?? po.warehouse_process_mode ?? "direct",
@@ -198,7 +256,7 @@ export async function updateWarehouseProcess(
       po.warehouse_process_status === "hold" ? po.warehouse_hold_note : undefined,
   });
 
-  void emitBusinessEvent({
+  await emitBusinessEventServer(pb, {
     event_code: "warehouse.receiving.completed",
     module: "warehouse",
     entity_type: "biz_purchase_orders",
@@ -208,9 +266,6 @@ export async function updateWarehouseProcess(
     payload: { ref: po.po_no, po_no: po.po_no },
     actor_id: userId,
   });
-
-  const { postWmsPurchaseReceivingToTransit } = await import("./purchase-receiving-finalize");
-  await postWmsPurchaseReceivingToTransit(poId, userId);
 
   return updated;
 }

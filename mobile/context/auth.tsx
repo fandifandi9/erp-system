@@ -10,6 +10,7 @@ import React, {
 import { AppState, type AppStateStatus } from "react-native";
 import { router } from "expo-router";
 import type { RecordModel, UnsubscribeFunc } from "pocketbase";
+import { ClientResponseError } from "pocketbase";
 import { pb, waitForAuthStoreReady } from "@/lib/pocketbase";
 import { extractMfaId } from "../lib/auth-mfa";
 import {
@@ -32,6 +33,7 @@ import {
   triggerSessionExpired,
 } from "@/lib/auth-lifecycle";
 import { authLog } from "@/lib/auth-log";
+import { getPocketBaseUrl } from "@/lib/env";
 
 type AuthModel = RecordModel & {
   id: string;
@@ -73,6 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [, bump] = useState(0);
   const unsubRef = useRef<UnsubscribeFunc | undefined>(undefined);
   const refreshLock = useRef(false);
+  /** Blocks session-nonce verify/subscribe while login is finishing nonce registration. */
+  const sessionSetupRef = useRef(false);
 
   useEffect(() => {
     setupGlobal401Handler(pb);
@@ -148,22 +152,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithPassword = useCallback(
     async (email: string, password: string): Promise<SignInPasswordResult> => {
+      const pbHost = (() => {
+        try {
+          return new URL(getPocketBaseUrl()).host;
+        } catch {
+          return "(invalid)";
+        }
+      })();
+      authLog.loginStart(pbHost);
+      sessionSetupRef.current = true;
       try {
-        await pb.collection("users").authWithPassword(email.trim(), password);
+        await clearMobileSessionNonce();
+        await pb.collection("users").authWithPassword(email.trim().toLowerCase(), password);
+        authLog.loginPbAuthOk(pb.authStore.model?.id);
         try {
           await registerMobileSessionAfterAuth(pb);
+          authLog.sessionNonceSaved(true);
         } catch (regErr) {
+          authLog.sessionNonceSaved(false);
           console.error(regErr);
           pb.authStore.clear();
           throw new Error(
-            "Gagal memperbarui sesi. Tambahkan field `session_nonce` di users dan izinkan update sendiri di PocketBase."
+            "Gagal memperbarui sesi. Silakan coba lagi atau hubungi HR."
           );
         }
         return { kind: "success" };
       } catch (err: unknown) {
         const mfaId = extractMfaId(err);
         if (mfaId) {
-          const sent = await pb.collection("users").requestOTP(email.trim());
+          const sent = await pb.collection("users").requestOTP(email.trim().toLowerCase());
           const otpId =
             typeof sent === "object" &&
             sent !== null &&
@@ -173,12 +190,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               : null;
           if (!otpId) {
             throw new Error(
-              "MFA aktif tetapi OTP tidak terkirim. Periksa email atau PocketBase."
+              "MFA aktif tetapi kode OTP tidak terkirim. Periksa email Anda atau hubungi HR."
             );
           }
           return { kind: "mfa", otpId, mfaId };
         }
+        const status = err instanceof ClientResponseError ? err.status : 0;
+        const category =
+          status === 400
+            ? "invalid_credentials"
+            : status === 401
+              ? "unauthorized"
+              : status === 0
+                ? "network"
+                : "error";
+        authLog.loginFail(status, category);
         throw err;
+      } finally {
+        sessionSetupRef.current = false;
       }
     },
     []
@@ -186,17 +215,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithOtp = useCallback(
     async (otpId: string, code: string, mfaId: string) => {
-      await pb.collection("users").authWithOTP(otpId, code.trim(), {
-        query: { mfaId },
-      });
+      sessionSetupRef.current = true;
       try {
-        await registerMobileSessionAfterAuth(pb);
-      } catch (regErr) {
-        console.error(regErr);
-        pb.authStore.clear();
-        throw new Error(
-          "Gagal memperbarui sesi. Tambahkan field `session_nonce` di users dan izinkan update sendiri di PocketBase."
-        );
+        await clearMobileSessionNonce();
+        await pb.collection("users").authWithOTP(otpId, code.trim(), {
+          query: { mfaId },
+        });
+        authLog.loginPbAuthOk(pb.authStore.model?.id);
+        try {
+          await registerMobileSessionAfterAuth(pb);
+          authLog.sessionNonceSaved(true);
+        } catch (regErr) {
+          authLog.sessionNonceSaved(false);
+          console.error(regErr);
+          pb.authStore.clear();
+          throw new Error(
+            "Gagal memperbarui sesi. Silakan coba lagi atau hubungi HR."
+          );
+        }
+      } finally {
+        sessionSetupRef.current = false;
       }
     },
     []
@@ -216,13 +254,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const uid = user.id;
 
     const verify = async () => {
+      if (sessionSetupRef.current) return;
       if (!pb.authStore.isValid) return;
       try {
         await ensureMobileSessionNonceSynced(pb);
         const fresh = await pb.collection("users").getOne(uid, { requestKey: null });
         if (
           await shouldLogoutMobileSessionMismatch(
-            fresh as { session_nonce?: unknown }
+            fresh as { mobile_session_nonce?: unknown }
           )
         ) {
           await logoutSessionNonceMismatch();
@@ -249,8 +288,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         unsubRef.current = await pb.collection("users").subscribe(uid, async (e) => {
           try {
+            if (sessionSetupRef.current) return;
             if (e.record?.id !== uid) return;
-            const server = String(e.record.session_nonce ?? "").trim();
+            const server = String(e.record.mobile_session_nonce ?? "").trim();
             const local = (await getMobileSessionNonce())?.trim() ?? "";
             if (server && local && server !== local) {
               await logoutSessionNonceMismatch();

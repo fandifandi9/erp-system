@@ -55,9 +55,12 @@ export function purchaseOrderFilterToPb(filter: string): string | undefined {
 
 export function salesOrderFilterToPb(filter: string): string | undefined {
   if (filter === "all") return undefined;
-  if (filter === "draft") return 'status = "draft"';
+  if (filter === "draft") {
+    // Draf + proses gudang (belum confirmed/invoice).
+    return '(status = "draft" || status = "processing")';
+  }
   if (filter === "finished") {
-    return '(status = "confirmed" || status = "processing" || status = "shipped" || status = "delivered")';
+    return '(status = "confirmed" || status = "shipped" || status = "delivered")';
   }
   if (filter === "cancelled") return 'status = "cancelled"';
   return `status = "${filter}"`;
@@ -70,7 +73,11 @@ export const ORDER_DOC_STATUS_FILTER = [
   { value: "cancelled", label: "Dibatalkan" },
 ] as const;
 
-/** Filter tab Pesanan — hanya draf & dibatalkan (SO/PO yang sudah jadi invoice/bill disembunyikan). */
+/**
+ * Filter lama: hanya draf/batal (tanpa yang sudah jadi invoice/bill).
+ * Prefer ORDER_DOC_STATUS_FILTER + salesOrderFilterToPb / purchaseOrderFilterToPb
+ * agar histori pesanan tetap tampil.
+ */
 export const OPEN_ORDER_DOC_STATUS_FILTER = [
   { value: "all", label: "Semua" },
   { value: "draft", label: "Draf" },
@@ -87,14 +94,14 @@ const PO_OPEN_DRAFT =
 const PO_OPEN_LIST =
   '(status = "draft" || status = "sent" || status = "confirmed" || status = "partial_received" || status = "cancelled")';
 
-/** Daftar SO di tab Pesanan — exclude yang sudah confirmed/delivered (sudah punya invoice). */
+/** @deprecated Gunakan salesOrderFilterToPb agar histori SO tetap ada setelah invoice. */
 export function openSalesOrdersListFilterToPb(filter: string): string | undefined {
   if (filter === "draft") return '(status = "draft" || status = "processing")';
   if (filter === "cancelled") return 'status = "cancelled"';
   return SO_OPEN_LIST;
 }
 
-/** Daftar PO di tab Pesanan — exclude yang sudah received (sudah punya tagihan). */
+/** @deprecated Gunakan purchaseOrderFilterToPb agar histori PO tetap ada setelah tagihan. */
 export function openPurchaseOrdersListFilterToPb(filter: string): string | undefined {
   if (filter === "draft") return PO_OPEN_DRAFT;
   if (filter === "cancelled") return 'status = "cancelled"';

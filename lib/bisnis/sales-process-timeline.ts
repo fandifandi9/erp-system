@@ -125,17 +125,28 @@ export function buildSalesProcessTimeline(
 
   const valDone = !!wf.validate_pack?.completed_at;
   const ws = wf.validate_pack?.workstation_code?.trim();
+  const cctv = wf.validate_pack?.workstation_cctv?.trim();
+  const packStart = wf.validate_pack?.packing_started_at ?? wf.validate_pack?.started_at;
+  const packEnd = wf.validate_pack?.completed_at;
+  let validateDetail = [ws ? `Meja ${ws}` : "", cctv ? `CCTV ${cctv}` : ""].filter(Boolean).join(" · ");
+  if (packStart && packEnd) {
+    const mins = Math.max(
+      1,
+      Math.round((new Date(packEnd).getTime() - new Date(packStart).getTime()) / 60_000),
+    );
+    validateDetail = [validateDetail, `Durasi packing ${mins} menit`].filter(Boolean).join(" · ");
+  }
   steps.push({
     id: "validate",
     label: "Validasi & packing",
     actor: wf.validate_pack?.user_name?.trim() || undefined,
-    at: valDone ? wf.validate_pack?.completed_at : wf.validate_pack?.started_at,
+    at: valDone ? wf.validate_pack?.completed_at : packStart,
     status: valDone
       ? "done"
       : stage === "validate_pack"
         ? "active"
         : stepStatus(stage, "validate_pack"),
-    detail: ws ? `Stasiun ${ws}` : undefined,
+    detail: validateDetail || undefined,
   });
 
   steps.push({

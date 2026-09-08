@@ -23,10 +23,12 @@ export const hubsEn: MessageTree = {
   },
   laporan: {
     subtitle: "Quick access to operational and financial reports",
+    subtitleHr: "HR reports: attendance, leave, payroll, and staffing summaries",
     importMp: "MP sales import",
     importMpDesc: "Upload marketplace sales Excel",
   },
   pengaturan: {
     subtitle: "SERBA system master data and configuration",
+    subtitleHr: "HR settings: roles, permissions, and notifications",
   },
 };

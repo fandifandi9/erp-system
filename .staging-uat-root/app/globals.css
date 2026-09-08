@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/*
+ * Rebrand SERBA System: kuning (#FFC107) — hitam (#1A1A1A) — putih.
+ * Palet aksen indigo/violet/purple di-remap global sehingga seluruh UI
+ * mengikuti warna brand tanpa mengubah ratusan komponen:
+ * - shade 50–400  → tint kuning (latar, border halus)
+ * - shade 500     → kuning brand (focus ring, border aktif)
+ * - shade 600–950 → hitam (tombol utama, teks aksen, hover)
+ * Warna semantik (merah=error, emerald=sukses, sky/blue=info) tetap.
+ */
+@theme {
+  --color-indigo-50: #fffbeb;
+  --color-indigo-100: #fef3c7;
+  --color-indigo-200: #fde68a;
+  --color-indigo-300: #fcd34d;
+  --color-indigo-400: #fbbf24;
+  --color-indigo-500: #ffc107;
+  --color-indigo-600: #1a1a1a;
+  --color-indigo-700: #000000;
+  --color-indigo-800: #000000;
+  --color-indigo-900: #1a1a1a;
+  --color-indigo-950: #000000;
+
+  --color-violet-50: #fffbeb;
+  --color-violet-100: #fef3c7;
+  --color-violet-200: #fde68a;
+  --color-violet-300: #fcd34d;
+  --color-violet-400: #fbbf24;
+  --color-violet-500: #ffc107;
+  --color-violet-600: #1a1a1a;
+  --color-violet-700: #000000;
+  --color-violet-800: #000000;
+  --color-violet-900: #1a1a1a;
+  --color-violet-950: #000000;
+
+  --color-purple-50: #fffbeb;
+  --color-purple-100: #fef3c7;
+  --color-purple-200: #fde68a;
+  --color-purple-300: #fcd34d;
+  --color-purple-400: #fbbf24;
+  --color-purple-500: #ffc107;
+  --color-purple-600: #1a1a1a;
+  --color-purple-700: #000000;
+  --color-purple-800: #000000;
+  --color-purple-900: #1a1a1a;
+  --color-purple-950: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Kontras placeholder & isian form di Windows / browser dengan forced-colors ringan */
+input::placeholder,
+textarea::placeholder {
+  color: #475569;
+  opacity: 1;
+}
+
+/* PWA / mobile: tinggi viewport dinamis, area aman notch, kurangi “rubber band” */
+@supports (height: 100dvh) {
+  html,
+  body {
+    min-height: 100dvh;
+  }
+}
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+@media (display-mode: standalone) {
+  html {
+    /* Status bar + home indicator tidak menimpa konten penuh */
+    overscroll-behavior-y: contain;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100,116,139,0.4) transparent;
+}
+
+@keyframes share-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes share-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes share-pulse-row {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgb(238 242 255);
+  }
+}
+
+.animate-share-toast-in {
+  animation: share-toast-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-share-pop {
+  animation: share-pop 0.45s ease-out forwards;
+}
+
+.animate-share-pulse-row {
+  animation: share-pulse-row 0.6s ease-in-out 2;
+}

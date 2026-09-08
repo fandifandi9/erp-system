@@ -125,7 +125,7 @@ export default function ArusKasPage() {
         rows.push({
           id: `pay-${p.id}`,
           date: p.payment_date,
-          label: isRefund ? "Refund penjualan" : "Penerimaan invoice",
+          label: isRefund ? "Pengembalian penjualan" : "Penerimaan faktur",
           reference: p.reference_no,
           amount: p.amount,
           direction: isRefund ? "out" : "in",

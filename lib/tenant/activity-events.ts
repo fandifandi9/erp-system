@@ -12,6 +12,7 @@ const MODULE_SEVERITY: Record<string, "info" | "success" | "warning"> = {
   "wms.packing.completed": "success",
   "wms.awb.uploaded": "info",
   "wms.ready_pickup": "info",
+  "wms.desk.request": "warning",
   "wms.pickup.completed": "success",
   "sales.order.sent_wms": "info",
   "purchase.order.created": "info",

@@ -1,5 +1,6 @@
 import {
   getOutboundStageFromSo,
+  parseOutboundWorkflow,
   WMS_STAGE_UI,
 } from "@/lib/wms/outbound-workflow";
 import type { SalesOrder, SalesOrderStatus, WarehouseProcessStatus } from "./types";
@@ -62,12 +63,18 @@ export function canSendSalesOrderToWarehouse(
 export function canCreateInvoiceFromSalesOrder(
   so: Pick<
     SalesOrder,
-    "status" | "send_to_warehouse_at" | "warehouse_process_status"
+    "status" | "send_to_warehouse_at" | "warehouse_process_status" | "outbound_workflow_json"
   >,
 ): boolean {
   if (so.status === "cancelled") return false;
   if (!so.send_to_warehouse_at) return true;
-  return so.warehouse_process_status === "complete";
+  if (so.warehouse_process_status === "complete") return true;
+  const wf = parseOutboundWorkflow(so.outbound_workflow_json);
+  if (wf.pick?.completed_at) {
+    const stage = getOutboundStageFromSo(so);
+    return stage === "validate_pack" || stage === "ready_pickup" || stage === "completed";
+  }
+  return false;
 }
 
 export function invoiceBlockedReason(
@@ -78,6 +85,7 @@ export function invoiceBlockedReason(
     | "warehouse_process_status"
     | "warehouse"
     | "warehouse_hold_note"
+    | "outbound_workflow_json"
   >,
 ): string | null {
   if (so.status === "cancelled") return "SO dibatalkan.";
@@ -92,6 +100,8 @@ export function invoiceBlockedReason(
     return "Gudang masih Hold — selesaikan picking/packing dulu.";
   }
   if (wh !== "complete") {
+    const wf = parseOutboundWorkflow(so.outbound_workflow_json);
+    if (wf.pick?.completed_at) return null;
     return "Proses gudang belum selesai — invoice manual belum bisa dibuat.";
   }
   return null;

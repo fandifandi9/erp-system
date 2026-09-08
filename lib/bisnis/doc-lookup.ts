@@ -4,19 +4,54 @@ import {
   type Invoice,
   type PurchaseBill,
   type PurchaseOrder,
+  type Retur,
   type SalesOrder,
 } from "@/lib/bisnis/types";
 import { escapePbFilter } from "@/lib/bisnis/doc-search";
-import { canShowSalesReturUi } from "@/lib/bisnis/sales-retur-ui";
+import { canShowSalesReturUi, findActiveSalesRetur } from "@/lib/bisnis/sales-retur-ui";
 import { canCreatePurchaseRetur } from "@/lib/bisnis/purchase-retur-guards";
 
 export type SalesDocLookup =
-  | { mode: "invoice"; invoiceId: string; soId: string; docNo: string; canRetur: boolean }
-  | { mode: "so"; soId: string; docNo: string; canRetur: boolean };
+  | {
+      mode: "invoice";
+      invoiceId: string;
+      soId: string;
+      docNo: string;
+      canRetur: boolean;
+      viewReturId?: string;
+    }
+  | {
+      mode: "so";
+      soId: string;
+      docNo: string;
+      canRetur: boolean;
+      viewReturId?: string;
+    };
 
 export type PurchaseDocLookup =
   | { mode: "bill"; billId: string; poId: string; docNo: string; canRetur: boolean }
   | { mode: "po"; poId: string; docNo: string; canRetur: boolean };
+
+async function returFlagsForSalesOrder(soId: string): Promise<{
+  hasActiveRetur: boolean;
+  viewReturId?: string;
+}> {
+  if (!soId) return { hasActiveRetur: false };
+  try {
+    const returs = await pb.collection(BISNIS_COLLECTIONS.returs).getFullList<Retur>({
+      filter: `(sales_order = "${soId}" || reference_id = "${soId}") && type = "penjualan"`,
+      sort: "-created",
+      requestKey: null,
+    });
+    const active = findActiveSalesRetur(returs);
+    return {
+      hasActiveRetur: !!active,
+      viewReturId: active?.id ?? returs.find((r) => r.status !== "cancelled")?.id,
+    };
+  } catch {
+    return { hasActiveRetur: false };
+  }
+}
 
 export async function lookupSalesDocByNumber(docNo: string): Promise<SalesDocLookup | null> {
   const q = docNo.trim();
@@ -31,15 +66,23 @@ export async function lookupSalesDocByNumber(docNo: string): Promise<SalesDocLoo
   if (inv) {
     const soId = typeof inv.sales_order === "string" ? inv.sales_order : "";
     let canRetur = false;
+    let viewReturId: string | undefined;
     if (soId) {
       try {
         const so = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getOne<SalesOrder>(soId);
-        canRetur = canShowSalesReturUi({ salesOrder: so, invoice: inv, hasInvoice: true });
+        const flags = await returFlagsForSalesOrder(soId);
+        viewReturId = flags.viewReturId;
+        canRetur = canShowSalesReturUi({
+          salesOrder: so,
+          invoice: inv,
+          hasInvoice: true,
+          hasActiveRetur: flags.hasActiveRetur,
+        });
       } catch {
         canRetur = false;
       }
     }
-    return { mode: "invoice", invoiceId: inv.id, soId, docNo: inv.invoice_no, canRetur };
+    return { mode: "invoice", invoiceId: inv.id, soId, docNo: inv.invoice_no, canRetur, viewReturId };
   }
 
   const soList = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getList<SalesOrder>(1, 1, {
@@ -48,11 +91,13 @@ export async function lookupSalesDocByNumber(docNo: string): Promise<SalesDocLoo
   });
   const so = soList.items[0];
   if (so) {
+    const flags = await returFlagsForSalesOrder(so.id);
     return {
       mode: "so",
       soId: so.id,
       docNo: so.order_no,
       canRetur: false,
+      viewReturId: flags.viewReturId,
     };
   }
 

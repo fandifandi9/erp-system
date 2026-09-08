@@ -63,22 +63,61 @@ export default function LoginPage() {
         "Login berhasil tetapi gagal memperbarui sesi perangkat. Pastikan koleksi users punya field `session_nonce` (text) dan aturan update mengizinkan user memperbarui rekaman sendiri."
       );
     }
-    syncPbAuthCookie(pb);
+    await syncPbAuthCookie(pb);
     blurActiveElement();
     router.push(getDefaultRouteForUser(pb.authStore.model as Record<string, unknown>));
+  }
+
+  async function lookupEmailRegistered(
+    trimmedEmail: string,
+  ): Promise<{ registered: boolean; status?: "active" | "inactive" } | null> {
+    try {
+      const res = await fetch("/api/auth/login-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail }),
+      });
+      const data = (await res.json()) as {
+        registered?: boolean;
+        status?: "active" | "inactive";
+      };
+      if (!res.ok || typeof data.registered !== "boolean") return null;
+      return { registered: data.registered, status: data.status };
+    } catch {
+      return null;
+    }
   }
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
 
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(normalizedEmail)) {
+      setError("Format email tidak valid. Contoh: nama@gmail.com");
+      return;
+    }
+
     setLoading(true);
     setError("");
+    let lookup: { registered: boolean; status?: "active" | "inactive" } | null = null;
 
     try {
+      lookup = await lookupEmailRegistered(normalizedEmail);
+      if (lookup?.registered === false) {
+        setError("Email belum terdaftar di sistem ini. Periksa ejaan email, atau gunakan akun yang sudah dibuat.");
+        return;
+      }
+      if (lookup?.registered === true && lookup.status === "inactive") {
+        setError(
+          "Akun belum diaktifkan. Minta Owner mengaktifkan akun Anda di menu HR → Karyawan sebelum login.",
+        );
+        return;
+      }
+
       const authData = await pb
         .collection("users")
-        .authWithPassword(email.trim(), password);
+        .authWithPassword(normalizedEmail, password);
 
       const user = authData.record;
       if (user.status !== "active") {
@@ -90,10 +129,10 @@ export default function LoginPage() {
       await finalizeSuccessfulLogin(user.id);
     } catch (err: unknown) {
       const mfaId = extractMfaId(err);
-      if (mfaId && email.trim()) {
+      if (mfaId && normalizedEmail) {
         mfaIdRef.current = mfaId;
         try {
-          const sent = await pb.collection("users").requestOTP(email.trim());
+          const sent = await pb.collection("users").requestOTP(normalizedEmail);
           const id =
             typeof sent === "object" &&
             sent !== null &&
@@ -128,26 +167,15 @@ export default function LoginPage() {
         );
         return;
       }
-      const hasEmailError =
-        typeof err === "object" &&
-        err !== null &&
-        "data" in err &&
-        typeof (err as { data?: unknown }).data === "object" &&
-        (err as { data?: { email?: unknown } }).data?.email;
-
-      const hasPasswordError =
-        typeof err === "object" &&
-        err !== null &&
-        "data" in err &&
-        typeof (err as { data?: unknown }).data === "object" &&
-        (err as { data?: { password?: unknown } }).data?.password;
-
-      if (hasEmailError) {
-        setError("Email tidak valid");
-      } else if (hasPasswordError) {
-        setError("Email atau kata sandi salah");
+      if (lookup == null) {
+        lookup = await lookupEmailRegistered(normalizedEmail);
+      }
+      if (lookup?.registered === false) {
+        setError("Email belum terdaftar di sistem ini. Periksa ejaan email, atau gunakan akun yang sudah dibuat.");
+      } else if (lookup?.registered === true) {
+        setError("Password salah. Coba lagi atau klik Lupa password.");
       } else {
-        setError("Login gagal, cek kembali");
+        setError("Login gagal. Periksa email dan password, lalu coba lagi.");
       }
     } finally {
       blurActiveElement();
@@ -207,7 +235,7 @@ export default function LoginPage() {
 
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = forgotEmail.trim();
+    const trimmed = forgotEmail.trim().toLowerCase();
     if (!trimmed) {
       setForgotError("Email wajib diisi.");
       return;
@@ -266,7 +294,7 @@ export default function LoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Image
             src={SYSTEM_LOGO_WIDE_PATH}
-            alt="SDI"
+            alt={APP_DISPLAY_NAME}
             width={220}
             height={Math.round(220 / SYSTEM_LOGO_WIDE_ASPECT)}
             className="mb-4 object-contain"

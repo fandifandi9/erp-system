@@ -1,12 +1,38 @@
 import type { Invoice, Retur, SalesOrder } from "@/lib/bisnis/types";
 import { canCreateSalesRetur } from "@/lib/bisnis/sales-retur-guards";
 
+/** Retur masih berjalan (belum selesai / dibatalkan). */
+export function isActiveSalesRetur(
+  r: Pick<Retur, "status" | "workflow_phase">,
+): boolean {
+  if (r.status === "cancelled" || r.status === "completed") return false;
+  if (r.workflow_phase === "completed" || r.workflow_phase === "cancelled") return false;
+  return true;
+}
+
+/** Retur aktif pertama (jika ada). */
+export function findActiveSalesRetur(returs: Retur[]): Retur | null {
+  return returs.find(isActiveSalesRetur) ?? null;
+}
+
+/** Retur untuk ditampilkan: aktif dulu, lalu retur terakhir yang tidak dibatalkan. */
+export function findViewableSalesRetur(returs: Retur[]): Retur | null {
+  return (
+    findActiveSalesRetur(returs) ??
+    returs.find((r) => r.status !== "cancelled") ??
+    null
+  );
+}
+
 /** Retur penjualan hanya dari penjualan yang sudah punya invoice aktif. */
 export function canShowSalesReturUi(input: {
   salesOrder?: Pick<SalesOrder, "status"> | null;
   invoice?: Pick<Invoice, "status"> | null;
   hasInvoice?: boolean;
+  /** Jika ada retur aktif, jangan tampilkan aksi buat retur. */
+  hasActiveRetur?: boolean;
 }): boolean {
+  if (input.hasActiveRetur) return false;
   if (!input.salesOrder) return false;
   if (!input.hasInvoice && !input.invoice) return false;
   if (input.invoice?.status === "cancelled") return false;
@@ -36,7 +62,7 @@ export type SalesReturDocLabels = {
 };
 
 export function salesReturDocLabels(
-  retur: Pick<Retur, "retur_no" | "invoice" | "sales_order" | "reference_id"> & {
+  retur: Pick<Retur, "retur_no" | "platform_retur_no" | "invoice" | "sales_order" | "reference_id"> & {
     expand?: Retur["expand"];
   },
   extras?: {
@@ -44,8 +70,9 @@ export function salesReturDocLabels(
     salesOrder?: Pick<SalesOrder, "order_no"> | null;
   },
 ): SalesReturDocLabels {
+  const platform = retur.platform_retur_no?.trim();
   return {
-    returNo: retur.retur_no,
+    returNo: platform || retur.retur_no,
     invoiceNo:
       extras?.invoice?.invoice_no ??
       (retur.expand as { invoice?: { invoice_no?: string } } | undefined)?.invoice?.invoice_no,

@@ -101,6 +101,9 @@ export async function mergeOutboundLinesFromSoExpanded(
   const pickLines: Record<string, OutboundLineState & { for_bundle_product_id?: string; for_bundle_label?: string }> =
     {};
 
+  // Progres picking/validasi yang sudah tercatat — jangan hilang saat merge ulang.
+  const priorLines = wf.pick?.lines ?? {};
+
   for (const row of expanded) {
     const prev = pickLines[row.product];
     const comp = componentMeta.get(row.product);
@@ -114,14 +117,19 @@ export async function mergeOutboundLinesFromSoExpanded(
     }
 
     if (!prev) {
+      const priorState = priorLines[row.product];
       pickLines[row.product] = {
         product_id: row.product,
         sku: comp?.sku,
         name: comp?.name,
         qty_required: row.qty,
-        qty_picked: 0,
-        qty_validated: 0,
-        serial_numbers: serials,
+        // Pertahankan progres yang sudah ada (qty_picked/qty_validated) agar
+        // complete_pick tidak salah menganggap picking belum lengkap.
+        qty_picked: priorState?.qty_picked ?? 0,
+        qty_validated: priorState?.qty_validated ?? 0,
+        serial_numbers: priorState?.serial_numbers?.length
+          ? priorState.serial_numbers
+          : serials,
         ...(bundleId
           ? {
               for_bundle_product_id: bundleId,

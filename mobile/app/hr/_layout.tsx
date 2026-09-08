@@ -38,6 +38,7 @@ export default function HrLayout() {
       <Stack.Screen name="leave-queue" options={{ title: "Antrean cuti" }} />
       <Stack.Screen name="overtime-queue" options={{ title: "Lembur" }} />
       <Stack.Screen name="field-queue" options={{ title: "Luar kantor" }} />
+      <Stack.Screen name="recruitment-queue" options={{ title: "Recruitment" }} />
     </Stack>
   );
 }

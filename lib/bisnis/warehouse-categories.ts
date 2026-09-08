@@ -17,11 +17,14 @@ export type WarehouseKind = "entity" | "sales" | "transit" | "damaged";
 export function resolveWarehouseKind(row: {
   warehouse_role?: string;
   store?: string;
+  company?: string;
 }): WarehouseKind {
   if (row.warehouse_role === ENTITY_WAREHOUSE_ROLE) return "entity";
   if (row.warehouse_role === TRANSIT_WAREHOUSE_ROLE) return "transit";
   if (row.warehouse_role === DAMAGED_WAREHOUSE_ROLE) return "damaged";
   if (row.warehouse_role === SALES_WAREHOUSE_ROLE || row.store) return "sales";
+  // Legacy: gudang terikat entitas (company) tanpa role eksplisit
+  if ("company" in row && row.company && !row.store) return "entity";
   return "sales";
 }
 
@@ -68,13 +71,13 @@ export const WAREHOUSE_KIND_LABELS: Record<WarehouseKind, string> = {
 
 export const WAREHOUSE_KIND_DESCRIPTIONS: Record<WarehouseKind, string> = {
   entity:
-    "Satu per entitas — penerimaan pembelian saja. Stok keluar ke toko via Transfer Gudang, bukan penjualan langsung.",
+    "Satu per entitas — dibuat otomatis saat entitas baru. Penerimaan pembelian saja; stok ke toko via Transfer Gudang.",
   sales:
-    "Terikat toko — stok untuk penjualan (online, POS, offline per kota). Satu toko boleh punya banyak gudang.",
+    "Terikat toko — stok untuk penjualan (online, POS, offline). Satu toko boleh punya banyak gudang; bisa ditambah manual di halaman ini.",
   transit:
-    "Satu per entitas — penampung sementara: barang penerimaan WMS yang belum selesai QC, retur/refund yang belum disortir. Stok dipindah ke gudang entitas, penjualan, atau rusak via Transfer Gudang.",
+    "Satu per entitas — dibuat otomatis saat entitas baru. Penampung QC penerimaan dan retur belum disortir.",
   damaged:
-    "Satu per entitas — karantina barang rusak/cacat sebelum kanibal atau pembuangan. Tidak untuk penjualan atau pembelian langsung.",
+    "Satu per entitas — dibuat otomatis saat entitas baru. Karantina barang rusak/cacat.",
 };
 
 export const WAREHOUSE_KIND_DEFAULT_NAMES: Record<WarehouseKind, string> = {

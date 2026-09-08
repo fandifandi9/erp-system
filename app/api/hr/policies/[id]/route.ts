@@ -1,0 +1,29 @@
+import { NextResponse } from "next/server";
+import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
+import { hrJsonError, rejectClientPrivilegeFields, requireOwnerOrHrApiUser } from "@/lib/hr/api-auth";
+import { upsertHrPolicy } from "@/lib/hr/hr-policy-server";
+
+type Ctx = { params: Promise<{ id: string }> };
+
+/** PATCH /api/hr/policies/[id] — update/publish policy. */
+export async function PATCH(req: Request, context: Ctx) {
+  try {
+    const ctx = await requireOwnerOrHrApiUser(req);
+    const { id } = await context.params;
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    rejectClientPrivilegeFields(body);
+    const adminPb = await getInventoryAdminPb();
+    const data = await upsertHrPolicy(adminPb, ctx, {
+      id,
+      title: String(body.title ?? ""),
+      category: String(body.category ?? "kehadiran"),
+      content: String(body.content ?? ""),
+      company_id: body.company_id != null ? String(body.company_id) : undefined,
+      effective_from: body.effective_from != null ? String(body.effective_from) : undefined,
+      publish: body.publish === true,
+    });
+    return NextResponse.json({ ok: true, data });
+  } catch (err) {
+    return hrJsonError(err);
+  }
+}

@@ -18,10 +18,10 @@ function randomPickupBody(): string {
   return out;
 }
 
-/** Kode pickup acak — sulit ditebak, format PK + 8 karakter alfanumerik. */
+/** Kode pickup acak — 8 karakter; awalan "PK" hanya di UI, bukan bagian nomor. */
 export function formatPickupCode(body: string): string {
   const clean = body.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, PICKUP_CODE_LEN);
-  return `PK${clean.padEnd(PICKUP_CODE_LEN, PICKUP_CHARSET[0]!)}`;
+  return clean.padEnd(PICKUP_CODE_LEN, PICKUP_CHARSET[0]!);
 }
 
 export async function isPickupCodeTaken(pocket: PocketBase, code: string): Promise<boolean> {
@@ -33,13 +33,23 @@ export async function isPickupCodeTaken(pocket: PocketBase, code: string): Promi
       fields: "id",
       requestKey: null,
     });
-    return hit.totalItems > 0;
+    if (hit.totalItems > 0) return true;
+  } catch {
+    /* SO schema / filter boleh gagal — lanjut cek retur */
+  }
+  try {
+    const returHit = await pocket.collection(BISNIS_COLLECTIONS.returs).getList(1, 1, {
+      filter: `resend_pickup_no = "${esc}" && status = "draft" && workflow_phase = "resend"`,
+      fields: "id",
+      requestKey: null,
+    });
+    return returHit.totalItems > 0;
   } catch {
     return false;
   }
 }
 
-/** Buat kode pickup unik — tidak berurutan seperti SO-062026-00024. */
+/** Buat kode pickup unik — tidak berurutan seperti SO090726-0024. */
 export async function generateUniquePickupCode(pocket: PocketBase): Promise<string> {
   for (let attempt = 0; attempt < 64; attempt++) {
     const code = formatPickupCode(randomPickupBody());

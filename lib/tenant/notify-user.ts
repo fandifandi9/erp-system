@@ -51,11 +51,15 @@ export function parseActivityNotifyUserId(payloadJson?: string | null): string |
   }
 }
 
+/**
+ * Bell "forMe" filter — hanya event yang ditargetkan ke user ini.
+ * Event tanpa `notify_user_id` tidak ditampilkan (lihat halaman /aktivitas untuk log global).
+ */
 export function activityEventForUser(
   payloadJson: string | undefined | null,
   userId: string,
 ): boolean {
   const target = parseActivityNotifyUserId(payloadJson);
-  if (!target) return true;
+  if (!target) return false;
   return target === userId;
 }

@@ -13,7 +13,7 @@ type PurchaseRowKey = "order_date" | "po_no" | "supplier_name" | "status" | "tot
 const PURCHASE_COLUMNS: XlsxColumnDef<PurchaseRowKey>[] = [
   { header: "Tanggal", key: "order_date", width: 14, type: "date" },
   { header: "No. PO", key: "po_no", width: 18, type: "text" },
-  { header: "Supplier", key: "supplier_name", width: 28, type: "text" },
+  { header: "Pemasok", key: "supplier_name", width: 28, type: "text" },
   { header: "Status", key: "status", width: 14, type: "text" },
   { header: "Total", key: "total", width: 16, type: "currency_idr" },
 ];

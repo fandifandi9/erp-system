@@ -44,11 +44,12 @@ export function SalesReturSoSection({ salesOrderId, openRetur, returs, onRefresh
         <SalesReturSettlementPanel retur={active} onSettled={refreshAll} />
         {active.workflow_phase === "awaiting_wms" ||
         (!active.workflow_phase && active.status === "draft") ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <span className="font-mono font-semibold">{active.retur_no}</span> — menunggu WMS.{" "}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+            <span className="font-mono font-semibold">{active.retur_no}</span> — pengiriman, menunggu
+            gudang.{" "}
             <Link
               href={`/gudang/penerimaan/retur/${active.id}`}
-              className="font-semibold text-violet-700 hover:underline"
+              className="font-semibold text-indigo-700 hover:underline"
             >
               Buka penerimaan →
             </Link>

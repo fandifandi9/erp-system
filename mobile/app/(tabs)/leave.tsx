@@ -215,7 +215,7 @@ function LeaveMonthGrid(props: {
             Warna rekan se-divisi disembunyikan agar ringan. Kuota per hari dicek oleh HR saat menyetujui pengajuan.
           </Text>
         ) : null}
-        <LegendRow color="#ecfdf5" border="#6ee7b7" label="Kosong — tap untuk booking" />
+        <LegendRow color="#ecfdf5" border="#6ee7b7" label="Kosong — ketuk untuk ajukan" />
         {divisionHeatmap ? (
           <LegendRow color="#fffbeb" border="#fbbf24" label="Ada cuti rekan divisi (slot belum penuh)" />
         ) : null}
@@ -494,7 +494,7 @@ export function LeaveStaffPanel({ embedded = false }: { embedded?: boolean }) {
     }
     if (isMonthlyLimitReached) {
       setError(
-        `Kuota booking bulan ini sudah habis (${monthlyQuotaMax}× per bulan kalender). Batalkan salah satu booking yang belum mulai atau tunggu bulan depan.`
+        `Kuota pengajuan bulan ini sudah habis (${monthlyQuotaMax}× per bulan kalender). Batalkan salah satu pengajuan yang belum mulai atau tunggu bulan depan.`
       );
       return;
     }
@@ -521,7 +521,7 @@ export function LeaveStaffPanel({ embedded = false }: { embedded?: boolean }) {
   };
 
   const handleCancel = (requestId: string) => {
-    Alert.alert("Batalkan booking?", "Yakin ingin membatalkan pengajuan cuti ini?", [
+    Alert.alert("Batalkan pengajuan?", "Yakin ingin membatalkan pengajuan cuti ini?", [
       { text: "Tidak", style: "cancel" },
       {
         text: "Ya, batalkan",
@@ -623,7 +623,7 @@ export function LeaveStaffPanel({ embedded = false }: { embedded?: boolean }) {
                     <Ionicons name="trending-up" size={22} color="#6b21a8" />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.quotaTitle}>
-                        Booking bulan ini
+                        Pengajuan bulan ini
                         {monthlyBooking.monthLabel ? ` — ${monthlyBooking.monthLabel}` : ""}
                       </Text>
                       <Text style={styles.quotaSub}>
@@ -645,7 +645,7 @@ export function LeaveStaffPanel({ embedded = false }: { embedded?: boolean }) {
                   </View>
                   <View style={styles.barWrap}>
                     <View style={styles.barTop}>
-                      <Text style={styles.barLbl}>Pemakaian slot booking</Text>
+                      <Text style={styles.barLbl}>Pemakaian slot pengajuan</Text>
                       <Text style={styles.barPct}>
                         {Math.round((monthlyBooking.used / monthlyBooking.max) * 100)}%
                       </Text>
@@ -699,11 +699,11 @@ export function LeaveStaffPanel({ embedded = false }: { embedded?: boolean }) {
               <View style={styles.infoCard}>
                 <Ionicons name="information-circle-outline" size={22} color={PWA.indigo} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.infoTitle}>Ketentuan booking cuti</Text>
+                  <Text style={styles.infoTitle}>Ketentuan pengajuan cuti</Text>
                   <Text style={styles.infoBody}>
                     Satu tanggal = satu pengajuan ({DAYS_PER_CALENDAR_BOOKING} hari). Kuota bulan: maks.{" "}
                     {monthlyQuotaMax}×. Divisi untuk kuota: <Text style={{ fontWeight: "700" }}>{userDivision || "—"}</Text>
-                    . Maks. {maxPeopleDisplay} orang/divisi/hari (saat ACC HR).
+                    . Maks. {maxPeopleDisplay} orang/divisi/hari (saat persetujuan HR).
                   </Text>
                 </View>
               </View>
@@ -745,7 +745,7 @@ export function LeaveStaffPanel({ embedded = false }: { embedded?: boolean }) {
               {requests.length === 0 ? (
                 <View style={styles.emptyHist}>
                   <Ionicons name="calendar-outline" size={48} color={PWA.slate300} />
-                  <Text style={styles.emptyHistTitle}>Belum ada riwayat booking</Text>
+                  <Text style={styles.emptyHistTitle}>Belum ada riwayat pengajuan</Text>
                   <Pressable style={styles.emptyHistBtn} onPress={() => setTab("request")}>
                     <Text style={styles.emptyHistBtnText}>Pengajuan di kalender</Text>
                   </Pressable>

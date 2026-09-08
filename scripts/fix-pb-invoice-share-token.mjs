@@ -1,6 +1,6 @@
 /**
- * Token publik aman untuk share invoice (QR dalam paket).
- * Run: node scripts/fix-pb-invoice-share-token.mjs
+ * Tambah field share_token ke dokumen bisnis (invoice, PO, SO) untuk link publik aman.
+ * Run: npm run pb:share-token-schema
  */
 import fs from "fs";
 import path from "path";
@@ -50,21 +50,7 @@ function fieldId(prefix) {
   return `${prefix}${Date.now().toString(36)}`.slice(0, 15);
 }
 
-const colRes = await fetch(`${url}/api/collections/biz_invoices`, { headers });
-const col = await colRes.json();
-if (!col.id) {
-  console.error("Collection biz_invoices tidak ditemukan", col);
-  process.exit(1);
-}
-
-const schema = [...(col.schema ?? col.fields ?? [])];
-const exists = schema.find((f) => f.name === "share_token");
-if (exists) {
-  console.log("Field share_token sudah ada.");
-  process.exit(0);
-}
-
-schema.push({
+const shareTokenField = {
   system: false,
   id: fieldId("shrtok"),
   name: "share_token",
@@ -73,17 +59,39 @@ schema.push({
   presentable: false,
   unique: true,
   options: { min: 0, max: 64, pattern: "" },
-});
+};
 
-const patchRes = await fetch(`${url}/api/collections/${col.id}`, {
-  method: "PATCH",
-  headers,
-  body: JSON.stringify({ schema }),
-});
-const patchBody = await patchRes.json();
-if (!patchRes.ok) {
-  console.error("PATCH failed", patchRes.status, patchBody);
-  process.exit(1);
+async function ensureShareToken(collectionName) {
+  const colRes = await fetch(`${url}/api/collections/${collectionName}`, { headers });
+  const col = await colRes.json();
+  if (!col.id) {
+    console.error(`Collection ${collectionName} tidak ditemukan`, col);
+    process.exit(1);
+  }
+
+  const schema = [...(col.schema ?? col.fields ?? [])];
+  if (schema.find((f) => f.name === "share_token")) {
+    console.log(`${collectionName}: share_token sudah ada.`);
+    return;
+  }
+
+  schema.push({ ...shareTokenField, id: fieldId("shrtok") });
+
+  const patchRes = await fetch(`${url}/api/collections/${col.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ schema }),
+  });
+  const patchBody = await patchRes.json();
+  if (!patchRes.ok) {
+    console.error(`PATCH ${collectionName} failed`, patchRes.status, patchBody);
+    process.exit(1);
+  }
+  console.log(`${collectionName}: share_token ditambahkan.`);
 }
 
-console.log("Schema biz_invoices updated — share_token siap.");
+for (const name of ["biz_invoices", "biz_purchase_orders", "biz_sales_orders"]) {
+  await ensureShareToken(name);
+}
+
+console.log("Selesai — share_token siap untuk invoice, PO, dan SO.");

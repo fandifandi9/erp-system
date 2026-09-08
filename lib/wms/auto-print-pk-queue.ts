@@ -1,7 +1,7 @@
 import type { SalesOrder } from "@/lib/bisnis/types";
 import { getPkFromSo } from "@/lib/wms/pk-identity";
 import { printPkForSalesOrder } from "@/lib/wms/print-pk-for-order";
-import { markPkAutoPrinted, wasPkAutoPrinted } from "@/lib/wms/pk-print-tracker";
+import { markPkAutoPrinted, unmarkPkAutoPrinted, wasPkAutoPrinted } from "@/lib/wms/pk-print-tracker";
 import { getAutoPrintPkEnabled } from "@/lib/wms/picking-preferences";
 import { updateSalesWarehouseProcess } from "@/lib/wms/sales-warehouse-process";
 
@@ -46,6 +46,10 @@ export async function autoPrintPkForOrder(
 ): Promise<SalesOrder> {
   if (!getAutoPrintPkEnabled() || wasPkAutoPrinted(so.id)) return so;
 
+  // Klaim segera (sebelum cetak) agar loadOrders yang terpanggil beruntun
+  // tidak memicu cetak ganda untuk order yang sama.
+  markPkAutoPrinted(so.id);
+
   let active = so;
   if (!getPkFromSo(active)) {
     active = await updateSalesWarehouseProcess(active.id, opts.userId, "start_picking", {
@@ -58,10 +62,11 @@ export async function autoPrintPkForOrder(
       busy = true;
       try {
         const ok = await printPkForSalesOrder(active);
-        if (ok) markPkAutoPrinted(active.id);
+        if (!ok) unmarkPkAutoPrinted(active.id); // bukan PK valid — biar bisa dicoba lagi
         await delay(PRINT_GAP_MS);
         resolve();
       } catch (e) {
+        unmarkPkAutoPrinted(active.id); // cetak gagal — jangan kunci selamanya
         reject(e);
       } finally {
         busy = false;

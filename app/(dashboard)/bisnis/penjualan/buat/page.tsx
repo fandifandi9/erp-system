@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Fragment, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Plus, Trash2, Loader2, RotateCcw, Printer, Pencil, CreditCard, X, FileText, Ban } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Loader2, RotateCcw, Printer, Pencil, CreditCard, X, FileText, Ban, Eye } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import {
   createSalesOrder, createSalesOrderLine, updateSalesOrder, updateInvoice,
@@ -14,6 +14,7 @@ import {
   fetchTaxRates,
   fetchPaymentTerms,
   fetchPaymentMethods,
+  fetchSalesChannels,
   fetchSalesOrder,
   fetchInvoiceBySalesOrder,
   fetchRetursForSalesOrder,
@@ -27,6 +28,7 @@ import {
   invoiceBlockedReason,
 } from "@/lib/bisnis/client";
 import { canEditInvoice, getInvoiceDisplayStatus } from "@/lib/bisnis/invoice-status";
+import { salesCreateUrl } from "@/lib/bisnis/module-routes";
 import { applyInvoicePayment } from "@/lib/bisnis/invoice-payment";
 import { fetchCashAccounts } from "@/lib/bisnis/cash-client";
 import { validateStockForSale } from "@/lib/bisnis/stock-check";
@@ -57,6 +59,7 @@ import type {
   Invoice,
   Retur,
   CashAccount,
+  SalesChannel,
 } from "@/lib/bisnis/types";
 import Link from "next/link";
 import { NumSpinnerInput, fmtNum, parseNum } from "@/components/bisnis/NumSpinnerInput";
@@ -92,15 +95,15 @@ import {
   nextDocNoFor,
   salesOrderNoFromInvoice,
 } from "@/lib/bisnis/doc-number";
-import { salesCreateUrl } from "@/lib/bisnis/module-routes";
+import { assertShippingForWms } from "@/lib/bisnis/shipping-wms-gate";
 import { lookupSalesDocByNumber, type SalesDocLookup } from "@/lib/bisnis/doc-lookup";
 import { buildSalesPostSavePayload, type PostSavePayload } from "@/lib/bisnis/post-save-print";
 import type { BizDocumentPrintData } from "@/lib/bisnis/doc-print-types";
 import { openBizDocumentPrint } from "@/lib/bisnis/doc-print";
-import { canShowSalesReturUi } from "@/lib/bisnis/sales-retur-ui";
-import { SalesReturCreateModal } from "@/components/bisnis/SalesReturCreateModal";
+import { canShowSalesReturUi, findActiveSalesRetur, findViewableSalesRetur } from "@/lib/bisnis/sales-retur-ui";
 import { SalesReturSoSection } from "@/components/bisnis/SalesReturSoSection";
 import { returDisplayForSalesOrder } from "@/lib/bisnis/retur-workflow";
+import { returCreateUrl } from "@/lib/bisnis/module-routes";
 import { fetchCouriersCatalogCached, prefetchCouriers } from "@/lib/bisnis/couriers";
 import { prefetchAwbLabelInfo } from "@/lib/bisnis/awb-label-client";
 import { useLgUp } from "@/lib/ui/use-media-query";
@@ -115,6 +118,7 @@ import type { PosMeta } from "@/lib/pos/types";
 import { uploadAwbLabel } from "@/lib/bisnis/awb-label-client";
 import { LineSerialFields } from "@/components/bisnis/LineSerialFields";
 import { SalesProcessTimeline } from "@/components/bisnis/SalesProcessTimeline";
+import { PkEmailStatusPanel } from "@/components/bisnis/PkEmailStatusPanel";
 import {
   fetchRequiresSerialMap,
   parseSerialNumbersJson,
@@ -209,7 +213,7 @@ type SalesSaveTarget =
   | { kind: "so"; soId: string };
 
 function findOpenReturFromList(returs: Retur[]): Retur | null {
-  return returs.find((r) => r.status === "draft" || r.status === "approved") ?? null;
+  return findActiveSalesRetur(returs);
 }
 
 type SalesWarehouseRow = Pick<InvWarehouse, "id" | "name" | "code"> & {
@@ -243,7 +247,9 @@ export default function BuatPenjualanPage() {
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodSetting[]>([]);
+  const [salesChannels, setSalesChannels] = useState<SalesChannel[]>([]);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [addCustomerName, setAddCustomerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [docChoice, setDocChoice] = useState<SalesDocLookup | null>(null);
@@ -252,7 +258,6 @@ export default function BuatPenjualanPage() {
   const [openRetur, setOpenRetur] = useState<Retur | null>(null);
   const [retursHistory, setRetursHistory] = useState<Retur[]>([]);
   const [linkedInvoice, setLinkedInvoice] = useState<Invoice | null>(null);
-  const [returModalSo, setReturModalSo] = useState<SalesOrder | null>(null);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [cancellingSo, setCancellingSo] = useState(false);
   const [sendingWarehouse, setSendingWarehouse] = useState(false);
@@ -295,6 +300,7 @@ export default function BuatPenjualanPage() {
     tax_percent: 0,
     materai_amount: 0,
     send_to_warehouse: false,
+    platform_source: "",
   });
 
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
@@ -509,7 +515,8 @@ export default function BuatPenjualanPage() {
       getCachedPaymentTerms(() => fetchPaymentTerms().catch(() => [] as PaymentTerm[])),
       getCachedPaymentMethods(() => fetchPaymentMethods().catch(() => [] as PaymentMethodSetting[])),
       getCachedWarehouses(() => fetchWarehouses(false).catch(() => [] as InvWarehouse[])),
-    ]).then(([c, co, s, p, tr, pt, pm, wh]) => {
+      fetchSalesChannels(true).catch(() => [] as SalesChannel[]),
+    ]).then(([c, co, s, p, tr, pt, pm, wh, sc]) => {
       setCustomers(c);
       setCompanyProfiles(co);
       setStores(s);
@@ -518,9 +525,40 @@ export default function BuatPenjualanPage() {
       setPaymentTerms(pt);
       setPaymentMethods(pm);
       setSalesWarehouses(wh as SalesWarehouseRow[]);
-      // Form baru: tidak mengisi default — user pilih term, metode bayar, toko, qty, dll.
+      setSalesChannels(sc);
     }).catch(() => {});
   }, []);
+
+  /** Form baru: auto-pilih opsi pertama untuk term & metode bayar (tanpa opsi "Pilih…"). */
+  useEffect(() => {
+    if (isEdit || isSoEdit) return;
+    setForm((f) => {
+      let changed = false;
+      const next = { ...f };
+      if (!next.payment_term && paymentTerms.length > 0) {
+        const term = paymentTerms[0];
+        next.payment_term = term.id;
+        const dd = new Date(next.transaction_date || Date.now());
+        dd.setDate(dd.getDate() + term.days);
+        next.due_date = dd.toISOString().slice(0, 10);
+        changed = true;
+      }
+      if (!next.payment_method && paymentMethods.length > 0) {
+        next.payment_method = paymentMethods[0].id;
+        changed = true;
+      }
+      return changed ? next : f;
+    });
+  }, [paymentTerms, paymentMethods, isEdit, isSoEdit]);
+
+  /** Form baru: auto-pilih toko pertama (sekaligus set gudang & konteks). */
+  useEffect(() => {
+    if (isEdit || isSoEdit) return;
+    if (form.store || stores.length === 0) return;
+    handleStoreChange(stores[0].id);
+    // handleStoreChange sengaja tidak di deps agar tidak memicu loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stores, form.store, isEdit, isSoEdit]);
 
   useEffect(() => {
     if (!soEditId || editId) return;
@@ -528,10 +566,9 @@ export default function BuatPenjualanPage() {
       setLoadingEdit(true);
       try {
         const soData = await fetchSalesOrder(soEditId);
+        // Histori SO: tetap di form SO (read-only jika sudah invoice), jangan lempar ke invoice.
         if (!canEditSalesOrder(soData)) {
-          const linked = await fetchInvoiceBySalesOrder(soData.id);
-          router.replace(linked ? `/bisnis/penjualan/${linked.id}` : `/bisnis/penjualan/${soData.id}`);
-          return;
+          setDocViewLocked(true);
         }
         setEditSoId(soData.id);
         prefetchAwbLabelInfo(soData.id);
@@ -551,6 +588,7 @@ export default function BuatPenjualanPage() {
               salesOrder: soData,
               invoice: inv,
               hasInvoice: true,
+              hasActiveRetur: !!findActiveSalesRetur(returs),
             }),
           );
         }
@@ -605,6 +643,7 @@ export default function BuatPenjualanPage() {
           memo: userMemoFromBody(legacyNotes),
           store,
           warehouse,
+          platform_source: soData.platform_source ?? "",
         }));
         if (soLines.length > 0) {
           setLines(
@@ -661,6 +700,7 @@ export default function BuatPenjualanPage() {
                 salesOrder: linkedSo,
                 invoice: inv,
                 hasInvoice: true,
+                hasActiveRetur: !!findActiveSalesRetur(returs),
               }),
             );
             setRetursHistory(returs);
@@ -738,6 +778,7 @@ export default function BuatPenjualanPage() {
           memo: userMemoFromBody(legacyNotes),
           store,
           warehouse,
+          platform_source: inv.platform_source ?? linkedSo?.platform_source ?? "",
         }));
         if (soLines.length > 0) {
           setLines(
@@ -978,6 +1019,7 @@ export default function BuatPenjualanPage() {
       tax_percent: 0,
       materai_amount: 0,
       send_to_warehouse: false,
+      platform_source: "",
     });
 
     setFormSessionKey((k) => k + 1);
@@ -1013,41 +1055,18 @@ export default function BuatPenjualanPage() {
     [router],
   );
 
-  const openReturModal = useCallback((soId: string) => {
-    void (async () => {
-      setDocChoiceLoading(true);
-      setError(null);
-      try {
-        const soData = await fetchSalesOrder(soId);
-        setReturModalSo(soData);
-        setDocChoice(null);
-      } catch (e: unknown) {
-        setError(getErrorMessage(e, "Gagal memuat data penjualan untuk retur"));
-      } finally {
-        setDocChoiceLoading(false);
-      }
-    })();
-  }, []);
-
-  const onReturCreated = useCallback(() => {
-    setReturModalSo(null);
-    if (editSoId) {
-      void fetchRetursForSalesOrder(editSoId)
-        .then((returs) => {
-          setRetursHistory(returs);
-          setOpenRetur(findOpenReturFromList(returs));
-        })
-        .catch(() => {
-          setRetursHistory([]);
-          setOpenRetur(null);
-        });
-    }
-  }, [editSoId]);
+  const openReturInModule = useCallback(
+    (soId: string) => {
+      setDocChoice(null);
+      router.push(returCreateUrl({ type: "penjualan", so: soId }));
+    },
+    [router],
+  );
 
   const handleEditRetur = useCallback(() => {
     if (!editSoId) return;
-    void openReturModal(editSoId);
-  }, [editSoId, openReturModal]);
+    openReturInModule(editSoId);
+  }, [editSoId, openReturInModule]);
 
   const persistDocument = async (): Promise<SalesSaveTarget | null> => {
     if (!form.customer) { setError(t("sales.create.errCustomerRequired")); return null; }
@@ -1102,6 +1121,7 @@ export default function BuatPenjualanPage() {
       }
       const pmRecord = findPaymentMethod(paymentMethods, form.payment_method);
       const soPaymentMethod = pmRecord ? salesOrderPaymentMethodValue(pmRecord) : undefined;
+      const platformSource = form.platform_source.trim() || undefined;
       if (!isEdit) {
         const docCfg = usesInvNo ? BIZ_DOC_NUMBER_CONFIG.inv : BIZ_DOC_NUMBER_CONFIG.so;
         await assertDocNoAvailable(
@@ -1119,6 +1139,10 @@ export default function BuatPenjualanPage() {
         ...transferInfo,
         enabled: transferInfo.enabled && !!(transferInfo.bank_name && transferInfo.account_number),
       });
+
+      if (form.send_to_warehouse) {
+        assertShippingForWms(notes);
+      }
 
       const stockLines = validLines.map((l) => ({
         product: l.product,
@@ -1146,6 +1170,7 @@ export default function BuatPenjualanPage() {
           customer: customerId,
           store: form.store,
           warehouse: form.warehouse,
+          platform_source: platformSource,
           order_date: form.transaction_date,
           due_date: form.due_date || undefined,
           payment_method: soPaymentMethod,
@@ -1197,6 +1222,7 @@ export default function BuatPenjualanPage() {
           customer: customerId,
           store: form.store,
           warehouse: form.warehouse,
+          platform_source: platformSource,
           order_date: form.transaction_date,
           due_date: form.due_date || undefined,
           payment_method: soPaymentMethod,
@@ -1243,6 +1269,7 @@ export default function BuatPenjualanPage() {
           status: isCash ? "paid" : undefined,
           is_cash: isCash,
           notes,
+          platform_source: platformSource,
         });
 
         if (form.warehouse && validLines.length > 0) {
@@ -1295,6 +1322,7 @@ export default function BuatPenjualanPage() {
         customer: customerId,
         store: form.store,
         warehouse: form.warehouse,
+        platform_source: platformSource,
         order_date: form.transaction_date,
         due_date: form.due_date || undefined,
         payment_method: soPaymentMethod,
@@ -1471,6 +1499,10 @@ export default function BuatPenjualanPage() {
       return;
     }
     setLastSaved(null);
+    if (isSoEdit || editSoId) {
+      router.push("/bisnis/penjualan/pesanan");
+      return;
+    }
     router.push("/bisnis/penjualan");
   };
 
@@ -1620,6 +1652,11 @@ export default function BuatPenjualanPage() {
     "w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100";
   const fieldLabel = "mb-0.5 block text-xs font-medium text-slate-600";
 
+  const openAddCustomer = (suggestedName?: string) => {
+    setAddCustomerName(suggestedName?.trim() ?? "");
+    setShowAddCustomer(true);
+  };
+
   const handleCustomerCreated = (c: Customer) => {
     setCustomers((prev) => {
       if (prev.some((x) => x.id === c.id)) return prev;
@@ -1627,7 +1664,10 @@ export default function BuatPenjualanPage() {
     });
     selectCustomer(c);
     setShowAddCustomer(false);
+    setAddCustomerName("");
   };
+
+  const viewRetur = openRetur ?? findViewableSalesRetur(retursHistory);
 
   return (
     <div className="min-h-screen mx-auto w-full max-w-none px-1 sm:px-2">
@@ -1636,20 +1676,34 @@ export default function BuatPenjualanPage() {
         docNo={docChoice?.docNo ?? ""}
         docKind={docChoice?.mode === "invoice" ? "invoice penjualan" : "sales order"}
         canRetur={docChoice?.canRetur}
+        viewReturId={docChoice?.viewReturId}
         loading={docChoiceLoading}
         onClose={() => setDocChoice(null)}
         onEdit={() => docChoice && openDocForEdit(docChoice)}
+        onViewRetur={
+          docChoice?.viewReturId
+            ? () => {
+                const id = docChoice.viewReturId!;
+                setDocChoice(null);
+                router.push(`/bisnis/retur/${id}`);
+              }
+            : undefined
+        }
         onRetur={
           docChoice?.canRetur
             ? () => {
-                void openReturModal(docChoice.soId);
+                openReturInModule(docChoice.soId);
               }
             : undefined
         }
       />
       <QuickAddCustomerModal
         open={showAddCustomer}
-        onClose={() => setShowAddCustomer(false)}
+        initialName={addCustomerName}
+        onClose={() => {
+          setShowAddCustomer(false);
+          setAddCustomerName("");
+        }}
         onCreated={handleCustomerCreated}
       />
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -1746,7 +1800,7 @@ export default function BuatPenjualanPage() {
                 inputClassName={fieldInput}
                 onSelect={selectCustomer}
                 onClear={() => setForm((f) => ({ ...f, customer: "", customer_name: "", email: "" }))}
-                onAddNew={() => setShowAddCustomer(true)}
+                onAddNew={openAddCustomer}
               />
             </div>
             <div>
@@ -1794,7 +1848,7 @@ export default function BuatPenjualanPage() {
                 }
               }}
                 className={fieldInput}>
-                <option value="">{t("sales.create.selectTerm")}</option>
+                {paymentTerms.length === 0 ? <option value="">—</option> : null}
                 {paymentTerms.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
@@ -1807,7 +1861,7 @@ export default function BuatPenjualanPage() {
               <label className={fieldLabel}>{t("sales.create.paymentMethod")}</label>
               <select data-nav value={form.payment_method} onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value }))} onKeyDown={onEnterFocusNext}
                 className={fieldInput}>
-                <option value="">{paymentMethods.length === 0 ? "—" : t("sales.create.select")}</option>
+                {paymentMethods.length === 0 ? <option value="">—</option> : null}
                 {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
@@ -1824,7 +1878,6 @@ export default function BuatPenjualanPage() {
                   onChange={(e) => handleStoreChange(e.target.value)}
                   className={fieldInput}
                 >
-                  <option value="">{t("sales.create.selectStore")}</option>
                   {form.store && !stores.some((s) => s.id === form.store) ? (
                     <option value={form.store}>{fallbackStoreName ?? form.store}</option>
                   ) : null}
@@ -1850,6 +1903,38 @@ export default function BuatPenjualanPage() {
                   </Link>
                 </p>
               ) : null}
+            </div>
+            <div>
+              <label className={fieldLabel}>{t("sales.create.marketplace")}</label>
+              <select
+                data-nav
+                value={form.platform_source}
+                disabled={fieldsLocked}
+                onKeyDown={onEnterFocusNext}
+                onChange={(e) => setForm((f) => ({ ...f, platform_source: e.target.value }))}
+                className={fieldInput}
+              >
+                <option value="">{t("sales.create.marketplaceManual")}</option>
+                {form.platform_source &&
+                !salesChannels.some((c) => c.name === form.platform_source) ? (
+                  <option value={form.platform_source}>{form.platform_source}</option>
+                ) : null}
+                {salesChannels.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {salesChannels.length === 0 ? (
+                <p className="mt-0.5 text-[10px] text-amber-700">
+                  {t("sales.create.noMarketplaceChannel")}{" "}
+                  <Link href="/bisnis/marketplace" className="font-semibold text-indigo-600 hover:underline">
+                    Master Marketplace
+                  </Link>
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[10px] text-slate-400">{t("sales.create.marketplaceHint")}</p>
+              )}
             </div>
             {form.store && salesWarehouseOptions.length > 1 ? (
               <div>
@@ -2126,6 +2211,14 @@ export default function BuatPenjualanPage() {
                   salesOrder={timelineSo}
                   emptyLabel={t("sales.create.processTimelineEmpty")}
                 />
+                {timelineSo ? (
+                  <div className="mt-3">
+                    <PkEmailStatusPanel
+                      salesOrder={timelineSo}
+                      onUpdated={(fresh) => setTimelineSo(fresh)}
+                    />
+                  </div>
+                ) : null}
               </div>
               <div className="border-t border-slate-100 pt-4">
                 <label className="mb-0.5 block text-sm font-medium text-slate-700">
@@ -2324,7 +2417,7 @@ export default function BuatPenjualanPage() {
                 ) : null}
               </>
             ) : null}
-            {(isEdit || isSoEdit) && editCanRetur && editSoId ? (
+            {(isEdit || isSoEdit) && editCanRetur && editSoId && !openRetur ? (
               <button
                 type="button"
                 onClick={() => void handleEditRetur()}
@@ -2334,6 +2427,14 @@ export default function BuatPenjualanPage() {
                 <RotateCcw className="h-4 w-4" />
                 {t("sales.create.actionRetur")}
               </button>
+            ) : (isEdit || isSoEdit) && editSoId && viewRetur ? (
+              <Link
+                href={`/bisnis/retur/${viewRetur.id}`}
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-medium text-indigo-900 transition hover:bg-indigo-100"
+              >
+                <Eye className="h-4 w-4" />
+                {t("sales.create.actionViewRetur")}
+              </Link>
             ) : (isEdit || isSoEdit) && editSoId && !openRetur && !editCanRetur ? (
               <p className="max-w-md text-xs leading-relaxed text-slate-500">
                 {!linkedInvoice && isSoEdit
@@ -2482,14 +2583,6 @@ export default function BuatPenjualanPage() {
             </form>
           </div>
         </div>
-      ) : null}
-      {returModalSo ? (
-        <SalesReturCreateModal
-          open
-          salesOrder={returModalSo}
-          onClose={() => setReturModalSo(null)}
-          onCreated={onReturCreated}
-        />
       ) : null}
     </div>
   );

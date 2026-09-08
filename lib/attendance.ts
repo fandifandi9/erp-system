@@ -12,10 +12,7 @@ import {
 import { detectSuspiciousGPSJump, getDeviceInfo } from "./device-fingerprint";
 import { getErrorMessage } from "./errors";
 import { userHasApprovedFieldActivityForDate } from "./field_activity";
-import {
-  syncOperationalAccessAfterCheckIn,
-  syncOperationalAccessAfterCheckOut,
-} from "./operational-access-sync";
+import { getBusinessDateYmd } from "@/lib/hr/business-date";
 
 /** Sejalan default form HR pegawai ketika profil tanpa toleransi eksplisit. */
 export const DEFAULT_LATE_TOLERANCE_MINUTES = 10;
@@ -198,13 +195,15 @@ function pbEsc(s: string): string {
 export interface AttendanceRecord {
   id: string;
   user: string;
+  company_id?: string;
   date: string;
   check_in?: string;
   check_out?: string;
-  /** Nama file di koleksi `attendance_logs` (field file PocketBase) */
   check_in_selfie?: string;
   status: "present" | "late" | "absent" | "leave";
   late_minutes: number;
+  early_leave_minutes?: number;
+  overtime_minutes?: number;
   work_hours: number;
   lat?: number;
   lng?: number;
@@ -212,6 +211,14 @@ export interface AttendanceRecord {
   device_id?: string;
   ip_address?: string;
   is_suspicious: boolean;
+  schedule_source?: string;
+  schedule_start?: string;
+  schedule_end?: string;
+  schedule_timezone?: string;
+  schedule_assignment_id?: string;
+  late_grace_minutes?: number;
+  early_leave_grace_minutes?: number;
+  is_working_day?: boolean;
 }
 
 export interface Office {
@@ -274,16 +281,11 @@ export interface LeaveRequest {
 // ========================================
 
 /**
- * Get today's date in YYYY-MM-DD format
+ * Business "today" for attendance / leave day keys.
+ * Phase 35I-M: Asia/Jakarta — not device/browser local TZ.
  */
 export function getTodayDate(): string {
-  const today = new Date();
-  
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return getBusinessDateYmd();
 }
 
 /**
@@ -493,18 +495,32 @@ export async function getUserProfile(userId: string): Promise<{
   try {
     // Ensure profile exists (auto-create if needed)
     const profile = await ensureProfileExists(userId);
-    
-    // Get office with expand
-    const profileWithOffice = await pb.collection("profiles").getOne(
-      profile.id,
-      { expand: "office_id", requestKey: null }
-    );
 
-    const office = profileWithOffice.expand?.office_id || null;
+    const profileWithOffice = await pb.collection("profiles").getOne(profile.id, {
+      expand: "office_id",
+      requestKey: null,
+    });
+
+    let office = (profileWithOffice.expand?.office_id as Office | undefined) || null;
+    // profiles.office_id is often text (not relation) — expand may be empty.
+    if (!office) {
+      const officeId = String(
+        (profileWithOffice as { office_id?: string }).office_id ?? profile.office_id ?? "",
+      ).trim();
+      if (officeId) {
+        try {
+          office = (await pb.collection("offices").getOne(officeId, {
+            requestKey: null,
+          })) as unknown as Office;
+        } catch {
+          office = null;
+        }
+      }
+    }
 
     return {
       profile: profileWithOffice as unknown as Profile,
-      office: office as unknown as Office,
+      office: office as Office | null,
     };
   } catch (error: unknown) {
     console.error("getUserProfile error:", error);
@@ -518,29 +534,25 @@ export async function getUserProfile(userId: string): Promise<{
 export async function hasApprovedLeaveToday(userId: string): Promise<boolean> {
   const uid = pbEsc(userId);
   const todayStr = getTodayDate();
-
-  const hybridFilter = `user="${uid}" && status="approved" && (
-    date="${todayStr}" ||
-    (start_date<="${todayStr}" && end_date>="${todayStr}")
-  )`;
-  const legacyFilter = `user="${uid}" && date="${todayStr}" && status="approved"`;
-
-  try {
-    await pb.collection("leave_requests").getFirstListItem(hybridFilter, {
-      requestKey: null,
-    });
-    return true;
-  } catch {
-    /* Skema PB lama / filter tak cocok → coba lagi pola date saja */
+  const dayStart = `${todayStr} 00:00:00.000Z`;
+  const dayEnd = `${todayStr} 23:59:59.999Z`;
+  const filters = [
+    `user="${uid}" && status="approved" && date >= "${dayStart}" && date <= "${dayEnd}"`,
+    `user="${uid}" && status="approved" && date ~ "${todayStr}"`,
+    `user="${uid}" && status="approved" && date="${todayStr}"`,
+    `user="${uid}" && status="approved" && (start_date<="${todayStr}" && end_date>="${todayStr}")`,
+  ];
+  for (const filter of filters) {
     try {
-      await pb.collection("leave_requests").getFirstListItem(legacyFilter, {
+      await pb.collection("leave_requests").getFirstListItem(filter, {
         requestKey: null,
       });
       return true;
     } catch {
-      return false;
+      /* try next */
     }
   }
+  return false;
 }
 
 /**
@@ -928,10 +940,7 @@ export async function checkIn(
 
     console.log("└─ ✅ Saved to database (ID:", record.id, ")\n");
 
-    const op = await syncOperationalAccessAfterCheckIn(userId);
-    if (!op.ok) {
-      console.warn("⚠️ Akses web operasional tidak diperbarui (field users / rule PocketBase):", op.error);
-    }
+    // Operational user flags are synced by /api/hr/attendance (server admin PB).
 
     console.log("═══════════════════════════════════════════════════");
     console.log("✅ CHECK-IN SUCCESS!");
@@ -1022,10 +1031,7 @@ export async function checkOut(userId: string): Promise<{
     });
     console.log("└─ ✅ Record updated successfully\n");
 
-    const op = await syncOperationalAccessAfterCheckOut(userId);
-    if (!op.ok) {
-      console.warn("⚠️ Cutoff akses web operasional gagal (field users / rule):", op.error);
-    }
+    // Operational user flags are synced by /api/hr/attendance (server admin PB).
 
     console.log("═══════════════════════════════════════════════════");
     console.log("✅ CHECK-OUT SUCCESS!");

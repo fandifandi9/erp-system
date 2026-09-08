@@ -115,7 +115,6 @@ export const CATALOG_WEB_PATHS = [
 export const GUDANG_WEB_PATHS = [
   "/gudang",
   "/gudang/penerimaan",
-  "/gudang/qc",
   "/gudang/putaway",
   "/gudang/picking",
   "/gudang/validasi",
@@ -129,7 +128,6 @@ export const GUDANG_WEB_PATHS = [
   "/gudang/lokasi",
   "/gudang/produk",
   "/gudang/transfer",
-  "/gudang/scanner",
   "/gudang/label",
   "/gudang/stok",
   "/gudang/sortir",
@@ -189,6 +187,8 @@ export const STAFF_WEB_PATHS = [
   "/staff/lapangan",
   "/staff/gps",
   "/staff/payroll",
+  "/hr/rating",
+  "/hr/reports",
 ] as const;
 
 export const ERP_INVENTORY_CORE_PATHS = [

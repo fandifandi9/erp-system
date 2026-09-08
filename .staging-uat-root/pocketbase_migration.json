@@ -1,0 +1,493 @@
+{
+  "migration_steps": [
+    {
+      "step": 1,
+      "action": "CREATE_COLLECTION",
+      "name": "division_quotas",
+      "type": "base",
+      "schema": [
+        {
+          "name": "division",
+          "type": "text",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "max_people_per_day",
+          "type": "number",
+          "required": true,
+          "min": 1,
+          "max": 10
+        }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "step": 2,
+      "action": "UPDATE_COLLECTION_leave_requests",
+      "note": "⚠️ MANUAL: Hapus field lama (date, devision, note) dan tambah field baru di PocketBase Admin",
+      "fields_to_delete": ["date", "devision", "note"],
+      "fields_to_add": [
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "min": 10
+        },
+        {
+          "name": "division",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "position",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "booking_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text",
+          "required": false,
+          "note": "Diisi aplikasi saat HR menolak; ditampilkan ke staff."
+        }
+      ],
+      "field_to_update": {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "options": ["pending", "approved", "rejected", "cancelled"],
+        "note": "HR menyetujui: pending→approved; menolak: pending→rejected. Staff batalkan: approved|pending→cancelled (sebelum mulai)."
+      }
+    },
+    {
+      "step": 3,
+      "action": "MANUAL_ADD_PROFILE_FIELD_leave_bookings_quota",
+      "note": "Tambah field Number opsional pada koleksi profiles: leave_bookings_quota (min 1). HR mengatur kuota pengajuan cuti per bulan per karyawan dari /hr/employees/[id]. Jika field belum ada, create/update profil dari app akan error — buat field dulu di PocketBase Admin.",
+      "profiles_fields_to_add": [
+        {
+          "name": "leave_bookings_quota",
+          "type": "number",
+          "required": false,
+          "min": 1,
+          "max": 52
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "action": "MANUAL_RULES_leave_requests_HR_LIST",
+      "note": "Tanpa rule ini, data terlihat di PocketBase Admin tapi halaman /hr/leave kosong: List hanya mengembalikan record milik user login.",
+      "leave_requests": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")"
+      },
+      "users_expand_note": "Untuk nama/email di kartu cuti (expand user), pastikan rule View koleksi users mengizinkan HR membaca karyawan lain (sesuaikan skema Anda)."
+    },
+    {
+      "step": 5,
+      "action": "MANUAL_ADD_leave_requests_hr_action",
+      "note": "Tambah field opsional di koleksi leave_requests agar tercatat HR mana yang menyetujui/menolak. Tanpa field ini, update approve/tolak bisa gagal dari PocketBase.",
+      "leave_requests_fields_to_add": [
+        { "name": "hr_action_by", "type": "text", "required": false, "note": "id user HR/owner" },
+        { "name": "hr_action_name", "type": "text", "required": false, "note": "nama tampilan snapshot" },
+        { "name": "hr_action_at", "type": "text", "required": false, "note": "ISO datetime keputusan" }
+      ]
+    },
+    {
+      "step": 6,
+      "action": "MANUAL_CREATE_COLLECTION_overtime_requests",
+      "note": "Koleksi untuk penunjukan lembur HR, pengajuan lembur staff, status & jejak HR. Di Admin → New collection → nama overtime_requests → tambah field di bawah. Relation user: koleksi users.",
+      "overtime_requests_fields": [
+        { "name": "user", "type": "relation", "required": true, "collection": "users", "maxSelect": 1, "cascadeDelete": false },
+        { "name": "work_date", "type": "date", "required": true },
+        { "name": "start_time", "type": "text", "required": true, "note": "Format HH:mm" },
+        { "name": "end_time", "type": "text", "required": true },
+        { "name": "hours", "type": "number", "required": false },
+        { "name": "source", "type": "select", "required": true, "values": ["hr_assignment", "staff_request"] },
+        { "name": "status", "type": "select", "required": true, "values": ["waiting_staff", "waiting_hr", "staff_accepted", "staff_declined", "hr_approved", "hr_rejected"] },
+        { "name": "reason", "type": "text", "required": true, "min": 5 },
+        { "name": "hr_note", "type": "text", "required": false },
+        { "name": "rejection_reason", "type": "text", "required": false },
+        { "name": "staff_decline_note", "type": "text", "required": false },
+        { "name": "created_by", "type": "text", "required": false },
+        { "name": "hr_action_by", "type": "text", "required": false },
+        { "name": "hr_action_name", "type": "text", "required": false },
+        { "name": "hr_action_at", "type": "text", "required": false, "note": "ISO datetime atau field Date PB" }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "createRule": "@request.auth.id != \"\"",
+        "updateRule": "@request.auth.id != \"\"",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\")"
+      },
+      "note_end": "Sesuaikan rule dengan keamanan yang diinginkan. Untuk produksi, perketat create (staff hanya boleh user=dirinya untuk pengajuan)."
+    },
+    {
+      "step": 7,
+      "action": "MANUAL_CREATE_COLLECTION_field_activity_requests",
+      "note": "Pengajuan aktivitas di luar kantor (meeting, kunjungan, dinas luar). HR menyetujui periode tanggal; pada hari itu check-in boleh di luar radius GPS. Relation user → users.",
+      "field_activity_requests_fields": [
+        { "name": "user", "type": "relation", "required": true, "collection": "users", "maxSelect": 1, "cascadeDelete": false },
+        { "name": "start_date", "type": "date", "required": true },
+        { "name": "end_date", "type": "date", "required": true },
+        { "name": "activity_type", "type": "select", "required": true, "values": ["meeting", "visit", "out_of_town", "other"] },
+        { "name": "destination", "type": "text", "required": true, "min": 2 },
+        { "name": "reason", "type": "text", "required": true, "min": 10 },
+        { "name": "status", "type": "select", "required": true, "values": ["pending_hr", "approved", "rejected", "cancelled"] },
+        { "name": "rejection_reason", "type": "text", "required": false },
+        { "name": "hr_action_by", "type": "text", "required": false },
+        { "name": "hr_action_name", "type": "text", "required": false },
+        { "name": "hr_action_at", "type": "text", "required": false, "note": "ISO datetime keputusan HR" }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "createRule": "@request.auth.id != \"\" && @request.data.user = @request.auth.id",
+        "updateRule": "@request.auth.id != \"\" && ((user = @request.auth.id && status = \"pending_hr\") || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\")"
+      },
+      "createRule_if_relation_error": "@request.auth.id != \"\" && @request.data.user.id = @request.auth.id",
+      "note_end": "Salin nilai suggested_rules ke Admin PB (tanpa label). Pakai @request.data bukan @request.body. Jika create masih error, coba createRule_if_relation_error."
+    },
+    {
+      "step": 8,
+      "action": "MANUAL_users_session_nonce_and_mfa",
+      "note": "Keamanan titip akun (single session) + MFA. Lakukan di PocketBase Admin.",
+      "users_field_add": {
+        "name": "session_nonce",
+        "type": "text",
+        "required": false,
+        "max": 64,
+        "note": "Diisi otomatis oleh app web/mobile saat login. Login di perangkat lain mengganti nilai ini sehingga perangkat lama di-logout."
+      },
+      "users_update_rule": "Izinkan user memperbarui rekaman sendiri termasuk session_nonce. Contoh: @request.auth.id = id (sesuaikan dengan skema role Anda). Pastikan user tidak bisa mengubah role/status milik orang lain.",
+      "mfa_setup": [
+        "Buka Collections → users → Options (ikon roda gigi).",
+        "Aktifkan Identity/Password (biasanya sudah).",
+        "Aktifkan One-time password (OTP) dan konfigurasi email SMTP agar OTP terkirim.",
+        "Aktifkan Multi-factor authentication (MFA): wajib 2 metode berbeda → urutan umum: password lalu OTP email.",
+        "Tanpa MFA di server, aplikasi hanya memakai password (tetap ada rotasi session_nonce)."
+      ],
+      "optional": "Kurangi durasi token auth di collection users jika ingin token JWT kedaluwarsa lebih cepat (tambahan di samping session_nonce)."
+    },
+    {
+      "step": 9,
+      "action": "MANUAL_selfie_checkin_audit",
+      "note": "Selfie check-in + flag HR. Konfigurasi manual di PocketBase Admin.",
+      "profiles_field_add": {
+        "name": "require_checkin_selfie",
+        "type": "bool",
+        "required": false,
+        "note": "Diset HR di detail pegawai. true = staff wajib lampirkan foto selfie sebelum check-in disimpan (PWA + app native)."
+      },
+      "attendance_logs_field_add": {
+        "name": "check_in_selfie",
+        "type": "file",
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": ["image/jpeg", "image/png", "image/webp"],
+        "note": "Foto wajib/opsional saat check-in. Sesuaikan createRule/updateRule agar user hanya bisa mengunggah file pada rekaman absensi miliknya; HR/owner boleh membaca."
+      }
+    },
+    {
+      "step": 10,
+      "action": "MANUAL_users_operational_web_access_flags",
+      "note": "Gate ERP web + reminder HR/Owner. Field pada koleksi users diisi otomatis saat check-in/out (lib/operational-access-sync). Tanpa field ini, sync gagal diam-diam. Update rule users harus mengizinkan user mem-patch field operasional milik sendiri (id = @request.auth.id) tanpa mengubah role orang lain.",
+      "users_fields_to_add": [
+        { "name": "is_checked_in", "type": "bool", "required": false, "note": "true saat sedang ada sesi check-in aktif" },
+        { "name": "shift_active", "type": "bool", "required": false, "note": "mirror shift aktif untuk UI/server" },
+        { "name": "web_access", "type": "bool", "required": false, "note": "true = middleware mengizinkan area operasional web (bukan owner/hr bypass)" },
+        { "name": "last_checkin", "type": "text", "required": false, "note": "ISO datetime terakhir check-in" },
+        { "name": "last_checkout", "type": "text", "required": false, "note": "ISO datetime terakhir check-out" }
+      ],
+      "users_update_rule_hint": "Gabungkan dengan rule session_nonce Anda: misalnya @request.auth.id = id && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || …) untuk admin; untuk karyawan biasa izinkan update hanya jika id = @request.auth.id pada subset field (PB tidak memisah field-level rule — pertimbangkan hooks atau rule ketat + hanya app yang mengirim patch terbatas). Minimal: pastikan user bisa update rekaman sendiri untuk field boolean/text di atas.",
+      "list_rule_hint": "Reminder HR memakai filter is_checked_in=true pada users — pastikan listRule mengizinkan HR/owner melihat karyawan (bukan hanya diri sendiri)."
+    },
+    {
+      "step": 11,
+      "action": "MANUAL_CREATE_COLLECTION_hr_compensation_settings",
+      "note": "Satu record aktif (is_active=true) untuk tarif default lembur & kompensasi cuti. HR/Owner mengisi lewat /hr/compensation/settings.",
+      "hr_compensation_settings_fields": [
+        { "name": "name", "type": "text", "required": true, "note": "mis. Default" },
+        { "name": "is_active", "type": "bool", "required": false, "note": "true = dipakai fetchHrCompensationSettings" },
+        { "name": "overtime_hourly_rate", "type": "number", "required": true, "note": "Rp per jam" },
+        { "name": "overtime_multiplier", "type": "number", "required": true, "note": "mis. 1.5" },
+        { "name": "leave_daily_compensation_rate", "type": "number", "required": true, "note": "Rp per hari cuti disetujui" }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\")",
+        "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"owner\""
+      }
+    },
+    {
+      "step": 12,
+      "action": "MANUAL_ADD_overtime_requests_pay_fields",
+      "note": "Disnapshot saat HR menunjuk lembur atau menyetujui pengajuan staff. Tanpa field ini, pay_amount tidak tersimpan.",
+      "overtime_requests_fields_to_add": [
+        { "name": "hourly_rate", "type": "number", "required": false },
+        { "name": "pay_multiplier", "type": "number", "required": false },
+        { "name": "pay_amount", "type": "number", "required": false, "note": "jam × tarif × pengali" }
+      ]
+    },
+    {
+      "step": 13,
+      "action": "MANUAL_ADD_leave_requests_compensation_fields",
+      "note": "Disnapshot saat HR menyetujui cuti dari pengaturan leave_daily_compensation_rate.",
+      "leave_requests_fields_to_add": [
+        { "name": "daily_compensation_rate", "type": "number", "required": false },
+        { "name": "compensation_amount", "type": "number", "required": false, "note": "hari kalender × tarif harian" }
+      ]
+    },
+    {
+      "step": 14,
+      "action": "MANUAL_ADD_PROFILE_benefit_fields",
+      "note": "Per karyawan di /hr/employees/[id]: tarif cuti/hari, kuota cuti/bulan (leave_bookings_quota sudah ada), bonus extra.",
+      "profiles_fields_to_add": [
+        { "name": "leave_daily_rate", "type": "number", "required": false, "note": "Rp per hari — kredit kuota tidak terpakai" },
+        { "name": "extra_bonus_amount", "type": "number", "required": false, "note": "mis. 500000" },
+        { "name": "extra_bonus_enabled", "type": "bool", "required": false }
+      ],
+      "payroll_items_fields_to_add": [
+        { "name": "leave_quota_credit_days", "type": "number", "required": false },
+        { "name": "leave_quota_credit_amount", "type": "number", "required": false },
+        { "name": "leave_quota_credit_reason", "type": "text", "required": false },
+        { "name": "extra_bonus_amount", "type": "number", "required": false },
+        { "name": "extra_bonus_eligible", "type": "bool", "required": false },
+        { "name": "extra_bonus_reason", "type": "text", "required": false }
+      ]
+    },
+    {
+      "step": 15,
+      "action": "CREATE_COLLECTION_work_calendar_settings",
+      "note": "Jadwal hari kerja global (checkbox per hari Minggu–Sabtu). Default aplikasi: semua true = operasional 7 hari. Dipakai payroll + bonus extra + alpha.",
+      "name": "work_calendar_settings",
+      "type": "base",
+      "schema": [
+        { "name": "name", "type": "text", "required": false },
+        { "name": "is_active", "type": "bool", "required": false },
+        { "name": "work_sunday", "type": "bool", "required": false },
+        { "name": "work_monday", "type": "bool", "required": false },
+        { "name": "work_tuesday", "type": "bool", "required": false },
+        { "name": "work_wednesday", "type": "bool", "required": false },
+        { "name": "work_thursday", "type": "bool", "required": false },
+        { "name": "work_friday", "type": "bool", "required": false },
+        { "name": "work_saturday", "type": "bool", "required": false }
+      ],
+      "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "step": 16,
+      "action": "CREATE_COLLECTION_office_holidays",
+      "note": "Tanggal libur kantor / cuti bersama — tidak dihitung sebagai hari kerja wajib.",
+      "name": "office_holidays",
+      "type": "base",
+      "schema": [
+        { "name": "date", "type": "date", "required": true },
+        { "name": "name", "type": "text", "required": false },
+        { "name": "is_active", "type": "bool", "required": false }
+      ],
+      "listRule": "@request.auth.id != \"\"",
+      "viewRule": "@request.auth.id != \"\"",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")"
+    },
+    {
+      "step": 17,
+      "action": "MANUAL_ADD_PROFILE_deduction_overrides",
+      "note": "Opsional — tarif potongan telat/absensi per karyawan ( /hr/employees/[id] ).",
+      "profiles_fields_to_add": [
+        {
+          "name": "late_deduction_rupiah_per_minute",
+          "type": "number",
+          "required": false,
+          "note": ">0 = override; 0/kosong = dari gaji pokok"
+        },
+        {
+          "name": "absence_deduction_rupiah_per_day",
+          "type": "number",
+          "required": false,
+          "note": ">0 = override; 0/kosong = gaji÷30"
+        },
+        {
+          "name": "shift_start_saturday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm — pasangan shift_end_saturday"
+        },
+        {
+          "name": "shift_end_saturday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm"
+        },
+        {
+          "name": "shift_start_sunday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm — pasangan shift_end_sunday"
+        },
+        {
+          "name": "shift_end_sunday",
+          "type": "text",
+          "required": false,
+          "note": "HH:mm"
+        },
+        {
+          "name": "shift_start_weekend",
+          "type": "text",
+          "required": false,
+          "note": "LEGACY opsional — fallback jika Sabtu/Minggu baru kosong; bisa dihapus setelah migrasi"
+        },
+        {
+          "name": "shift_end_weekend",
+          "type": "text",
+          "required": false,
+          "note": "LEGACY — berpasangan shift_start_weekend"
+        }
+      ]
+    },
+    {
+      "step": 13,
+      "action": "MANUAL_CREATE_COLLECTION_biz_purchase_bills",
+      "note": "Wajib untuk modul Pembelian (tab Tagihan). Satu transaksi = PO + tagihan + stok masuk gudang default toko.",
+      "biz_purchase_bills_fields": [
+        { "name": "bill_no", "type": "text", "required": true, "unique": true },
+        { "name": "purchase_order", "type": "relation", "required": false, "collection": "biz_purchase_orders", "maxSelect": 1 },
+        { "name": "supplier", "type": "relation", "required": true, "collection": "biz_suppliers", "maxSelect": 1 },
+        { "name": "status", "type": "select", "required": true, "values": ["draft", "unpaid", "received", "paid", "overdue", "cancelled"] },
+        { "name": "bill_date", "type": "date", "required": true },
+        { "name": "due_date", "type": "date", "required": true },
+        { "name": "subtotal", "type": "number", "required": true },
+        { "name": "discount_amount", "type": "number", "required": false },
+        { "name": "tax_amount", "type": "number", "required": true },
+        { "name": "materai_amount", "type": "number", "required": false },
+        { "name": "total", "type": "number", "required": true },
+        { "name": "paid_amount", "type": "number", "required": true },
+        { "name": "remaining", "type": "number", "required": true },
+        { "name": "is_cash", "type": "bool", "required": false },
+        { "name": "cancel_reason", "type": "text", "required": false },
+        { "name": "notes", "type": "text", "required": false },
+        { "name": "created_by", "type": "relation", "required": false, "collection": "users", "maxSelect": 1 }
+      ],
+      "suggested_rules": {
+        "listRule": "@request.auth.id != \"\"",
+        "viewRule": "@request.auth.id != \"\"",
+        "createRule": "@request.auth.id != \"\"",
+        "updateRule": "@request.auth.id != \"\"",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role = \"hr\")"
+      },
+      "note_end": "Pastikan field status memuat unpaid (sama seperti biz_invoices). PO disimpan di biz_purchase_orders dengan warehouse = gudang default toko."
+    },
+    {
+      "step": 14,
+      "action": "MANUAL_ADD_FIELDS_biz_purchase_orders_warehouse_process",
+      "note": "Alur pembelian → penerimaan gudang → tagihan. Tambahkan field berikut ke collection biz_purchase_orders di PocketBase Admin.",
+      "biz_purchase_orders_warehouse_fields": [
+        {
+          "name": "send_to_warehouse_at",
+          "type": "text",
+          "required": false,
+          "note": "ISO datetime — saat admin klik Kirim ke Gudang"
+        },
+        {
+          "name": "warehouse_process_status",
+          "type": "select",
+          "required": false,
+          "values": ["pending", "checking", "hold", "processing", "complete"]
+        },
+        { "name": "warehouse_received_at", "type": "text", "required": false, "note": "ISO datetime" },
+        {
+          "name": "warehouse_processed_by",
+          "type": "relation",
+          "required": false,
+          "collection": "users",
+          "maxSelect": 1
+        },
+        { "name": "warehouse_processed_at", "type": "text", "required": false, "note": "ISO datetime — jam proses team gudang" },
+        {
+          "name": "warehouse_process_mode",
+          "type": "select",
+          "required": false,
+          "values": ["direct", "hold"]
+        },
+        { "name": "warehouse_hold_note", "type": "text", "required": false },
+        {
+          "name": "receiving_warehouse",
+          "type": "relation",
+          "required": false,
+          "collection": "inv_warehouses",
+          "maxSelect": 1
+        },
+        { "name": "surat_jalan_no", "type": "text", "required": false },
+        { "name": "surat_jalan_verified", "type": "bool", "required": false },
+        {
+          "name": "receiving_workflow_json",
+          "type": "text",
+          "required": false,
+          "note": "JSON progres QC, cetak label, putaway per baris PO (modul penerimaan gudang)"
+        }
+      ]
+    },
+    {
+      "step": 15,
+      "action": "MANUAL_ADD_FIELDS_inv_locations_placement",
+      "note": "Wajib agar kolom Gang/Tingkat/Bin di Lokasi Rak tersimpan. Tambah ke inv_locations di PocketBase Admin.",
+      "inv_locations_placement_fields": [
+        { "name": "aisle", "type": "text", "required": false, "note": "Gang / ruangan" },
+        { "name": "level", "type": "text", "required": false, "note": "Tingkat / baris / susunan" },
+        { "name": "bin", "type": "text", "required": false, "note": "Bin / slot" }
+      ]
+    },
+    {
+      "action": "MANUAL_ADD_FIELD_inv_locations_assigned_product",
+      "note": "Produk khusus per slot rak (per gudang). Tanpa field ini, ID produk disimpan di suffix nama slot.",
+      "field": {
+        "name": "assigned_product",
+        "type": "relation",
+        "collection": "inv_products",
+        "required": false,
+        "maxSelect": 1
+      }
+    }
+  ],
+  "default_data": [
+    {
+      "collection": "division_quotas",
+      "records": [
+        {"division": "IT", "max_people_per_day": 2},
+        {"division": "Marketing", "max_people_per_day": 2},
+        {"division": "Sales", "max_people_per_day": 3},
+        {"division": "Finance", "max_people_per_day": 2},
+        {"division": "HR", "max_people_per_day": 2}
+      ]
+    }
+  ]
+}

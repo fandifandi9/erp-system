@@ -2,6 +2,7 @@ import type PocketBase from "pocketbase";
 import type { RefundApplyResult } from "@/lib/bisnis/sales-retur-accounting";
 import { deleteRefundPayments } from "@/lib/bisnis/invoice-refund-payment";
 import { voidReturnStockMovements } from "@/lib/inventory/retur-stock-server";
+import { INV_COLLECTIONS } from "@/lib/inventory/types";
 import {
   BISNIS_COLLECTIONS,
   type CreditNote,
@@ -183,18 +184,53 @@ export async function cancelCompletedSalesRetur(
   });
 }
 
-/** Batalkan retur draf/approved (belum posting stok). */
+/** Batalkan retur draf/approved — void stok transit bila sudah diterima WMS. */
 export async function cancelDraftSalesRetur(
   pb: PocketBase,
   returId: string,
   reason?: string,
+  userId?: string,
 ): Promise<Retur> {
   const retur = await pb.collection(BISNIS_COLLECTIONS.returs).getOne<Retur>(returId);
   if (retur.status !== "draft" && retur.status !== "approved") {
     throw new Error("Hanya retur draf yang bisa dibatalkan dari sini.");
   }
+  if (retur.workflow_phase === "resend" || retur.business_resolution === "resend") {
+    throw new Error(
+      "Retur sudah di antrean kirim kembali WMS. Selesaikan serah terima di Pickup, atau hubungi gudang.",
+    );
+  }
+
+  const note = reason?.trim() || `Batalkan retur ${retur.retur_no}`;
+  if (retur.wms_receive_status === "complete" && userId) {
+    await voidReturnStockMovements(pb, returId, userId, note);
+  }
+
+  try {
+    const tasks = await pb.collection(INV_COLLECTIONS.staffActivities).getFullList({
+      filter: `entity_type = "biz_returs" && entity_id = "${returId}" && (activity_type = "wms.sales_return_receive" || activity_type = "wms.sales_return_resend")`,
+      requestKey: null,
+    });
+    for (const row of tasks) {
+      const r = row as { id: string; payload?: Record<string, unknown> };
+      if (r.payload?.status === "complete" || r.payload?.status === "cancelled") continue;
+      try {
+        await pb.collection(INV_COLLECTIONS.staffActivities).update(r.id, {
+          payload: { ...(r.payload ?? {}), status: "cancelled", cancel_reason: note },
+        });
+      } catch {
+        /* best effort */
+      }
+    }
+  } catch {
+    /* collection opsional */
+  }
+
   return pb.collection(BISNIS_COLLECTIONS.returs).update<Retur>(returId, {
     status: "cancelled",
+    workflow_phase: "cancelled",
+    exception_status: retur.exception_status === "open" ? "resolved" : retur.exception_status,
+    reminder_due_at: "",
     notes: [retur.notes, reason?.trim() ? `Dibatalkan: ${reason.trim()}` : "Dibatalkan"]
       .filter(Boolean)
       .join("\n"),

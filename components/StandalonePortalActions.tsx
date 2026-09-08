@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LayoutGrid, LogOut, User } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import { canAccess, getOperationalDashboardRoute } from "@/lib/rbac";
+import { useLocale } from "@/components/LocaleProvider";
 
 /** Label disembunyikan di layar sempit (ikon saja) supaya header tidak bertabrakan. */
 const btnGhost =
@@ -28,6 +29,7 @@ export function StandalonePortalActions({
   omitProfile = false,
   showLogout = false,
 }: StandalonePortalActionsProps) {
+  const { t } = useLocale();
   const [sessionUser, setSessionUser] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
@@ -52,20 +54,25 @@ export function StandalonePortalActions({
   return (
     <>
       {showProfile && (
-        <Link href="/profile" className={btnGhost} title="Profil" aria-label="Buka profil">
+        <Link
+          href="/profile"
+          className={btnGhost}
+          title={t("nav.profile")}
+          aria-label={t("nav.openLink", { label: t("nav.profile") })}
+        >
           <User className="h-[1.125rem] w-[1.125rem] shrink-0 sm:h-4 sm:w-4" aria-hidden />
-          <span className={labelHiddenNarrow}>Profil</span>
+          <span className={labelHiddenNarrow}>{t("nav.profile")}</span>
         </Link>
       )}
       {showDashboardDoor && opsDashboard && (
         <Link
           href={opsDashboard}
           className={btnDashboard}
-          title="Dashboard kerja"
-          aria-label="Buka dashboard web (HR, Owner, atau staf operasional)"
+          title={t("nav.dashboard")}
+          aria-label={t("nav.openLink", { label: t("nav.dashboard") })}
         >
           <LayoutGrid className="h-[1.125rem] w-[1.125rem] shrink-0 sm:h-4 sm:w-4" aria-hidden />
-          <span className={labelHiddenNarrow}>Dashboard</span>
+          <span className={labelHiddenNarrow}>{t("nav.dashboard")}</span>
         </Link>
       )}
       {showLogout && sessionUser && (
@@ -73,11 +80,11 @@ export function StandalonePortalActions({
           type="button"
           onClick={handleLogout}
           className={btnLogout}
-          title="Keluar"
-          aria-label="Keluar akun"
+          title={t("nav.logout")}
+          aria-label={t("nav.logout")}
         >
           <LogOut className="h-[1.125rem] w-[1.125rem] shrink-0 sm:h-4 sm:w-4" aria-hidden />
-          <span className={labelHiddenNarrow}>Keluar</span>
+          <span className={labelHiddenNarrow}>{t("nav.logout")}</span>
         </button>
       )}
     </>

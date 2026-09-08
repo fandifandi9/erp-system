@@ -1,0 +1,76 @@
+import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
+import { enqueueOutboundFromSalesOrderServer } from "@/lib/wms/fulfillment";
+import { parseOutboundWorkflow } from "@/lib/wms/outbound-workflow";
+import { mirrorPkOnOutboundWorkflow } from "@/lib/wms/assign-pk-on-enqueue";
+import { buildInitialOutboundWorkflow } from "@/lib/wms/wms-order-bootstrap";
+import { emitBusinessEventServer } from "@/lib/tenant/activity-server";
+import { canSendSalesOrderToWarehouse } from "./sales-warehouse";
+import { BISNIS_COLLECTIONS, type SalesOrder, type SalesOrderLine } from "./types";
+
+/** Kirim SO ke antrean picking — hanya server (admin PocketBase). */
+export async function sendSalesOrderToWarehouseServer(
+  soId: string,
+  userId: string,
+): Promise<SalesOrder> {
+  const pb = await getInventoryAdminPb();
+
+  let so: SalesOrder;
+  try {
+    so = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getOne<SalesOrder>(soId, {
+      expand: "customer,warehouse,created_by,approved_by",
+    });
+  } catch {
+    so = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getOne<SalesOrder>(soId, {
+      expand: "customer,warehouse,created_by",
+    });
+  }
+
+  if (!canSendSalesOrderToWarehouse(so)) {
+    throw new Error(
+      "SO tidak bisa dikirim ke picking (sudah terkirim, dibatalkan, atau tanpa gudang).",
+    );
+  }
+
+  const lines = await pb.collection(BISNIS_COLLECTIONS.salesOrderLines).getFullList<SalesOrderLine>({
+    filter: `sales_order = "${soId}"`,
+    expand: "product",
+    sort: "created",
+    requestKey: null,
+  });
+  if (lines.length === 0) throw new Error("SO tidak punya item produk.");
+
+  const baseWorkflowJson = await buildInitialOutboundWorkflow(so, lines, {
+    userId,
+    userName: undefined,
+  });
+  const now = new Date().toISOString();
+  const { workflowJson, pkNo } = mirrorPkOnOutboundWorkflow(so, baseWorkflowJson, now);
+  const wf = parseOutboundWorkflow(workflowJson);
+  const packageCode = wf.package_code ?? wf.package_identity?.code ?? "";
+
+  let updated = so;
+  try {
+    updated = await pb.collection(BISNIS_COLLECTIONS.salesOrders).update<SalesOrder>(soId, {
+      send_to_warehouse_at: now,
+      warehouse_process_status: "pending",
+      outbound_workflow_json: workflowJson,
+      pk_no: pkNo,
+      wms_booking_no: packageCode || pkNo,
+    });
+  } catch {
+    /* schema lama: field WMS SO belum tersedia, lanjut enqueue task */
+  }
+  await enqueueOutboundFromSalesOrderServer(pb, soId, userId);
+  await emitBusinessEventServer(pb, {
+    event_code: "sales.order.sent_wms",
+    module: "sales",
+    entity_type: "biz_sales_orders",
+    entity_id: soId,
+    entity_label: so.order_no,
+    store_id: so.store,
+    warehouse_id: so.warehouse,
+    payload: { order_no: so.order_no },
+    actor_id: userId,
+  });
+  return updated;
+}

@@ -9,17 +9,34 @@ import {
   getWebSessionNonce,
   shouldLogoutForSessionMismatch,
 } from "@/lib/auth-session";
-import { shouldDenyOperationalWebAccess } from "@/lib/operational-access-gate";
+import {
+  buildErpLockedUrl,
+  DESKTOP_ATTENDANCE_UNLOCK_PATH,
+  ERP_LOCKED_PATH,
+  shouldDenyOperationalWebAccess,
+} from "@/lib/operational-access-gate";
 import {
   pocketBaseRealtimeDisabled,
   pocketBaseSessionPollIntervalMs,
 } from "@/lib/pocketbase-realtime-config";
-import { syncPbAuthCookie } from "@/lib/pb-auth-cookie";
+import { syncAuthStoreFromPbRecord } from "@/lib/pb-auth-cookie";
+
+function redirectToLock(pathname: string | null, hard = false): string | null {
+  if (!pathname) return null;
+  if (pathname.startsWith(ERP_LOCKED_PATH)) return null;
+  if (pathname.startsWith(DESKTOP_ATTENDANCE_UNLOCK_PATH)) return null;
+  const url = buildErpLockedUrl(pathname);
+  if (hard) {
+    window.location.href = url;
+    return null;
+  }
+  return url;
+}
 
 /**
  * Satu langganan realtime + verifikasi sesi untuk semua rute (termasuk /profile).
  * Logout jika `users.status` nonaktif atau `session_nonce` tidak cocok (login di perangkat lain).
- * Jika `web_access` jatuh false (mis. check-out dari mobile), arahkan ke /erp-locked selaras middleware.
+ * Jika `web_access` jatuh false → layar lock (peringatan), lalu user lanjut ke absensi.
  */
 export default function WebSessionGuard() {
   const pathname = usePathname();
@@ -50,11 +67,14 @@ export default function WebSessionGuard() {
           return;
         }
         const token = pb.authStore.token;
-        if (token) pb.authStore.save(token, fresh as never);
-        syncPbAuthCookie(pb);
-        if (shouldDenyOperationalWebAccess(pathname, fresh as Record<string, unknown>)) {
-          const next = pathname && pathname !== "/erp-locked" ? `?next=${encodeURIComponent(pathname)}` : "";
-          router.replace(`/erp-locked${next}`);
+        if (!token) return;
+
+        await syncAuthStoreFromPbRecord(pb, token, fresh as Record<string, unknown>);
+
+        const accessUser = pb.authStore.model as Record<string, unknown>;
+        if (shouldDenyOperationalWebAccess(pathname, accessUser)) {
+          const url = redirectToLock(pathname);
+          if (url) router.replace(url);
         }
       } catch {
         /* offline / 401 — biarkan rute lain menangani */
@@ -97,11 +117,17 @@ export default function WebSessionGuard() {
 
         const token = pb.authStore.token;
         if (token && e.record) {
-          pb.authStore.save(token, e.record as never);
+          void syncAuthStoreFromPbRecord(pb, token, e.record as Record<string, unknown>).then(
+            (accessUser) => {
+              if (shouldDenyOperationalWebAccess(pathname, accessUser)) {
+                redirectToLock(pathname, true);
+              }
+            },
+          );
+          return;
         }
         if (e.record && shouldDenyOperationalWebAccess(pathname, e.record as Record<string, unknown>)) {
-          const next = pathname && pathname !== "/erp-locked" ? `?next=${encodeURIComponent(pathname)}` : "";
-          window.location.href = `/erp-locked${next}`;
+          redirectToLock(pathname, true);
         }
       });
     };

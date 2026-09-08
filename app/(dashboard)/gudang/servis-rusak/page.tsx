@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
   ArrowRightLeft,
   CheckCircle2,
   Loader2,
   Trash2,
   Wrench,
 } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 import { fetchCompanyProfiles } from "@/lib/bisnis/company-client";
 import type { CompanyProfile } from "@/lib/bisnis/types";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
@@ -68,6 +68,7 @@ const fmtIdr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
 export default function GudangServisRusakPage() {
+  const { t } = useLocale();
   const user = pb.authStore.model;
   const canPost = user ? canPostInventoryMovement(user) : false;
   const isSupervisor = user ? isInventorySupervisorOrAbove(user) : false;
@@ -136,7 +137,7 @@ export default function GudangServisRusakPage() {
   }, [load]);
 
   const companyName = (id: string) =>
-    companies.find((c) => c.id === id)?.company_name ?? "Entitas";
+    companies.find((c) => c.id === id)?.company_name ?? t("wms.damagedService.filterEntity");
 
   const filteredWarehouses = useMemo(() => {
     if (!companyId) return warehouses;
@@ -188,7 +189,7 @@ export default function GudangServisRusakPage() {
   const openRepairModal = (keys: string[]) => {
     if (!canPost) return;
     if (buildLineGroups(keys).length === 0) {
-      setError("Qty proses harus lebih dari 0.");
+      setError(t("wms.damagedService.errQty"));
       return;
     }
     setNote("");
@@ -200,7 +201,7 @@ export default function GudangServisRusakPage() {
   const openWriteOffModal = (keys: string[]) => {
     if (!canPost) return;
     if (buildLineGroups(keys).length === 0) {
-      setError("Qty proses harus lebih dari 0.");
+      setError(t("wms.damagedService.errQty"));
       return;
     }
     setNote("");
@@ -211,11 +212,11 @@ export default function GudangServisRusakPage() {
     if (!isSupervisor) return;
     const groups = buildLineGroups(keys);
     if (groups.length === 0) {
-      setError("Qty proses harus lebih dari 0.");
+      setError(t("wms.damagedService.errQty"));
       return;
     }
     if (groups.length > 1) {
-      setError("Koreksi entitas: pilih baris dari satu gudang rusak saja.");
+      setError(t("wms.damagedService.errReassignSameWh"));
       return;
     }
     setNote("");
@@ -261,13 +262,13 @@ export default function GudangServisRusakPage() {
       if (modal.action === "reassign") {
         const groups = buildLineGroups(modal.rowKeys);
         if (groups.length !== 1) {
-          throw new Error("Koreksi entitas: pilih baris dari satu gudang rusak saja.");
+          throw new Error(t("wms.damagedService.errReassignSameWh"));
         }
         if (!reassignToWarehouseId) {
-          throw new Error("Pilih gudang rusak tujuan.");
+          throw new Error(t("wms.damagedService.errReassignTarget"));
         }
         if (note.trim().length < 5) {
-          throw new Error("Alasan koreksi wajib diisi (min. 5 karakter).");
+          throw new Error(t("wms.damagedService.errReassignNote"));
         }
         await postDamagedReassign({
           fromDamagedWarehouseId: modal.fromWarehouseId,
@@ -275,7 +276,7 @@ export default function GudangServisRusakPage() {
           lines: groups[0].lines,
           note: note.trim(),
         });
-        setToast("Koreksi entitas berhasil — stok dipindah antar gudang rusak.");
+        setToast(t("wms.damagedService.toastReassign"));
         setTimeout(() => setToast(""), 3500);
         setModal(null);
         await load();
@@ -284,15 +285,15 @@ export default function GudangServisRusakPage() {
 
       const groups = buildLineGroups(modal.rowKeys);
       if (groups.length === 0) {
-        throw new Error("Qty proses harus lebih dari 0.");
+        throw new Error(t("wms.damagedService.errQty"));
       }
 
       if (modal.action === "repair" && repairTarget === "retail" && !targetWarehouseId) {
-        throw new Error("Pilih gudang penjualan retail tujuan.");
+        throw new Error(t("wms.damagedService.errRetailTarget"));
       }
 
       if (modal.action === "write_off" && note.trim().length < 5) {
-        throw new Error("Catatan teknisi wajib untuk pembuangan (min. 5 karakter).");
+        throw new Error(t("wms.damagedService.errWriteOffNote"));
       }
 
       let lastAccounting: DamagedWriteOffExpense | null = null;
@@ -315,14 +316,14 @@ export default function GudangServisRusakPage() {
       if (modal.action === "repair") {
         setToast(
           repairTarget === "retail"
-            ? "Berhasil dipindah ke gudang penjualan retail."
-            : "Berhasil dipindah ke gudang entitas.",
+            ? t("wms.damagedService.toastRepairRetail")
+            : t("wms.damagedService.toastRepairEntity"),
         );
         if (lastAccounting?.kind === "reversal") {
           setExpenseDraft(lastAccounting);
         }
       } else {
-        setToast("Berhasil dibuang dari sistem.");
+        setToast(t("wms.damagedService.toastWriteOff"));
         if (lastAccounting) setExpenseDraft(lastAccounting);
         else setWriteOffHint(true);
       }
@@ -345,36 +346,28 @@ export default function GudangServisRusakPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Servis Gudang Rusak">
+      <InventoryShell title={t("wms.damagedService.title")}>
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
           <div className="mb-6">
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-              <AlertTriangle className="h-6 w-6 text-rose-600" />
-              Servis Gudang Rusak
-            </h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600">
-              Antrian barang di <strong>gudang rusak</strong> (karantina per entitas). Teknisi
-              menyatakan <strong>perbaikan berhasil</strong> → stok kembali ke gudang entitas atau
-              retail, atau <strong>tidak bisa diperbaiki</strong> → keluar total dari sistem. Stok
-              di sini tidak dihitung untuk penjualan/bundling. Masuk karantina otomatis membuat draft
-              write-down (WD-*); perbaikan membuat draft pemulihan (REV-*).
+            <p className="max-w-3xl text-sm text-slate-600">
+              {t("wms.damagedService.subtitle")}
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              Sortir dari gudang sementara:{" "}
+              {t("wms.damagedService.linkSortir")}{" "}
               <Link href="/gudang/sortir" className="font-medium text-indigo-600 hover:underline">
-                Sortir & Disposisi
+                {t("wms.damagedService.linkSortirLabel")}
               </Link>
               {" · "}
-              Buat gudang rusak:{" "}
+              {t("wms.damagedService.linkWarehouse")}{" "}
               <Link href="/gudang/daftar" className="font-medium text-indigo-600 hover:underline">
-                Daftar Gudang
+                {t("wms.damagedService.linkWarehouseLabel")}
               </Link>
             </p>
           </div>
 
           {!canPost ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              Mode lihat saja — hanya supervisor/admin yang boleh posting perbaikan atau pembuangan.
+              {t("wms.damagedService.viewOnly")}
             </div>
           ) : null}
 
@@ -389,7 +382,9 @@ export default function GudangServisRusakPage() {
               {expenseDraft ? (
                 <span className="mt-1 block">
                   Draft{" "}
-                  {expenseDraft.kind === "reversal" ? "pemulihan nilai" : "biaya"}{" "}
+                  {expenseDraft.kind === "reversal"
+                    ? t("wms.damagedService.draftRecovery")
+                    : t("wms.damagedService.draftCost")}{" "}
                   <Link
                     href="/bisnis/biaya"
                     className="font-semibold text-emerald-900 underline hover:no-underline"
@@ -397,18 +392,17 @@ export default function GudangServisRusakPage() {
                     {expenseDraft.expenseNo}
                   </Link>{" "}
                   ({fmtIdr(Math.abs(expenseDraft.total))}
-                  {expenseDraft.kind === "reversal" ? ", offset write-down" : ""}) — approve di
-                  modul Pengeluaran.
+                  {expenseDraft.kind === "reversal" ? t("wms.damagedService.draftOffset") : ""}){" "}
+                  {t("wms.damagedService.draftApprove")}
                   {expenseDraft.kind === "write_off" ? (
                     <span className="block text-xs text-emerald-700/90">
-                      Jika sudah ada write-down saat masuk karantina (WD-*), batalkan salah satu
-                      agar tidak dobel posting.
+                      {t("wms.damagedService.draftDoubleWarn")}
                     </span>
                   ) : null}
                 </span>
               ) : writeOffHint ? (
                 <span className="mt-1 block text-xs text-emerald-700/90">
-                  Kerugian mungkin sudah tercatat saat masuk karantina (draft WD-* di Pengeluaran).
+                  {t("wms.damagedService.draftWdHint")}
                 </span>
               ) : null}
             </div>
@@ -416,7 +410,9 @@ export default function GudangServisRusakPage() {
 
           <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <label className="block min-w-[180px] flex-1 text-sm">
-              <span className="mb-1 block font-medium text-slate-700">Entitas</span>
+              <span className="mb-1 block font-medium text-slate-700">
+                {t("wms.damagedService.filterEntity")}
+              </span>
               <select
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 value={companyId}
@@ -425,7 +421,7 @@ export default function GudangServisRusakPage() {
                   setWarehouseId("");
                 }}
               >
-                <option value="">Semua entitas</option>
+                <option value="">{t("wms.damagedService.filterEntityAll")}</option>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.company_name}
@@ -434,13 +430,15 @@ export default function GudangServisRusakPage() {
               </select>
             </label>
             <label className="block min-w-[200px] flex-1 text-sm">
-              <span className="mb-1 block font-medium text-slate-700">Gudang rusak</span>
+              <span className="mb-1 block font-medium text-slate-700">
+                {t("wms.damagedService.filterWarehouse")}
+              </span>
               <select
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 value={warehouseId}
                 onChange={(e) => setWarehouseId(e.target.value)}
               >
-                <option value="">Semua gudang rusak</option>
+                <option value="">{t("wms.damagedService.filterWarehouseAll")}</option>
                 {filteredWarehouses.map((w) => (
                   <option key={w.id} value={w.id}>
                     {w.code} — {w.name}
@@ -458,7 +456,7 @@ export default function GudangServisRusakPage() {
                 onClick={selectAll}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
-                Pilih semua
+                {t("wms.damagedService.selectAll")}
               </button>
               <button
                 type="button"
@@ -467,7 +465,7 @@ export default function GudangServisRusakPage() {
                 className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 <Wrench className="h-3.5 w-3.5" />
-                Perbaiki terpilih
+                {t("wms.damagedService.repairSelected")}
               </button>
               <button
                 type="button"
@@ -476,7 +474,7 @@ export default function GudangServisRusakPage() {
                 className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Buang terpilih
+                {t("wms.damagedService.writeOffSelected")}
               </button>
               {isSupervisor ? (
                 <button
@@ -486,7 +484,7 @@ export default function GudangServisRusakPage() {
                   className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
                 >
                   <ArrowRightLeft className="h-3.5 w-3.5" />
-                  Koreksi entitas
+                  {t("wms.damagedService.reassignSelected")}
                 </button>
               ) : null}
             </div>
@@ -498,15 +496,15 @@ export default function GudangServisRusakPage() {
             </div>
           ) : filteredWarehouses.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rose-200 bg-rose-50/50 px-4 py-8 text-center text-sm text-rose-900">
-              Belum ada gudang rusak aktif. Buat satu per entitas di{" "}
+              {t("wms.damagedService.emptyNoWarehouse")}{" "}
               <Link href="/gudang/daftar" className="font-semibold underline">
-                Daftar Gudang
+                {t("wms.damagedService.linkWarehouseLabel")}
               </Link>
               .
             </p>
           ) : visibleItems.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-              Tidak ada stok di gudang rusak untuk filter ini.
+              {t("wms.damagedService.emptyNoStock")}
             </p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -514,12 +512,14 @@ export default function GudangServisRusakPage() {
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     {canPost ? <th className="w-10 px-3 py-3" /> : null}
-                    <th className="px-3 py-3">Produk</th>
-                    <th className="px-3 py-3">Gudang</th>
-                    <th className="px-3 py-3">Jejak masuk</th>
-                    <th className="px-3 py-3 text-right">Stok</th>
-                    <th className="px-3 py-3 text-right">Qty proses</th>
-                    {canPost ? <th className="px-3 py-3 text-right">Aksi</th> : null}
+                    <th className="px-3 py-3">{t("wms.damagedService.colProduct")}</th>
+                    <th className="px-3 py-3">{t("wms.damagedService.colWarehouse")}</th>
+                    <th className="px-3 py-3">{t("wms.damagedService.colIntake")}</th>
+                    <th className="px-3 py-3 text-right">{t("wms.damagedService.colStock")}</th>
+                    <th className="px-3 py-3 text-right">{t("wms.damagedService.colQty")}</th>
+                    {canPost ? (
+                      <th className="px-3 py-3 text-right">{t("wms.damagedService.colActions")}</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -573,7 +573,7 @@ export default function GudangServisRusakPage() {
                             <div className="flex justify-end gap-1">
                               <button
                                 type="button"
-                                title="Perbaiki"
+                                title={t("wms.damagedService.tipRepair")}
                                 onClick={() => openRepairModal([key])}
                                 className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50"
                               >
@@ -581,7 +581,7 @@ export default function GudangServisRusakPage() {
                               </button>
                               <button
                                 type="button"
-                                title="Buang"
+                                title={t("wms.damagedService.tipWriteOff")}
                                 onClick={() => openWriteOffModal([key])}
                                 className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
                               >
@@ -590,7 +590,7 @@ export default function GudangServisRusakPage() {
                               {isSupervisor ? (
                                 <button
                                   type="button"
-                                  title="Koreksi entitas"
+                                  title={t("wms.damagedService.tipReassign")}
                                   onClick={() => openReassignModal([key])}
                                   className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50"
                                 >
@@ -616,13 +616,15 @@ export default function GudangServisRusakPage() {
                 <>
                   <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                     <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                    Konfirmasi perbaikan
+                    {t("wms.damagedService.repairTitle")}
                   </h3>
                   <p className="mt-2 text-sm text-slate-600">
-                    Stok dipindah dari gudang rusak ke tujuan yang dipilih.
+                    {t("wms.damagedService.repairDesc")}
                   </p>
                   <fieldset className="mt-4 space-y-2">
-                    <legend className="text-sm font-medium text-slate-700">Tujuan perbaikan</legend>
+                    <legend className="text-sm font-medium text-slate-700">
+                      {t("wms.damagedService.repairTargetLegend")}
+                    </legend>
                     <label className="flex cursor-pointer items-center gap-2 text-sm">
                       <input
                         type="radio"
@@ -630,7 +632,7 @@ export default function GudangServisRusakPage() {
                         checked={repairTarget === "entity"}
                         onChange={() => setRepairTarget("entity")}
                       />
-                      Gudang entitas (siap dialokasi/transfer)
+                      {t("wms.damagedService.repairTargetEntity")}
                     </label>
                     <label className="flex cursor-pointer items-center gap-2 text-sm">
                       <input
@@ -639,17 +641,17 @@ export default function GudangServisRusakPage() {
                         checked={repairTarget === "retail"}
                         onChange={() => setRepairTarget("retail")}
                       />
-                      Gudang penjualan retail (siap jual)
+                      {t("wms.damagedService.repairTargetRetail")}
                     </label>
                   </fieldset>
                   {repairTarget === "retail" ? (
                     <label className="mt-3 block text-sm">
                       <span className="mb-1 block font-medium text-slate-700">
-                        Gudang retail *
+                        {t("wms.damagedService.retailWarehouse")}
                       </span>
                       {retailOptions.length === 0 ? (
                         <p className="text-xs text-amber-700">
-                          Belum ada gudang retail aktif untuk entitas ini.
+                          {t("wms.damagedService.retailEmpty")}
                         </p>
                       ) : (
                         <select
@@ -657,7 +659,7 @@ export default function GudangServisRusakPage() {
                           value={targetWarehouseId}
                           onChange={(e) => setTargetWarehouseId(e.target.value)}
                         >
-                          <option value="">Pilih gudang retail</option>
+                          <option value="">{t("wms.damagedService.retailSelect")}</option>
                           {retailOptions.map((w) => (
                             <option key={w.id} value={w.id}>
                               {w.code} — {w.name}
@@ -673,33 +675,31 @@ export default function GudangServisRusakPage() {
                 <>
                   <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                     <Trash2 className="h-5 w-5 text-rose-600" />
-                    Konfirmasi pembuangan
+                    {t("wms.damagedService.writeOffTitle")}
                   </h3>
                   <p className="mt-2 text-sm text-slate-600">
-                    Stok keluar total dari sistem. Catatan teknisi wajib diisi. Draft biaya
-                    kerugian persediaan dibuat otomatis jika harga modal tersedia.
+                    {t("wms.damagedService.writeOffDesc")}
                   </p>
                 </>
               ) : (
                 <>
                   <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                     <ArrowRightLeft className="h-5 w-5 text-indigo-600" />
-                    Koreksi entitas gudang rusak
+                    {t("wms.damagedService.reassignTitle")}
                   </h3>
                   <p className="mt-2 text-sm text-slate-600">
-                    Pindahkan stok ke gudang rusak entitas yang benar (supervisor). Hanya antar
-                    gudang rusak.
+                    {t("wms.damagedService.reassignDesc")}
                   </p>
                   <label className="mt-4 block text-sm">
                     <span className="mb-1 block font-medium text-slate-700">
-                      Gudang rusak tujuan *
+                      {t("wms.damagedService.reassignTarget")}
                     </span>
                     <select
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                       value={reassignToWarehouseId}
                       onChange={(e) => setReassignToWarehouseId(e.target.value)}
                     >
-                      <option value="">Pilih gudang rusak tujuan</option>
+                      <option value="">{t("wms.damagedService.reassignSelect")}</option>
                       {reassignTargets.map((w) => (
                         <option key={w.id} value={w.id}>
                           {w.code} — {w.name} ({companyName(w.companyId)})
@@ -713,8 +713,10 @@ export default function GudangServisRusakPage() {
               <label className="mt-4 block text-sm">
                 <span className="mb-1 block font-medium text-slate-700">
                   {modal.action === "reassign"
-                    ? "Alasan koreksi *"
-                    : `Catatan teknisi${modal.action === "write_off" ? " *" : " (opsional)"}`}
+                    ? t("wms.damagedService.noteReassign")
+                    : modal.action === "write_off"
+                      ? t("wms.damagedService.noteWriteOff")
+                      : t("wms.damagedService.noteOptional")}
                 </span>
                 <textarea
                   rows={3}
@@ -723,10 +725,10 @@ export default function GudangServisRusakPage() {
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   placeholder={
                     modal.action === "write_off"
-                      ? "Contoh: PCB mati total, tidak layak servis"
+                      ? t("wms.damagedService.phWriteOff")
                       : modal.action === "reassign"
-                        ? "Contoh: Salah entitas saat QC, seharusnya PT B"
-                        : "Contoh: Ganti flex cable, sudah normal"
+                        ? t("wms.damagedService.phReassign")
+                        : t("wms.damagedService.phRepair")
                   }
                 />
               </label>
@@ -737,7 +739,7 @@ export default function GudangServisRusakPage() {
                   onClick={() => setModal(null)}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"
                 >
-                  Batal
+                  {t("wms.damagedService.cancel")}
                 </button>
                 <button
                   type="button"
@@ -760,13 +762,7 @@ export default function GudangServisRusakPage() {
                   }
                 >
                   {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {modal.action === "write_off"
-                    ? "Buang dari sistem"
-                    : modal.action === "reassign"
-                      ? "Pindah gudang rusak"
-                      : repairTarget === "retail"
-                        ? "Pindah ke retail"
-                        : "Pindah ke entitas"}
+                  {t("wms.damagedService.confirm")}
                 </button>
               </div>
             </div>

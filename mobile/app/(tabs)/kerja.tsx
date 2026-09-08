@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
@@ -15,15 +15,76 @@ import {
   getWorkSectionHint,
   isHrOrOwnerAccount,
   isOperationalWorkSectionLocked,
+  type WorkDashboardTile,
 } from "@/lib/work-dashboard-menu";
 import { normalizeAuthModel } from "@/lib/rbac";
+import { useMobileLocale } from "@/lib/i18n";
 import { PWA } from "@/constants/pwaTheme";
+import { getErpWebUrl } from "@/lib/env";
+import { pb } from "@/lib/pocketbase";
+
+type DeskSummary = {
+  pendingLeave: number;
+  suspiciousAttendance: number;
+  openFindings: number;
+  pendingRecruitmentApprovals: number;
+  pendingOvertime?: number;
+};
+
+function applyDeskBadges(
+  tiles: WorkDashboardTile[],
+  summary: DeskSummary | null,
+): WorkDashboardTile[] {
+  if (!summary) return tiles;
+  return tiles.map((tile) => {
+    let badgeCount: number | undefined;
+    if (tile.id === "hr-leave-queue") badgeCount = summary.pendingLeave;
+    if (tile.id === "hr-overtime-queue") badgeCount = summary.pendingOvertime ?? 0;
+    if (tile.id === "hr-findings") badgeCount = summary.openFindings;
+    return badgeCount != null && badgeCount > 0 ? { ...tile, badgeCount } : tile;
+  });
+}
 
 export default function MejaKerjaScreen() {
   const { user } = useAuth();
+  const { t } = useMobileLocale();
   const { refreshing, refresh } = useOperationalAccess();
+  const [summary, setSummary] = useState<DeskSummary | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  const loadSummary = useCallback(async () => {
+    const base = getErpWebUrl();
+    if (!base || !pb.authStore.token) {
+      setSummary(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${base}/api/hr/desk-workbench-summary`, {
+        headers: { Authorization: `Bearer ${pb.authStore.token}` },
+      });
+      const json = (await res.json()) as { data?: DeskSummary; error?: string };
+      if (!res.ok) {
+        setSummaryError(json.error || `HTTP ${res.status}`);
+        setSummary(null);
+        return;
+      }
+      setSummaryError(null);
+      setSummary(json.data ?? null);
+    } catch (e) {
+      setSummaryError(e instanceof Error ? e.message : "Gagal memuat ringkasan");
+      setSummary(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
 
   const sections = useMemo(() => getWorkDashboardSections(user), [user]);
+  const workTiles = useMemo(
+    () => applyDeskBadges(sections.workNative, summary),
+    [sections.workNative, summary],
+  );
   const title = useMemo(() => getWorkDashboardTitle(user), [user]);
   const subtitle = useMemo(() => getWorkDashboardSubtitle(user), [user]);
   const workLocked = useMemo(() => isOperationalWorkSectionLocked(user), [user]);
@@ -34,6 +95,11 @@ export default function MejaKerjaScreen() {
     return normalizeAuthModel(user).dashboardAccess;
   }, [user]);
 
+  const onRefresh = useCallback(() => {
+    void refresh();
+    void loadSummary();
+  }, [refresh, loadSummary]);
+
   return (
     <ScrollView
       style={styles.screen}
@@ -42,7 +108,7 @@ export default function MejaKerjaScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={() => void refresh()}
+          onRefresh={onRefresh}
           tintColor={PWA.indigo}
         />
       }
@@ -58,14 +124,50 @@ export default function MejaKerjaScreen() {
         </View>
       </View>
 
-      <WorkDashboardStatusCard user={user} refreshing={refreshing} onRefresh={() => void refresh()} />
+      <WorkDashboardStatusCard user={user} refreshing={refreshing} onRefresh={onRefresh} />
+
+      {summaryError ? (
+        <View style={styles.errBox}>
+          <Text style={styles.errTxt}>{summaryError}</Text>
+        </View>
+      ) : null}
+
+      {summary &&
+      (summary.pendingRecruitmentApprovals > 0 ||
+        summary.pendingLeave > 0 ||
+        (summary.pendingOvertime ?? 0) > 0) ? (
+        <View style={styles.priorityBox}>
+          <Text style={styles.priorityTitle}>Perlu tindakan (scoped)</Text>
+          {summary.pendingRecruitmentApprovals > 0 ? (
+            <Text style={styles.priorityLine}>
+              Recruitment: {summary.pendingRecruitmentApprovals}
+            </Text>
+          ) : null}
+          {summary.pendingLeave > 0 ? (
+            <Text style={styles.priorityLine}>Cuti: {summary.pendingLeave}</Text>
+          ) : null}
+          {(summary.pendingOvertime ?? 0) > 0 ? (
+            <Text style={styles.priorityLine}>Lembur: {summary.pendingOvertime}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {sections.personal.length > 0 ? (
+        <WorkDashboardMenuSection
+          title={t("reporting.hubTitle")}
+          hint={t("reporting.hubHint")}
+          icon="document-text-outline"
+          tiles={sections.personal}
+          locked={false}
+        />
+      ) : null}
 
       <View style={styles.roleChip}>
         <Text style={styles.roleChipTxt}>Peran login: {roleLabel}</Text>
         {!isHrOwner ? (
           <Text style={styles.roleChipHint}>
-            Tab ini mengikuti check-in/out. Absensi, cuti, lembur, dan luar kantor ada di tab{" "}
-            <Text style={{ fontWeight: "800" }}>Absensi</Text>.
+            Meja Kerja = action center. Profil, absensi, cuti, lembur, dan luar kantor ada di tab{" "}
+            <Text style={{ fontWeight: "800" }}>Absensi</Text> / Profil — bukan di sini.
           </Text>
         ) : null}
       </View>
@@ -75,18 +177,18 @@ export default function MejaKerjaScreen() {
           title="Antrean operasional"
           hint={getWorkSectionHint(user)}
           icon="flash-outline"
-          tiles={sections.workNative}
+          tiles={workTiles}
           locked={false}
         />
       ) : workLocked ? (
         <OperationalLockBanner variant="work-section" />
-      ) : sections.workNative.length > 0 ? (
+      ) : workTiles.length > 0 ? (
         <>
           <WorkDashboardMenuSection
-            title="Gudang & inventory"
-            hint="Scan zona dan cek stok di lapangan."
+            title="Tindakan lapangan"
+            hint="Scan & validasi — otorisasi sama Desktop; bukan mini ERP."
             icon="cube-outline"
-            tiles={sections.workNative}
+            tiles={workTiles}
             locked={false}
           />
           <View style={styles.openCard}>
@@ -103,8 +205,8 @@ export default function MejaKerjaScreen() {
           <Text style={styles.openTitle}>Meja kerja terbuka</Text>
           <Text style={styles.openBody}>
             {hasDashboardAccess
-              ? "Sesi operasional aktif. Modul lengkap (sama laptop) bisa Anda buka di browser setelah login ERP."
-              : "Sesi operasional aktif. Lanjutkan tugas Anda; check-out di tab Absensi saat selesai."}
+              ? "Tidak ada antrean pending. Modul lengkap tetap di Desktop ERP."
+              : "Sesi operasional aktif. Lanjutkan tugas Anda; absen pulang di tab Absensi saat selesai."}
           </Text>
           <Link href="/(tabs)/attendance" asChild>
             <View style={styles.openLink}>
@@ -177,4 +279,22 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   openLinkTxt: { fontSize: 14, fontWeight: "700", color: PWA.indigo },
+  errBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  errTxt: { fontSize: 13, color: "#991b1b" },
+  priorityBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    backgroundColor: "#fffbeb",
+    gap: 4,
+  },
+  priorityTitle: { fontSize: 12, fontWeight: "800", color: "#92400e", textTransform: "uppercase" },
+  priorityLine: { fontSize: 13, fontWeight: "600", color: "#78350f" },
 });

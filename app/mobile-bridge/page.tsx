@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { pb } from "@/lib/pocketbase";
-import { registerWebSessionAfterAuth } from "@/lib/auth-session";
+import { syncWebSessionNonceFromUser } from "@/lib/auth-session";
 import { getDefaultRouteForUser } from "@/lib/rbac";
 
 type BridgeAuth = { token?: string; record?: Record<string, unknown> };
@@ -55,11 +55,11 @@ export default function MobileBridgePage() {
         pb.authStore.save(auth.token, auth.record as never);
         setPbAuthCookie(auth.token, auth.record);
 
-        try {
-          await registerWebSessionAfterAuth(pb);
-        } catch (e) {
-          console.error("mobile-bridge session_nonce:", e);
-        }
+        // Sync web_session_nonce dari server tanpa merotasinya —
+        // bridge membuka sesi yang sudah ada, bukan login baru.
+        // registerWebSessionAfterAuth dilarang di sini karena akan mencabut
+        // sesi Web yang sedang aktif dan/atau sesi Mobile.
+        syncWebSessionNonceFromUser(pb.authStore.model as { session_nonce?: unknown });
 
         if (cancelled) return;
 

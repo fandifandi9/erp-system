@@ -44,6 +44,23 @@ function newNonce(): string {
 export async function registerWebSessionAfterAuth(pb: PocketBase): Promise<void> {
   const id = pb.authStore.model?.id;
   if (!id) return;
+  const token = pb.authStore.token;
+  if (!token) return;
+
+  const res = await fetch("/api/auth/session/web", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; nonce?: string };
+  if (res.ok && data.nonce) {
+    setWebSessionNonce(data.nonce);
+    return;
+  }
+
+  // Fallback: direct PB (legacy local before migration)
   const nonce = newNonce();
   await pb.collection("users").update(id, { session_nonce: nonce });
   setWebSessionNonce(nonce);

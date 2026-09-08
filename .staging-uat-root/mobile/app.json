@@ -1,0 +1,102 @@
+{
+  "expo": {
+    "name": "SERBA System",
+    "slug": "erp-staff-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "serbasystem",
+    "icon": "./assets/systemLogo.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/systemLogo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "icon": "./assets/systemLogoIos.png",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.erp.staff",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Kamera dipakai untuk foto absensi dan profil.",
+        "NSLocationWhenInUseUsageDescription": "Lokasi dipakai untuk validasi absensi di zona kantor.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Lokasi dipakai untuk absensi saat aplikasi dibuka.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/systemLogo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.erp.staff",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/systemLogo.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Izinkan lokasi untuk absensi GPS.",
+          "locationWhenInUsePermission": "Izinkan lokasi untuk absensi GPS."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Izinkan kamera untuk foto absensi.",
+          "microphonePermission": "Izinkan mikrofon jika rekaman diperlukan.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Akses galeri untuk lampiran profil.",
+          "cameraPermission": "Kamera untuk foto profil."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notificationIcon.png",
+          "color": "#111827",
+          "sounds": [],
+          "mode": "production"
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "gradleProperties": {
+              "org.gradle.jvmargs": "-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+            }
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4645bf17-9b30-440a-bebb-8f4c73ce1105"
+      }
+    }
+  }
+}

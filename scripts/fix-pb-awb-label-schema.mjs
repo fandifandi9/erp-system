@@ -46,7 +46,7 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-const AWB_SOURCE_VALUES = ["manual", "excel", "zip_import", "wms_pickup"];
+const AWB_SOURCE_VALUES = ["manual", "excel", "zip_import", "wms_pickup", "system"];
 
 function fieldId(prefix) {
   return `${prefix}${Date.now().toString(36)}`.slice(0, 15);

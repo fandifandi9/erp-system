@@ -1,0 +1,96 @@
+/**
+ * SERBA ERP — Global Design Tokens (Phase 35)
+ * CSS variables = SSOT. Use var(--erp-*) in components.
+ */
+
+:root {
+  /* Brand */
+  --erp-primary: #ffc107;
+  --erp-primary-hover: #e6ac00;
+  --erp-primary-soft: #fff8e1;
+  --erp-primary-foreground: #1a1a1a;
+
+  /* Semantic */
+  --erp-success: #059669;
+  --erp-success-soft: #ecfdf5;
+  --erp-warning: #d97706;
+  --erp-warning-soft: #fffbeb;
+  --erp-danger: #dc2626;
+  --erp-danger-soft: #fef2f2;
+  --erp-info: #0284c7;
+  --erp-info-soft: #f0f9ff;
+
+  /* Surfaces */
+  --erp-bg: #f8fafc;
+  --erp-surface: #ffffff;
+  --erp-surface-muted: #f1f5f9;
+  --erp-surface-elevated: #ffffff;
+
+  /* Borders */
+  --erp-border: #e2e8f0;
+  --erp-border-strong: #cbd5e1;
+
+  /* Text */
+  --erp-text: #0f172a;
+  --erp-text-secondary: #334155;
+  --erp-text-muted: #475569;
+  --erp-text-subtle: #94a3b8;
+
+  /* Focus */
+  --erp-focus-ring: #ffc107;
+
+  /* Spacing scale */
+  --erp-space-1: 0.25rem;
+  --erp-space-2: 0.5rem;
+  --erp-space-3: 0.75rem;
+  --erp-space-4: 1rem;
+  --erp-space-5: 1.25rem;
+  --erp-space-6: 1.5rem;
+  --erp-space-8: 2rem;
+
+  /* Radius */
+  --erp-radius-sm: 0.5rem;
+  --erp-radius-md: 0.75rem;
+  --erp-radius-lg: 1rem;
+  --erp-radius-xl: 1.25rem;
+
+  /* Shadow */
+  --erp-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
+  --erp-shadow-md: 0 4px 12px rgb(15 23 42 / 0.06);
+  --erp-shadow-lg: 0 8px 24px rgb(15 23 42 / 0.08);
+
+  /* Typography */
+  --erp-font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --erp-text-xs: 0.75rem;
+  --erp-text-sm: 0.875rem;
+  --erp-text-base: 1rem;
+  --erp-text-lg: 1.125rem;
+  --erp-text-xl: 1.25rem;
+  --erp-text-2xl: 1.5rem;
+
+  /* Layout */
+  --erp-sidebar-width: 15.5rem;
+  --erp-topbar-height: 3.5rem;
+}
+
+@theme {
+  --color-erp-primary: var(--erp-primary);
+  --color-erp-primary-hover: var(--erp-primary-hover);
+  --color-erp-primary-soft: var(--erp-primary-soft);
+  --color-erp-success: var(--erp-success);
+  --color-erp-success-soft: var(--erp-success-soft);
+  --color-erp-warning: var(--erp-warning);
+  --color-erp-warning-soft: var(--erp-warning-soft);
+  --color-erp-danger: var(--erp-danger);
+  --color-erp-danger-soft: var(--erp-danger-soft);
+  --color-erp-info: var(--erp-info);
+  --color-erp-info-soft: var(--erp-info-soft);
+  --color-erp-bg: var(--erp-bg);
+  --color-erp-surface: var(--erp-surface);
+  --color-erp-surface-muted: var(--erp-surface-muted);
+  --color-erp-surface-elevated: var(--erp-surface-elevated);
+  --color-erp-border: var(--erp-border);
+  --color-erp-text: var(--erp-text);
+  --color-erp-text-secondary: var(--erp-text-secondary);
+  --color-erp-text-muted: var(--erp-text-muted);
+}

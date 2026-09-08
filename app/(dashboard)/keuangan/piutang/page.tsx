@@ -70,7 +70,7 @@ export default function PiutangPage() {
     <KeuanganSubpageShell
       title="Piutang Pelanggan"
       description={
-        dimSummary ? `Invoice yang belum lunas · ${dimSummary}` : "Invoice yang belum lunas"
+        dimSummary ? `Faktur yang belum lunas · ${dimSummary}` : "Faktur yang belum lunas"
       }
       action={
         <Link href="/bisnis/invoice" className="text-sm font-medium text-indigo-600 hover:underline">

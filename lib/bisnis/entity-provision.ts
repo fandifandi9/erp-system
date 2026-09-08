@@ -7,6 +7,9 @@ import {
   clearPrimaryWarehouseFlag,
   assertSingleEntityWarehouse,
   assertSingleCashAccountPerEntity,
+  ensureDamagedWarehouse,
+  ensureTransitWarehouse,
+  fetchEntityModules,
 } from "./entity-modules";
 import type { CashAccount, CompanyProfile, Store } from "./types";
 
@@ -39,12 +42,14 @@ export type EntityProvisionInput = {
 export type EntityProvisionResult = {
   store?: Store;
   warehouse: { id: string; code: string; name: string };
+  transitWarehouse: { id: string; code: string; name: string };
+  damagedWarehouse: { id: string; code: string; name: string };
   cashAccount?: CashAccount;
 };
 
 export const EMPTY_ENTITY_PROVISION: EntityProvisionForm = {
   store: { selectedId: "", newName: "" },
-  warehouse: { selectedId: "", newName: "Gudang Utama" },
+  warehouse: { selectedId: "", newName: "" },
   cashAccount: { selectedId: "", newName: "" },
 };
 
@@ -71,19 +76,15 @@ async function assertModuleUnassigned(
   return row;
 }
 
-/** Cek apakah entitas sudah punya gudang + rekening operasional. */
+/** Cek apakah entitas sudah punya 3 gudang terkunci + rekening operasional. */
 export async function entityHasOperationalStack(companyId: string): Promise<boolean> {
-  const [warehouses, cashAccounts] = await Promise.all([
-    pb.collection(INV_COLLECTIONS.warehouses).getList(1, 1, {
-      filter: `company = "${companyId}" && is_active = true`,
-      requestKey: null,
-    }),
-    pb.collection("biz_cash_accounts").getList(1, 1, {
-      filter: `company = "${companyId}" && is_active = true`,
-      requestKey: null,
-    }),
-  ]);
-  return warehouses.totalItems > 0 && cashAccounts.totalItems > 0;
+  const mods = await fetchEntityModules(companyId);
+  return !!(
+    mods.primaryWarehouse?.is_active !== false &&
+    mods.transitWarehouse?.is_active !== false &&
+    mods.damagedWarehouse?.is_active !== false &&
+    mods.primaryCashAccount?.is_active !== false
+  );
 }
 
 /**
@@ -111,8 +112,10 @@ export async function provisionEntityDefaults(
     newName: input.cashAccountName ?? `Rekening ${input.companyName}`,
   };
 
-  const warehouseId = selId(warehouseSel);
-  const cashId = selId(cashSel);
+  const existingMods = await fetchEntityModules(input.companyId);
+
+  let warehouseId = selId(warehouseSel) || existingMods.primaryWarehouse?.id || "";
+  let cashId = selId(cashSel) || existingMods.primaryCashAccount?.id || "";
 
   if (!warehouseId && !selName(warehouseSel, "Gudang Utama")) {
     throw new Error("Gudang utama wajib dipilih atau dibuat");
@@ -192,7 +195,23 @@ export async function provisionEntityDefaults(
     }
   }
 
-  return { warehouse, cashAccount };
+  const transitWarehouse = await ensureTransitWarehouse(input.companyId, pb);
+  const damagedWarehouse = await ensureDamagedWarehouse(input.companyId, pb);
+
+  return {
+    warehouse,
+    transitWarehouse: {
+      id: transitWarehouse.id,
+      code: transitWarehouse.code,
+      name: transitWarehouse.name,
+    },
+    damagedWarehouse: {
+      id: damagedWarehouse.id,
+      code: damagedWarehouse.code,
+      name: damagedWarehouse.name,
+    },
+    cashAccount,
+  };
 }
 
 export function defaultProvisionFromProfile(p: CompanyProfile): EntityProvisionForm {

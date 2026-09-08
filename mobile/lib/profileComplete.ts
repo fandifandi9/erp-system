@@ -54,7 +54,7 @@ export async function checkProfileComplete(userId: string): Promise<{
         missingFields,
       };
     }
-    return { isComplete: true, message: "Profile complete", missingFields: [] };
+    return { isComplete: true, message: "Profil lengkap", missingFields: [] };
   } catch (error: unknown) {
     return {
       isComplete: false,

@@ -3,12 +3,13 @@
  */
 export {
   fetchStockMapByWarehouse,
+  fetchStockMapForProducts,
   fetchGlobalStockByProduct,
   getStockQtyFromMap,
 } from "@/lib/inventory/stock-balances";
 
 import {
-  fetchStockMapByWarehouse,
+  fetchStockMapForProducts,
   getStockQtyFromMap,
 } from "@/lib/inventory/stock-balances";
 
@@ -16,7 +17,7 @@ export async function getWarehouseStockQty(
   warehouseId: string,
   productId: string,
 ): Promise<number> {
-  const map = await fetchStockMapByWarehouse(warehouseId);
+  const map = await fetchStockMapForProducts(warehouseId, [productId]);
   return getStockQtyFromMap(map, productId);
 }
 

@@ -11,6 +11,62 @@ export const PURCHASE_MODULE = {
   buat: "/bisnis/pembelian/buat",
 } as const;
 
+/** Modul Retur berdiri sendiri — daftar dipisah penjualan / pembelian. */
+export const RETUR_MODULE = {
+  penjualan: "/bisnis/retur",
+  pembelian: "/bisnis/retur/pembelian",
+  buat: "/bisnis/retur/buat",
+} as const;
+
+export function returCreateUrl(opts?: {
+  type?: "penjualan" | "pembelian";
+  so?: string;
+  po?: string;
+  mode?: "doc" | "standalone";
+}) {
+  const sp = new URLSearchParams();
+  if (opts?.type) sp.set("type", opts.type);
+  if (opts?.so) sp.set("so", opts.so);
+  if (opts?.po) sp.set("po", opts.po);
+  if (opts?.mode) sp.set("mode", opts.mode);
+  const q = sp.toString();
+  return q ? `${RETUR_MODULE.buat}?${q}` : RETUR_MODULE.buat;
+}
+
+/** Preview invoice lengkap dari pencarian retur. */
+export function invoicePreviewForReturUrl(invoiceId: string) {
+  return `/bisnis/penjualan/${invoiceId}?from=retur`;
+}
+
+/** Preview SO (untuk batal jika belum invoice). */
+export function salesOrderPreviewForReturUrl(soId: string) {
+  return `/bisnis/penjualan/${soId}?from=retur`;
+}
+
+/** Preview tagihan lengkap dari pencarian retur. */
+export function billPreviewForReturUrl(billId: string) {
+  return `/bisnis/pembelian/${billId}?from=retur`;
+}
+
+/** Preview PO (untuk batal jika belum tagihan). */
+export function purchaseOrderPreviewForReturUrl(poId: string) {
+  return `/bisnis/pembelian/${poId}?from=retur`;
+}
+
+export function isReturPenjualanPath(pathname: string): boolean {
+  return pathname === RETUR_MODULE.penjualan;
+}
+
+export function isReturPembelianPath(pathname: string): boolean {
+  return (
+    pathname === RETUR_MODULE.pembelian || pathname.startsWith(`${RETUR_MODULE.pembelian}/`)
+  );
+}
+
+export function isReturModuleListPath(pathname: string): boolean {
+  return isReturPenjualanPath(pathname) || isReturPembelianPath(pathname);
+}
+
 export function salesCreateUrl(type: "so" | "invoice") {
   return `${SALES_MODULE.buat}?type=${type}`;
 }

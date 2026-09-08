@@ -3,17 +3,28 @@ import PocketBase from "pocketbase";
 import {
   isHrAccount,
   isOwnerAccount,
-  isOwnerOrHrAccount,
   normalizeAuthModel,
   type AuthModel,
 } from "@/lib/auth-model";
 import { parsePbAuthCookieValue } from "@/lib/pb-auth-cookie";
 import { getInventoryAdminPb, getPocketBaseUrl } from "@/lib/inventory/pb-server";
 import {
+  PbServiceUnavailableError,
+  toClientSafeServiceError,
+} from "@/lib/inventory/pb-service-error";
+import {
   assertCompanyInScope,
   getAccessibleCompanyIds,
   HrCompanyScopeError,
 } from "@/lib/hr/company-scope";
+import { ModuleAccessError } from "@/lib/access/assert";
+import {
+  assertHrModuleEntityAccess,
+  ensureHrAccessContext,
+  requireHrModuleApiUser,
+} from "@/lib/access/hr-api-enforcement";
+import type { UserAccessContext } from "@/lib/access/types";
+import { loadUserAccessContext } from "@/lib/access/module-assignments-server";
 
 export type HrApiAuthContext = {
   userId: string;
@@ -24,14 +35,18 @@ export type HrApiAuthContext = {
   isHr: boolean;
   /** Resolved server-side; never from client body. */
   companyIds: string[];
+  /** Lazy-loaded module access context (Phase 35I-A). */
+  accessContext?: UserAccessContext | null;
 };
 
 export class HrApiError extends Error {
   status: number;
-  constructor(message: string, status = 400) {
+  code?: string;
+  constructor(message: string, status = 400, code?: string) {
     super(message);
     this.name = "HrApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -62,12 +77,19 @@ export async function getAuthenticatedHrUser(req?: Request): Promise<HrApiAuthCo
     const isHr = isHrAccount(record);
 
     let companyIds: string[] = [];
+    let accessContext: UserAccessContext | null = null;
     try {
       const adminPb = await getInventoryAdminPb();
       companyIds = await getAccessibleCompanyIds(adminPb, userId, record);
+      try {
+        accessContext = await loadUserAccessContext(adminPb, record);
+      } catch {
+        accessContext = null;
+      }
     } catch {
       // Fail closed for scope: empty list; callers that need companies must deny.
       companyIds = [];
+      accessContext = null;
     }
 
     return {
@@ -77,6 +99,7 @@ export async function getAuthenticatedHrUser(req?: Request): Promise<HrApiAuthCo
       isOwner,
       isHr,
       companyIds,
+      accessContext,
     };
   } catch {
     return null;
@@ -89,13 +112,19 @@ export async function requireAuthenticatedHrUser(req?: Request): Promise<HrApiAu
   return ctx;
 }
 
-/** Owner or HR (canonical). For future HR mutations / admin HR surfaces. */
+/** Owner or HR (canonical) or Staff+HR module assignment. */
 export async function requireOwnerOrHrApiUser(req?: Request): Promise<HrApiAuthContext> {
   const ctx = await requireAuthenticatedHrUser(req);
-  if (!isOwnerOrHrAccount(ctx.user)) {
-    throw new HrApiError("Akses HR ditolak.", 403);
-  }
-  return ctx;
+  const adminPb = await getInventoryAdminPb();
+  return requireHrModuleApiUser(adminPb, ctx);
+}
+
+/** Ensure module access context is loaded for capability/entity enforcement. */
+export async function withHrAccessContext(
+  adminPb: Awaited<ReturnType<typeof getInventoryAdminPb>>,
+  ctx: HrApiAuthContext,
+): Promise<HrApiAuthContext> {
+  return ensureHrAccessContext(adminPb, ctx);
 }
 
 export async function requireOwnerApiUser(req?: Request): Promise<HrApiAuthContext> {
@@ -125,23 +154,88 @@ export function requireCompanyInActorScope(
 }
 
 /**
+ * Membership scope + HR module entity scope when assignment exists.
+ * Use for HR mutations/reads that carry company_id.
+ */
+export function requireCompanyInHrModuleScope(
+  ctx: HrApiAuthContext,
+  companyId: string | null | undefined,
+): void {
+  try {
+    assertHrModuleEntityAccess(ctx, companyId);
+  } catch (e) {
+    if (e instanceof ModuleAccessError) {
+      throw new HrApiError(e.message, 403);
+    }
+    throw e;
+  }
+}
+
+const CLIENT_IDENTITY_FORGERY_FIELD_NAMES = [
+  "account_type",
+  "role",
+  "role_code",
+  "status",
+  "inventory_role",
+  "hr_role_preset",
+  "web_access",
+  "active_company",
+  "default_company",
+  "active_store",
+  "default_store",
+  "active_warehouse",
+  "default_warehouse",
+  "is_checked_in",
+  "shift_active",
+  "last_checkin",
+  "last_checkout",
+  "locale",
+  "session_nonce",
+  "mobile_session_nonce",
+  "hr_action_by",
+  "hr_action_name",
+  "hr_action_at",
+  "approved_by",
+  "approved_at",
+  "rejected_by",
+  "rejected_at",
+] as const;
+
+/**
  * Reject forged identity / privilege fields from client payloads.
  * Future mutation handlers should call this on every write body.
  */
 export function rejectClientPrivilegeFields(body: Record<string, unknown> | null | undefined): void {
   if (!body || typeof body !== "object") return;
   const forbidden = [
-    "account_type",
-    "role",
-    "role_code",
-    "hr_action_by",
-    "hr_action_name",
-    "hr_action_at",
-    "approved_by",
-    "approved_at",
-    "rejected_by",
-    "rejected_at",
+    ...CLIENT_IDENTITY_FORGERY_FIELD_NAMES,
+    "dashboard_access",
+    "oldPassword",
+    "password",
+    "passwordConfirm",
   ] as const;
+
+  for (const key of forbidden) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      throw new HrApiError(`Field '${key}' tidak boleh dikirim oleh klien.`, 400);
+    }
+  }
+}
+
+/**
+ * Reject identity forgery on authorized HR employee create/update bodies.
+ * Allows `dashboard_access` and `role_preset_id` — applied server-side after capability checks.
+ */
+export function rejectClientEmployeeMutationForgeryFields(
+  body: Record<string, unknown> | null | undefined,
+  options?: { allowPassword?: boolean },
+): void {
+  if (!body || typeof body !== "object") return;
+
+  const forbidden: string[] = [...CLIENT_IDENTITY_FORGERY_FIELD_NAMES];
+  if (!options?.allowPassword) {
+    forbidden.push("oldPassword", "password", "passwordConfirm");
+  }
 
   for (const key of forbidden) {
     if (Object.prototype.hasOwnProperty.call(body, key)) {
@@ -152,12 +246,55 @@ export function rejectClientPrivilegeFields(body: Record<string, unknown> | null
 
 export function hrJsonError(err: unknown, fallback = "Terjadi kesalahan.") {
   if (err instanceof HrApiError) {
-    return Response.json({ ok: false, error: err.message }, { status: err.status });
+    return Response.json(
+      { ok: false, error: err.message, ...(err.code ? { code: err.code } : {}) },
+      { status: err.status },
+    );
   }
   if (err instanceof HrCompanyScopeError) {
     return Response.json({ ok: false, error: err.message }, { status: 403 });
   }
+  if (err instanceof ModuleAccessError) {
+    return Response.json({ ok: false, error: err.message }, { status: 403 });
+  }
+  if (err instanceof PbServiceUnavailableError) {
+    return Response.json({ ok: false, error: err.message }, { status: err.status });
+  }
+  const safe = toClientSafeServiceError(err);
+  if (safe) {
+    return Response.json({ ok: false, error: safe.message }, { status: safe.status });
+  }
   const msg = err instanceof Error ? err.message : fallback;
+  const status =
+    err && typeof err === "object" && "status" in err ? Number((err as { status?: number }).status) : 0;
+  const pbUrl =
+    err && typeof err === "object" && "url" in err ? String((err as { url?: string }).url || "") : "";
+  const looksMissingRatingCollection =
+    /hr_rating/i.test(pbUrl) &&
+    (/requested resource wasn't found/i.test(msg) || status === 404);
+  if (looksMissingRatingCollection) {
+    return Response.json(
+      {
+        ok: false,
+        error:
+          "Koleksi Rating tidak ada di PocketBase yang dipakai aplikasi ini. Schema Rating hanya di STAGING (127.0.0.1:8092 / pb-staging.serba.space), belum di production. Jangan uji Rating lewat npm run dev yang mengarah ke pb.serba.space. Gunakan https://staging.serba.space atau npm run staging:next-dev.",
+      },
+      { status: 503 },
+    );
+  }
+  const looksMissingReportingCollection =
+    /hr_staff_reports|hr_findings|hr_case_attachments/i.test(pbUrl) &&
+    (/requested resource wasn't found/i.test(msg) || status === 404);
+  if (looksMissingReportingCollection) {
+    return Response.json(
+      {
+        ok: false,
+        error:
+          "Koleksi Laporan/Temuan tidak ada di PocketBase ini. Schema hanya di STAGING. Jalankan npm run pb:hr-reporting-schema:staging dan gunakan staging.serba.space.",
+      },
+      { status: 503 },
+    );
+  }
   return Response.json({ ok: false, error: msg }, { status: 500 });
 }
 
@@ -172,4 +309,9 @@ async function readAuthToken(req?: Request): Promise<string | null> {
   const raw = jar.get("pb_auth")?.value;
   if (!raw) return null;
   return parsePbAuthCookieValue(raw)?.token?.trim() || null;
+}
+
+/** Auth token from HttpOnly cookie or Authorization header (for session-bound payslip unlock). */
+export async function readRequestAuthToken(req?: Request): Promise<string | null> {
+  return readAuthToken(req);
 }

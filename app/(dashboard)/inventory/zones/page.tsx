@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { pb } from "@/lib/pocketbase";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
+import { useWorkContext } from "@/components/WorkContextProvider";
 import { ZoneQrDisplay } from "@/components/inventory/ZoneQrDisplay";
-import { fetchWarehouses, fetchZones } from "@/lib/inventory/client";
+import { fetchZones } from "@/lib/inventory/client";
 import { canManageInventoryMaster } from "@/lib/inventory/access";
 import { buildZoneQrPayload } from "@/lib/inventory/zone-qr";
 import { formatWarehouseLabel } from "@/lib/inventory/display";
@@ -13,18 +14,19 @@ import { printZoneQrLabel } from "@/lib/inventory/print-zone-qr";
 import {
   INV_COLLECTIONS,
   ZONE_TYPES,
-  type InvWarehouse,
   type InvZone,
   type ZoneType,
 } from "@/lib/inventory/types";
 import { getErrorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { Loader2, Plus, QrCode } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function InventoryZonesPage() {
+  const { t } = useLocale();
   const user = pb.authStore.model;
   const canEdit = user && canManageInventoryMaster(user);
-  const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
+  const { warehouses, loading: ctxLoading } = useWorkContext();
   const [warehouseId, setWarehouseId] = useState("");
   const [zones, setZones] = useState<InvZone[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,17 +54,17 @@ export default function InventoryZonesPage() {
   };
 
   useEffect(() => {
-    void fetchWarehouses().then((list) => {
-      setWarehouses(list);
-      if (list[0]) {
-        setWarehouseId(list[0].id);
-        void load(list[0].id);
-      } else setLoading(false);
-    });
-  }, []);
+    if (ctxLoading) return;
+    if (warehouses.length === 0) {
+      setLoading(false);
+      return;
+    }
+    if (!warehouseId) setWarehouseId(warehouses[0].id);
+  }, [ctxLoading, warehouses, warehouseId]);
 
   useEffect(() => {
-    if (warehouseId) void load(warehouseId);
+    if (!warehouseId) return;
+    void load(warehouseId);
   }, [warehouseId]);
 
   const whCode = warehouses.find((w) => w.id === warehouseId)?.code || "";
@@ -109,8 +111,8 @@ export default function InventoryZonesPage() {
   return (
     <InventoryGate>
       <InventoryShell
-        title="Zona kerja"
-        subtitle="Data zona + QR untuk masuk zona staff. Scan di halaman Masuk zona."
+        title={t("inventory.zones.title")}
+        subtitle={t("inventory.zones.subtitle")}
       >
         {error && !modal ? (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -150,8 +152,8 @@ export default function InventoryZonesPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-4 py-3">Kode</th>
-                <th className="px-4 py-3">Nama</th>
+                <th className="px-4 py-3">{t("inventory.common.code")}</th>
+                <th className="px-4 py-3">{t("inventory.common.name")}</th>
                 <th className="px-4 py-3">Tipe</th>
                 <th className="px-4 py-3">QR</th>
               </tr>
@@ -166,7 +168,7 @@ export default function InventoryZonesPage() {
               ) : zones.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                    Belum ada zona. Buat zona penerimaan/kemasan untuk mulai.
+                    {t("inventory.zones.empty")}
                   </td>
                 </tr>
               ) : (
@@ -228,7 +230,7 @@ export default function InventoryZonesPage() {
                 />
               </label>
               <label className="mt-3 block text-sm">
-                Nama
+                {t("inventory.common.name")}
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                   value={form.name}
@@ -244,9 +246,9 @@ export default function InventoryZonesPage() {
                     setForm({ ...form, zone_type: e.target.value as ZoneType })
                   }
                 >
-                  {ZONE_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  {ZONE_TYPES.map((zt) => (
+                    <option key={zt.value} value={zt.value}>
+                      {zt.label}
                     </option>
                   ))}
                 </select>
@@ -257,14 +259,14 @@ export default function InventoryZonesPage() {
                   className="rounded-lg px-4 py-2 text-sm text-slate-600"
                   onClick={() => setModal(false)}
                 >
-                  Batal
+                  {t("inventory.common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white"
                 >
-                  {saving ? "Menyimpan…" : "Simpan"}
+                  {saving ? t("inventory.common.loading") : t("inventory.common.save")}
                 </button>
               </div>
             </form>

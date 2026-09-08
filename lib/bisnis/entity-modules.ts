@@ -22,6 +22,8 @@ export type EntityModules = {
   warehouses: EntityWarehouse[];
   cashAccounts: CashAccount[];
   primaryWarehouse: EntityWarehouse | null;
+  transitWarehouse: EntityWarehouse | null;
+  damagedWarehouse: EntityWarehouse | null;
   primaryCashAccount: CashAccount | null;
   primaryStore: Store | null;
 };
@@ -44,30 +46,50 @@ export function assertCompanyImmutable(
   }
 }
 
+function sortPrimaryFirst<T extends { is_primary?: boolean; name?: string; code?: string }>(
+  items: T[],
+): T[] {
+  return [...items].sort((a, b) => {
+    const ap = a.is_primary ? 1 : 0;
+    const bp = b.is_primary ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    const an = a.name ?? a.code ?? "";
+    const bn = b.name ?? b.code ?? "";
+    return an.localeCompare(bn, "id");
+  });
+}
+
 export async function fetchEntityModules(companyId: string): Promise<EntityModules> {
-  const [stores, warehouses, cashAccounts] = await Promise.all([
+  const [storesRaw, warehousesRaw, cashAccountsRaw] = await Promise.all([
     pb.collection("biz_stores").getFullList<Store>({
       filter: `company = "${companyId}"`,
-      sort: "-is_primary,name",
+      sort: "name",
       requestKey: null,
     }),
     pb.collection(INV_COLLECTIONS.warehouses).getFullList<EntityWarehouse>({
       filter: `company = "${companyId}"`,
-      sort: "-is_primary,name",
+      sort: "name",
       requestKey: null,
     }),
     pb.collection("biz_cash_accounts").getFullList<CashAccount>({
       filter: `company = "${companyId}"`,
-      sort: "-is_primary,name",
+      sort: "name",
       requestKey: null,
     }),
   ]);
+
+  const stores = sortPrimaryFirst(storesRaw);
+  const warehouses = sortPrimaryFirst(warehousesRaw);
+  const cashAccounts = sortPrimaryFirst(cashAccountsRaw);
 
   const primaryWarehouse =
     warehouses.find((w) => w.is_primary && w.warehouse_role === "main") ??
     warehouses.find((w) => w.warehouse_role === "main") ??
     warehouses.find((w) => w.is_primary) ??
     null;
+
+  const transitWarehouse = warehouses.find((w) => w.warehouse_role === "transit") ?? null;
+  const damagedWarehouse = warehouses.find((w) => w.warehouse_role === "damaged") ?? null;
 
   const primaryCashAccount = cashAccounts.find((c) => c.is_primary) ?? cashAccounts[0] ?? null;
   const primaryStore = stores.find((s) => s.is_primary) ?? stores[0] ?? null;
@@ -78,6 +100,8 @@ export async function fetchEntityModules(companyId: string): Promise<EntityModul
     warehouses,
     cashAccounts,
     primaryWarehouse,
+    transitWarehouse,
+    damagedWarehouse,
     primaryCashAccount,
     primaryStore,
   };
@@ -148,6 +172,37 @@ export async function getDamagedWarehouse(
     requestKey: null,
   });
   return rows[0] ?? null;
+}
+
+/** Pastikan gudang rusak ada — buat otomatis jika belum ada (satu per entitas). */
+export async function ensureDamagedWarehouse(
+  companyId: string,
+  pbInstance: PocketBase,
+): Promise<EntityWarehouse> {
+  const existing = await getDamagedWarehouse(companyId, pbInstance);
+  if (existing) return existing;
+
+  const { suggestWarehouseCode } = await import("@/lib/inventory/location-codes");
+  const allWh = await pbInstance.collection(INV_COLLECTIONS.warehouses).getFullList<{ code: string }>({
+    fields: "code",
+    requestKey: null,
+  });
+  const code = suggestWarehouseCode(
+    "Gudang Rusak",
+    allWh.map((w) => w.code),
+  );
+
+  const row = await pbInstance.collection(INV_COLLECTIONS.warehouses).create({
+    code,
+    name: "Gudang Rusak",
+    company: companyId,
+    warehouse_role: "damaged",
+    is_active: true,
+    is_primary: false,
+    timezone: "Asia/Jakarta",
+  });
+
+  return row as unknown as EntityWarehouse;
 }
 
 /** Satu gudang entitas (role main) per entitas — penerimaan pembelian. */

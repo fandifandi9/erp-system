@@ -13,15 +13,29 @@ import {
   normalizeEncodeValue,
   parseSymbologyParam,
   printBarcodeLabels,
-  productToLabelItem,
   SHEET_PAPERS,
   sheetGrid,
   symbologyLabel,
   type BarcodeLabelItem,
   type BarcodeSymbology,
-  type DownloadFormat,
   type PaperKind,
 } from "@/lib/inventory/barcode-label-engine";
+import {
+  fetchPendingReceivingLabelRequests,
+  markReceivingLineLabelPrinted,
+  type ReceivingLabelRequest,
+} from "@/lib/wms/receiving-label-queue";
+import { getErrorMessage } from "@/lib/errors";
+import {
+  Barcode,
+  Download,
+  Loader2,
+  Package,
+  PenLine,
+  Printer,
+  QrCode,
+} from "lucide-react";
+import Link from "next/link";
 import {
   ADD_LABEL_SIZE_ID,
   appendCustomLabelSize,
@@ -33,21 +47,8 @@ import {
   removeCustomLabelSize,
   type LabelSizeOption,
 } from "@/lib/inventory/barcode-label-sizes";
-import { fetchProducts } from "@/lib/inventory/client";
-import type { InvProduct } from "@/lib/inventory/types";
-import { getErrorMessage } from "@/lib/errors";
-import {
-  Barcode,
-  Download,
-  Loader2,
-  Package,
-  PenLine,
-  Printer,
-  QrCode,
-  Search,
-} from "lucide-react";
 
-type Tab = "product" | "manual";
+type Tab = "receiving" | "manual";
 
 const defaultManual = () => ({
   encodeValue: "",
@@ -56,11 +57,10 @@ const defaultManual = () => ({
 
 export function BarcodeLabelStudio() {
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>("product");
-  const [q, setQ] = useState("");
-  const [products, setProducts] = useState<InvProduct[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [selected, setSelected] = useState<InvProduct | null>(null);
+  const [tab, setTab] = useState<Tab>("receiving");
+  const [receivingRequests, setReceivingRequests] = useState<ReceivingLabelRequest[]>([]);
+  const [loadingReceiving, setLoadingReceiving] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<ReceivingLabelRequest | null>(null);
   const [manual, setManual] = useState(defaultManual);
   const [queue, setQueue] = useState<BarcodeLabelItem[]>([]);
 
@@ -128,7 +128,7 @@ export function BarcodeLabelStudio() {
   }, [paper, labelDims]);
 
   const activeItem = useMemo((): BarcodeLabelItem | null => {
-    if (tab === "product" && selected) return productToLabelItem(selected);
+    if (tab === "receiving" && selectedRequest) return selectedRequest.item;
     if (tab === "manual" && manual.encodeValue.trim()) {
       return {
         encodeValue: manual.encodeValue.trim(),
@@ -136,23 +136,38 @@ export function BarcodeLabelStudio() {
       };
     }
     return null;
-  }, [tab, selected, manual]);
+  }, [tab, selectedRequest, manual]);
 
-  const loadProducts = useCallback(async (search = q) => {
-    setLoadingProducts(true);
+  const activeReceivingRefs = useMemo((): ReceivingLabelRequest[] => {
+    if (tab === "receiving" && selectedRequest) return [selectedRequest];
+    return [];
+  }, [tab, selectedRequest]);
+
+  const effectiveCopies = useMemo(() => {
+    if (tab === "receiving" && selectedRequest) return selectedRequest.qty;
+    return copies;
+  }, [tab, selectedRequest, copies]);
+
+  const loadReceivingRequests = useCallback(async () => {
+    setLoadingReceiving(true);
     try {
-      const res = await fetchProducts({ q: search, page: 1, perPage: 80 });
-      setProducts(res.items as unknown as InvProduct[]);
+      const items = await fetchPendingReceivingLabelRequests();
+      setReceivingRequests(items);
+      setSelectedRequest((prev) => {
+        if (!prev) return null;
+        return items.find((r) => r.lineId === prev.lineId && r.poId === prev.poId) ?? null;
+      });
     } catch {
-      setProducts([]);
+      setReceivingRequests([]);
+      setSelectedRequest(null);
     } finally {
-      setLoadingProducts(false);
+      setLoadingReceiving(false);
     }
-  }, [q]);
+  }, []);
 
   useEffect(() => {
-    void loadProducts("");
-  }, [loadProducts]);
+    void loadReceivingRequests();
+  }, [loadReceivingRequests]);
 
   useEffect(() => {
     if (!activeItem?.encodeValue) {
@@ -194,13 +209,21 @@ export function BarcodeLabelStudio() {
 
   const makeJob = (items: BarcodeLabelItem[]) =>
     buildJob(items, {
-      copiesPerItem: copies,
+      copiesPerItem: tab === "receiving" ? 1 : copies,
       paper,
       label: labelDims,
       symbology,
       showTitle,
       showCode,
     });
+
+  const completeReceivingPrint = async (refs: ReceivingLabelRequest[]) => {
+    for (const ref of refs) {
+      await markReceivingLineLabelPrinted(ref.poId, ref.lineId, ref.qty);
+    }
+    await loadReceivingRequests();
+    setSelectedRequest(null);
+  };
 
   const addToQueue = () => {
     if (!activeItem) {
@@ -215,25 +238,39 @@ export function BarcodeLabelStudio() {
     }
   };
 
-  const runPrint = async (items: BarcodeLabelItem[]) => {
+  const runPrint = async (
+    items: BarcodeLabelItem[],
+    receivingRefs: ReceivingLabelRequest[] = [],
+  ) => {
     if (items.length === 0) return;
     setBusy(true);
     try {
       await printBarcodeLabels(makeJob(items));
+      setBusy(false);
+      if (receivingRefs.length > 0) {
+        void completeReceivingPrint(receivingRefs).catch((e) => {
+          alert(getErrorMessage(e, "Cetak OK tetapi gagal menandai permintaan selesai"));
+        });
+      }
     } catch (e) {
       alert(getErrorMessage(e, "Gagal cetak"));
-    } finally {
       setBusy(false);
     }
   };
 
-  const runDownload = async (items: BarcodeLabelItem[], format: DownloadFormat) => {
+  const runDownloadPdf = async (
+    items: BarcodeLabelItem[],
+    receivingRefs: ReceivingLabelRequest[] = [],
+  ) => {
     if (items.length === 0) return;
     setBusy(true);
     try {
-      await downloadBarcodeLabels(makeJob(items), format);
+      await downloadBarcodeLabels(makeJob(items), "pdf");
+      if (receivingRefs.length > 0) {
+        await completeReceivingPrint(receivingRefs);
+      }
     } catch (e) {
-      alert(getErrorMessage(e, "Gagal unduh"));
+      alert(getErrorMessage(e, "Gagal unduh PDF"));
     } finally {
       setBusy(false);
     }
@@ -286,13 +323,13 @@ export function BarcodeLabelStudio() {
         <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           <button
             type="button"
-            onClick={() => setTab("product")}
+            onClick={() => setTab("receiving")}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-              tab === "product" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50"
+              tab === "receiving" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50"
             }`}
           >
             <Package className="h-4 w-4" />
-            Master produk
+            Penerimaan barang
           </button>
           <button
             type="button"
@@ -306,50 +343,54 @@ export function BarcodeLabelStudio() {
           </button>
         </div>
 
-        {tab === "product" ? (
+        {tab === "receiving" ? (
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-sm font-medium text-slate-800">Cari produk</p>
-            <div className="mt-2 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"
-                  placeholder="SKU / nama / barcode…"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && void loadProducts(q)}
-                />
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">Permintaan cetak label</p>
               <button
                 type="button"
-                onClick={() => void loadProducts(q)}
-                className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700"
+                onClick={() => void loadReceivingRequests()}
+                className="text-xs font-medium text-indigo-600 hover:underline"
               >
-                Cari
+                Muat ulang
               </button>
             </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Dari PO yang sedang diproses di penerimaan — jumlah stiker mengikuti qty barang masuk.
+              Setelah dicetak, permintaan hilang dari daftar.
+            </p>
             <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-slate-100">
-              {loadingProducts ? (
+              {loadingReceiving ? (
                 <p className="flex justify-center gap-2 py-8 text-sm text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" /> Memuat…
                 </p>
-              ) : products.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-400">Tidak ada produk.</p>
+              ) : receivingRequests.length === 0 ? (
+                <div className="py-8 text-center text-sm text-slate-400">
+                  <p>Tidak ada permintaan label.</p>
+                  <Link href="/gudang/penerimaan" className="mt-2 inline-block text-indigo-600 hover:underline">
+                    Buka penerimaan barang
+                  </Link>
+                </div>
               ) : (
                 <ul>
-                  {products.map((p) => (
-                    <li key={p.id}>
+                  {receivingRequests.map((r) => (
+                    <li key={`${r.poId}-${r.lineId}`}>
                       <button
                         type="button"
-                        onClick={() => setSelected(p)}
+                        onClick={() => setSelectedRequest(r)}
                         className={`w-full border-b border-slate-50 px-3 py-2.5 text-left text-sm hover:bg-indigo-50 ${
-                          selected?.id === p.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : ""
+                          selectedRequest?.lineId === r.lineId && selectedRequest.poId === r.poId
+                            ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200"
+                            : ""
                         }`}
                       >
-                        <span className="font-medium">{p.name}</span>
+                        <span className="font-medium">{r.productName}</span>
                         <span className="block font-mono text-xs text-slate-500">
-                          {p.sku}
-                          {p.barcode ? ` · ${p.barcode}` : ""}
+                          PO {r.poNo} · {r.sku}
+                          {r.barcode ? ` · ${r.barcode}` : ""}
+                        </span>
+                        <span className="mt-0.5 block text-xs font-semibold text-emerald-700">
+                          {r.qty} stiker
                         </span>
                       </button>
                     </li>
@@ -382,50 +423,53 @@ export function BarcodeLabelStudio() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={addToQueue}
-            className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-800"
-          >
-            + Antrian
-          </button>
+          {tab === "manual" ? (
+            <button
+              type="button"
+              onClick={addToQueue}
+              className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-800"
+            >
+              + Antrian
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={busy || !activeItem || isAddingSize}
             title={isAddingSize ? "Simpan ukuran label terlebih dahulu" : undefined}
-            onClick={() => void runPrint(activeItem ? [activeItem] : [])}
+            onClick={() =>
+              void runPrint(activeItem ? [activeItem] : [], activeReceivingRefs)
+            }
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            Cetak
+            Cetak{effectiveCopies > 1 ? ` (${effectiveCopies})` : ""}
           </button>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
             <Download className="h-4 w-4" />
-            Unduh label aktif
+            Unduh PDF
           </p>
-          <div className="flex flex-wrap gap-2">
-            {(["jpg", "png", "pdf", "raw"] as DownloadFormat[]).map((fmt) => (
-              <button
-                key={fmt}
-                type="button"
-                disabled={busy || !activeItem || isAddingSize}
-                onClick={() => void runDownload(activeItem ? [activeItem] : [], fmt)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-              >
-                {fmt}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            disabled={busy || !activeItem || isAddingSize}
+            onClick={() =>
+              void runDownloadPdf(activeItem ? [activeItem] : [], activeReceivingRefs)
+            }
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            PDF
+          </button>
           <p className="mt-2 text-[10px] text-slate-500">
-            JPG/PNG/RAW: label pertama. PDF: semua salinan ({copies}×) — termal 1 label/halaman atau grid
-            A4/A5/A6.
+            Semua salinan dalam satu file PDF — termal 1 label/halaman atau grid A4/A5/A6.
+            {tab === "receiving" && selectedRequest
+              ? ` Permintaan penerimaan akan ditandai selesai setelah unduh.`
+              : ""}
           </p>
         </div>
 
-        {queue.length > 0 ? (
+        {tab === "manual" && queue.length > 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex justify-between">
               <p className="text-sm font-semibold">Antrian ({queue.length})</p>
@@ -458,7 +502,7 @@ export function BarcodeLabelStudio() {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void runDownload(queue, "pdf")}
+                onClick={() => void runDownloadPdf(queue)}
                 className="rounded-lg border px-3 py-1.5 text-xs font-semibold"
               >
                 PDF antrian
@@ -597,10 +641,16 @@ export function BarcodeLabelStudio() {
                 type="number"
                 min={1}
                 max={500}
-                className="mt-1 w-full rounded-lg border px-2 py-2"
-                value={copies}
+                disabled={tab === "receiving"}
+                className="mt-1 w-full rounded-lg border px-2 py-2 disabled:bg-slate-100 disabled:text-slate-600"
+                value={tab === "receiving" ? effectiveCopies : copies}
                 onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
               />
+              {tab === "receiving" ? (
+                <span className="mt-1 block text-xs text-slate-500">
+                  Mengikuti qty barang masuk dari penerimaan.
+                </span>
+              ) : null}
             </label>
 
             <fieldset className="space-y-2">
@@ -623,7 +673,9 @@ export function BarcodeLabelStudio() {
             {previewLoading ? (
               <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
             ) : !activeItem ? (
-              <p className="text-xs text-slate-400">Pilih produk / isi kode</p>
+              <p className="text-xs text-slate-400">
+                {tab === "receiving" ? "Pilih permintaan penerimaan" : "Isi kode manual"}
+              </p>
             ) : (
               <>
                 {showTitle && activeItem.title ? (

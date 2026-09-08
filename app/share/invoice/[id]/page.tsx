@@ -37,7 +37,9 @@ export default function PublicInvoiceSharePage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`/api/bisnis/share/invoice/${id}`)
+    const token = searchParams.get("token");
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    fetch(`/api/bisnis/share/invoice/${id}${qs}`)
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || "Gagal memuat");
@@ -45,7 +47,7 @@ export default function PublicInvoiceSharePage() {
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Gagal memuat"))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, searchParams]);
 
   if (loading) {
     return (

@@ -12,6 +12,7 @@ import {
   fetchStores,
   fetchBillPayments,
   fetchPaymentMethods,
+  cancelPurchaseOrderWithoutBill,
   createBillFromPurchaseOrder,
   fetchPurchaseBillByPurchaseOrder,
   canEditPurchaseOrder,
@@ -24,10 +25,10 @@ import {
   getPurchaseWmsDisplayStatus,
   getWarehouseProcessStatus,
   fmtWarehouseProcessedAt,
-  createPurchaseReturFromOrderApi,
 } from "@/lib/bisnis/client";
 import { PurchaseQcExceptionPanel } from "@/components/bisnis/PurchaseQcExceptionPanel";
 import { canCreatePurchaseRetur } from "@/lib/bisnis/purchase-retur-create";
+import { returCreateUrl } from "@/lib/bisnis/module-routes";
 import { pb } from "@/lib/pocketbase";
 import {
   PURCHASE_STATUS_UI,
@@ -79,6 +80,7 @@ export default function PembelianDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const payRequested = searchParams.get("pay") === "1";
+  const fromRetur = searchParams.get("from") === "retur";
   const { context: workCtx } = useWorkContext();
   const [mode, setMode] = useState<"bill" | "po">("bill");
   const [bill, setBill] = useState<PurchaseBill | null>(null);
@@ -91,7 +93,6 @@ export default function PembelianDetailPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [creatingBill, setCreatingBill] = useState(false);
   const [sendingWarehouse, setSendingWarehouse] = useState(false);
-  const [creatingRetur, setCreatingRetur] = useState(false);
   const [storeInfo, setStoreInfo] = useState<Store | null>(null);
   const [billPayments, setBillPayments] = useState<BillPayment[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodSetting[]>([]);
@@ -105,6 +106,7 @@ export default function PembelianDetailPage() {
     payment_date: new Date().toISOString().slice(0, 10),
     notes: "",
   });
+  const [cancellingPo, setCancellingPo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,16 +150,12 @@ export default function PembelianDetailPage() {
 
       const poData = await fetchPurchaseOrder(id);
       const linkedBill = await fetchPurchaseBillByPurchaseOrder(poData.id);
-      if (linkedBill) {
-        router.replace(`/bisnis/pembelian/${linkedBill.id}${payRequested ? "?pay=1" : ""}`);
-        return;
-      }
+      // Tetap di histori PO — jangan lempar ke tagihan meski sudah punya bill.
       setMode("po");
       setPo(poData);
       setLinkedPo(null);
       setBill(null);
-      const lb = await fetchPurchaseBillByPurchaseOrder(poData.id);
-      setLinkedBill(lb);
+      setLinkedBill(linkedBill);
       const l = await fetchPurchaseOrderLines(poData.id);
       setLines(l);
       const wh = poData.warehouse;
@@ -238,15 +236,28 @@ export default function PembelianDetailPage() {
     }
   };
 
-  const handleCreateRetur = async (targetPo: PurchaseOrder) => {
-    setCreatingRetur(true);
+  const handleCreateRetur = (targetPo: PurchaseOrder) => {
+    router.push(returCreateUrl({ type: "pembelian", po: targetPo.id }));
+  };
+
+  const handleCancelPoWithoutBill = async (targetPo: PurchaseOrder) => {
+    if (
+      !confirm(
+        `Batalkan PO ${targetPo.po_no}?\n\nPO belum punya tagihan — ini bukan retur. Pesanan akan dibatalkan.`,
+      )
+    ) {
+      return;
+    }
+    setCancellingPo(true);
     try {
-      const { retur } = await createPurchaseReturFromOrderApi(targetPo.id);
-      router.push(`/bisnis/retur/${retur.id}`);
+      await cancelPurchaseOrderWithoutBill(targetPo.id);
+      await load();
+      alert(`PO ${targetPo.po_no} dibatalkan.`);
+      router.push("/bisnis/retur/buat?type=pembelian&mode=doc");
     } catch (e: unknown) {
-      alert(getErrorMessage(e, t("purchase.detail.errCreateRetur")));
+      alert(getErrorMessage(e, "Gagal membatalkan PO"));
     } finally {
-      setCreatingRetur(false);
+      setCancellingPo(false);
     }
   };
 
@@ -337,9 +348,58 @@ export default function PembelianDetailPage() {
 
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <Link href="/bisnis/pembelian" className="mb-4 inline-flex items-center gap-1 text-sm text-indigo-600">
-          <ArrowLeft className="h-3.5 w-3.5" /> {t("purchase.create.back")}
+        <Link href="/bisnis/pembelian/pesanan" className="mb-4 inline-flex items-center gap-1 text-sm text-indigo-600">
+          <ArrowLeft className="h-3.5 w-3.5" /> {t("purchase.list.orders")}
         </Link>
+
+        {fromRetur ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <div>
+              <p className="font-semibold">
+                {canCreatePurchaseRetur(po) && linkedBill
+                  ? "Preview pesanan untuk retur"
+                  : linkedBill
+                    ? "Pesanan ini belum bisa diretur"
+                    : "PO belum tagihan — batalkan (bukan retur)"}
+              </p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                {canCreatePurchaseRetur(po) && linkedBill
+                  ? "Periksa pemasok, produk, dan status. Jika benar, lanjutkan buat retur."
+                  : linkedBill
+                    ? "Retur pembelian membutuhkan tagihan aktif dan status PO yang valid."
+                    : "Belum ada tagihan aktif. Batalkan PO jika pesanan tidak jadi."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/bisnis/retur/buat?type=pembelian&mode=doc"
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                ← Kembali cari
+              </Link>
+              {canCreatePurchaseRetur(po) && linkedBill ? (
+                <button
+                  type="button"
+                  onClick={() => handleCreateRetur(po)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Lanjutkan buat retur
+                </button>
+              ) : !linkedBill && po.status !== "cancelled" ? (
+                <button
+                  type="button"
+                  disabled={cancellingPo}
+                  onClick={() => void handleCancelPoWithoutBill(po)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {cancellingPo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                  Batalkan PO
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -361,7 +421,7 @@ export default function PembelianDetailPage() {
             </span>
             {whSt && (
               <span className={`rounded-full px-3 py-1 text-sm font-semibold ${whSt.cls}`}>
-                WMS: {whSt.label}
+                WMS: {t(whSt.labelKey)}
               </span>
             )}
             <button type="button" onClick={() => openBizDocumentPrint(poPrintData)}
@@ -377,11 +437,10 @@ export default function PembelianDetailPage() {
             {canCreatePurchaseRetur(po) && linkedBill && (
               <button
                 type="button"
-                disabled={creatingRetur}
-                onClick={() => void handleCreateRetur(po)}
-                className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 disabled:opacity-50"
+                onClick={() => handleCreateRetur(po)}
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100"
               >
-                {creatingRetur ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                <RotateCcw className="h-4 w-4" />
                 {t("purchase.detail.createRetur")}
               </button>
             )}
@@ -450,7 +509,9 @@ export default function PembelianDetailPage() {
               <Warehouse className="mt-0.5 h-4 w-4 shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">
-                  {t("purchase.detail.whStatusTitle", { status: whSt?.label ?? "—" })}
+                  {t("purchase.detail.whStatusTitle", {
+                    status: whSt?.labelKey ? t(whSt.labelKey) : "—",
+                  })}
                 </p>
                 {processorName && po.warehouse_processed_at && (
                   <p className="mt-1">
@@ -520,6 +581,35 @@ export default function PembelianDetailPage() {
         <ArrowLeft className="h-3.5 w-3.5" /> {t("purchase.create.back")}
       </Link>
 
+      {fromRetur ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <div>
+            <p className="font-semibold">Preview tagihan untuk retur</p>
+            <p className="mt-0.5 text-xs text-amber-800">
+              Periksa dokumen pembelian lengkap. Jika benar, lanjutkan buat retur.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/bisnis/retur/buat?type=pembelian&mode=doc"
+              className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              ← Kembali cari
+            </Link>
+            {billPo && canCreatePurchaseRetur(billPo) && !cancelled ? (
+              <button
+                type="button"
+                onClick={() => handleCreateRetur(billPo)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Lanjutkan buat retur
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{bill.bill_no}</h1>
@@ -556,11 +646,10 @@ export default function PembelianDetailPage() {
           {billPo && canCreatePurchaseRetur(billPo) && !cancelled && (
             <button
               type="button"
-              disabled={creatingRetur}
-              onClick={() => void handleCreateRetur(billPo)}
-              className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 disabled:opacity-50"
+              onClick={() => handleCreateRetur(billPo)}
+              className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100"
             >
-              {creatingRetur ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              <RotateCcw className="h-4 w-4" />
               {t("purchase.detail.createRetur")}
             </button>
           )}

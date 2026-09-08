@@ -3,8 +3,11 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ChevronRight, Loader2 } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { cn } from "@/lib/design/cn";
 
-/** Kartu premium — glass ringan di atas bg slate-50 */
+/** @deprecated Use Card from @/components/ui/card */
 export function WmsCard({
   children,
   className = "",
@@ -17,17 +20,9 @@ export function WmsCard({
   padding?: string;
 }) {
   return (
-    <div
-      className={
-        "rounded-2xl border border-slate-200/90 bg-white/90 shadow-lg shadow-slate-200/40 backdrop-blur-sm " +
-        padding +
-        " " +
-        (hover ? "transition hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/30 " : "") +
-        className
-      }
-    >
+    <Card hover={hover} padding={padding} className={cn("shadow-lg shadow-slate-200/40 backdrop-blur-sm", className)}>
       {children}
-    </div>
+    </Card>
   );
 }
 
@@ -92,24 +87,15 @@ export function WmsBadge({
   children: React.ReactNode;
   tone?: "slate" | "emerald" | "amber" | "indigo" | "red" | "violet";
 }) {
-  const tones = {
-    slate: "bg-slate-100 text-slate-700 ring-slate-200/80",
-    emerald: "bg-emerald-50 text-emerald-800 ring-emerald-200/80",
-    amber: "bg-amber-50 text-amber-900 ring-amber-200/80",
-    indigo: "bg-indigo-50 text-indigo-800 ring-indigo-200/80",
-    red: "bg-red-50 text-red-800 ring-red-200/80",
-    violet: "bg-violet-50 text-violet-800 ring-violet-200/80",
+  const map: Record<string, BadgeTone> = {
+    slate: "neutral",
+    emerald: "success",
+    amber: "warning",
+    indigo: "brand",
+    red: "danger",
+    violet: "brand",
   };
-  return (
-    <span
-      className={
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset " +
-        tones[tone]
-      }
-    >
-      {children}
-    </span>
-  );
+  return <Badge tone={map[tone] ?? "neutral"}>{children}</Badge>;
 }
 
 export function WmsSectionTitle({

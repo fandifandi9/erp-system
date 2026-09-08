@@ -6,6 +6,7 @@ import { getSuspiciousRecords, type AttendanceRecord } from "@/lib/attendance";
 import { formatDistance } from "@/lib/gps";
 import { AlertTriangle, MapPin, Shield, User, Calendar, Loader2 } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
+import { canAccessHrWebSurface } from "@/lib/access/hr-web-access";
 
 type SuspiciousAttendanceRecord = AttendanceRecord & {
   expand?: {
@@ -25,7 +26,10 @@ export default function SuspiciousAttendancePage() {
   const [totalPages, setTotalPages] = useState(1);
 
   const currentUser = pb.authStore.model;
-  const hasAccess = !!currentUser && (currentUser.role === "hr" || currentUser.role === "owner");
+  const hasAccess = canAccessHrWebSurface(
+    currentUser as Record<string, unknown> | null,
+    "/hr/attendance/suspicious",
+  );
 
   const fetchSuspicious = async (pageNum: number) => {
     setLoading(true);

@@ -13,6 +13,7 @@ import {
 } from "@/lib/bisnis/sales-retur-expected";
 import { ensureTransitWarehouse } from "@/lib/bisnis/entity-modules";
 import { resolveSalesReturCompanyId } from "@/lib/bisnis/retur-company";
+import { resolveProcessActorName } from "@/lib/bisnis/process-actor";
 import {
   BISNIS_COLLECTIONS,
   type Retur,
@@ -133,6 +134,18 @@ export async function createSalesReturFromOrder(
       ? serializeSettlementEstimate(opts.settlement_estimate)
       : undefined;
 
+  const returnMethod = opts?.return_method === "courier" ? "courier" : opts?.return_method === "dropoff" ? "dropoff" : undefined;
+  const returnCourier = opts?.return_courier?.trim() || "";
+  const returnTrackingNo = opts?.return_tracking_no?.trim() || "";
+  if (returnMethod === "courier") {
+    if (!returnCourier) {
+      throw new Error("Pilih ekspedisi untuk retur via pengiriman.");
+    }
+    if (!returnTrackingNo) {
+      throw new Error("Isi nomor lacak / resi untuk retur via ekspedisi.");
+    }
+  }
+
   const retur = await pb.collection(BISNIS_COLLECTIONS.returs).create<Retur>({
     retur_no: returNo,
     type: "penjualan",
@@ -146,6 +159,14 @@ export async function createSalesReturFromOrder(
     damaged_warehouse: hasDamaged ? damagedWarehouseId : undefined,
     reason: opts?.reason?.trim() || "",
     notes: opts?.notes?.trim() || "",
+    notes_for_wms: opts?.notes_for_wms?.trim() || "",
+    platform_retur_no: opts?.platform_retur_no?.trim() || "",
+    business_process_started_at: new Date().toISOString(),
+    business_processed_by: userId,
+    business_processed_by_name: await resolveProcessActorName(pb, userId),
+    ...(returnMethod ? { return_method: returnMethod } : {}),
+    ...(returnCourier ? { return_courier: returnCourier } : {}),
+    ...(returnTrackingNo ? { return_tracking_no: returnTrackingNo } : {}),
     settlement_estimate_json: settlementJson,
     mp_claim_amount: legacyAmounts.mp_claim_amount,
     shipping_reimb_amount: legacyAmounts.shipping_reimb_amount,

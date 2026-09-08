@@ -20,8 +20,10 @@ import {
 } from "@/lib/inventory/types";
 import { labelOpnameMethod, labelOpnameStatus } from "@/lib/inventory/labels";
 import { Loader2, Plus } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function InventoryOpnamePage() {
+  const { t } = useLocale();
   const user = pb.authStore.model;
   const canCreate = user && canManageOpnameSession(user);
   const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
@@ -72,14 +74,14 @@ export default function InventoryOpnamePage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Opname stok" subtitle="Penghitungan fisik stok gudang + penyesuaian.">
+      <InventoryShell title={t("inventory.opname.title")} subtitle={t("inventory.opname.subtitle")}>
         {canCreate ? (
           <button
             type="button"
             onClick={() => setModal(true)}
             className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white"
           >
-            <Plus className="h-4 w-4" /> Sesi opname baru
+            <Plus className="h-4 w-4" /> {t("inventory.common.add")}
           </button>
         ) : null}
 
@@ -88,8 +90,8 @@ export default function InventoryOpnamePage() {
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">No</th>
-                <th className="px-4 py-3">Gudang</th>
-                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">{t("inventory.common.warehouse")}</th>
+                <th className="px-4 py-3">{t("inventory.common.status")}</th>
                 <th className="px-4 py-3">Metode</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -99,6 +101,12 @@ export default function InventoryOpnamePage() {
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-indigo-600" />
+                  </td>
+                </tr>
+              ) : items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                    {t("inventory.opname.empty")}
                   </td>
                 </tr>
               ) : (
@@ -129,7 +137,7 @@ export default function InventoryOpnamePage() {
               {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
               <div className="mt-4 space-y-3">
                 <label className="block text-sm">
-                  Gudang
+                  {t("inventory.common.warehouse")}
                   <select
                     className="mt-1 w-full rounded-lg border px-3 py-2"
                     value={form.warehouse}
@@ -160,7 +168,7 @@ export default function InventoryOpnamePage() {
                   </select>
                 </label>
                 <label className="block text-sm">
-                  Catatan
+                  {t("inventory.common.note")}
                   <textarea
                     className="mt-1 w-full rounded-lg border px-3 py-2"
                     rows={2}
@@ -171,14 +179,14 @@ export default function InventoryOpnamePage() {
               </div>
               <div className="mt-6 flex justify-end gap-2">
                 <button type="button" onClick={() => setModal(false)} className="rounded-lg border px-4 py-2 text-sm">
-                  Batal
+                  {t("inventory.common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-60"
                 >
-                  Buat
+                  {t("inventory.common.add")}
                 </button>
               </div>
             </form>

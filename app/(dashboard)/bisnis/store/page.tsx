@@ -15,6 +15,9 @@ import { pb } from "@/lib/pocketbase";
 import { StoreAvatar } from "@/components/bisnis/StoreAvatar";
 import { clearPrimaryStoreFlag } from "@/lib/bisnis/entity-modules";
 import { companyNameById, EntityScopeFilter } from "@/components/bisnis/EntityScopeFilter";
+import { invalidateSalesStoresCache } from "@/lib/bisnis/master-data-cache";
+
+const NEW_WAREHOUSE_OPTION = "__new__";
 
 const EMPTY_FORM = {
   company: "",
@@ -25,6 +28,7 @@ const EMPTY_FORM = {
   city: "",
   phone: "",
   default_warehouse: "",
+  new_warehouse_name: "",
   bank_name: "",
   bank_account_name: "",
   bank_account_number: "",
@@ -121,6 +125,7 @@ export default function StorePage() {
       is_primary: s.is_primary ?? false,
       name: s.name || "", email: s.email || "", address: s.address || "",
       city: s.city || "", phone: s.phone || "", default_warehouse: s.default_warehouse || "",
+      new_warehouse_name: "",
       bank_name: s.bank_name || "",
       bank_account_name: s.bank_account_name || "",
       bank_account_number: s.bank_account_number || "",
@@ -133,7 +138,13 @@ export default function StorePage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Hapus toko ini?")) return;
-    try { await deleteStore(id); load(); } catch { alert("Gagal menghapus toko"); }
+    try {
+      await deleteStore(id);
+      invalidateSalesStoresCache();
+      load();
+    } catch {
+      alert("Gagal menghapus toko");
+    }
   };
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,32 +163,71 @@ export default function StorePage() {
     e.preventDefault();
     if (!form.company) { alert("Entitas wajib dipilih"); return; }
     if (!form.default_warehouse) { alert("Gudang default wajib dipilih"); return; }
+    if (form.default_warehouse === NEW_WAREHOUSE_OPTION && !form.new_warehouse_name.trim() && !form.name.trim()) {
+      alert("Isi nama gudang penjualan baru");
+      return;
+    }
     setSubmitting(true);
     try {
       if (form.is_primary) {
         await clearPrimaryStoreFlag(form.company, editId ?? undefined);
       }
-      const fd = new FormData();
-      fd.append("company", form.company);
-      fd.append("is_primary", form.is_primary ? "true" : "false");
-      fd.append("name", form.name);
-      fd.append("email", form.email);
-      fd.append("address", form.address);
-      fd.append("city", form.city);
-      fd.append("phone", form.phone);
-      fd.append("default_warehouse", form.default_warehouse);
-      fd.append("bank_name", form.bank_name);
-      fd.append("bank_account_name", form.bank_account_name);
-      fd.append("bank_account_number", form.bank_account_number);
-      fd.append("npwp_display", form.npwp_display);
-      fd.append("is_active", "true");
-      if (logoFile) fd.append("logo", logoFile);
+
+      const appendCommon = (fd: FormData) => {
+        fd.append("company", form.company);
+        fd.append("is_primary", form.is_primary ? "true" : "false");
+        fd.append("name", form.name);
+        fd.append("email", form.email);
+        fd.append("address", form.address);
+        fd.append("city", form.city);
+        fd.append("phone", form.phone);
+        fd.append("bank_name", form.bank_name);
+        fd.append("bank_account_name", form.bank_account_name);
+        fd.append("bank_account_number", form.bank_account_number);
+        fd.append("npwp_display", form.npwp_display);
+        fd.append("is_active", "true");
+        if (logoFile) fd.append("logo", logoFile);
+      };
 
       if (editId) {
+        if (form.default_warehouse === NEW_WAREHOUSE_OPTION) {
+          alert("Pilih gudang penjualan yang sudah ada, atau buat toko baru untuk gudang baru.");
+          return;
+        }
+        const fd = new FormData();
+        appendCommon(fd);
+        fd.append("default_warehouse", form.default_warehouse);
         await pb.collection(BISNIS_COLLECTIONS.stores).update(editId, fd);
+      } else if (form.default_warehouse === NEW_WAREHOUSE_OPTION) {
+        const fd = new FormData();
+        appendCommon(fd);
+        const storeRec = await pb.collection(BISNIS_COLLECTIONS.stores).create<{ id: string }>(fd);
+        const whName = form.new_warehouse_name.trim() || `${form.name.trim()} (gudang)`;
+        const whRes = await fetch("/api/inventory/warehouses", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: whName,
+            company: form.company,
+            store: storeRec.id,
+            warehouse_role: "retail",
+          }),
+        });
+        const whJson = (await whRes.json()) as { ok?: boolean; warehouse?: { id: string }; error?: string };
+        if (!whRes.ok || !whJson.warehouse?.id) {
+          throw new Error(whJson.error || "Gagal membuat gudang penjualan");
+        }
+        await pb.collection(BISNIS_COLLECTIONS.stores).update(storeRec.id, {
+          default_warehouse: whJson.warehouse.id,
+        });
       } else {
+        const fd = new FormData();
+        appendCommon(fd);
+        fd.append("default_warehouse", form.default_warehouse);
         await pb.collection(BISNIS_COLLECTIONS.stores).create(fd);
       }
+      invalidateSalesStoresCache();
       setShowModal(false);
       setForm(EMPTY_FORM);
       setEditId(null);
@@ -386,7 +436,7 @@ export default function StorePage() {
                   <div className="text-sm">
                     <button type="button" onClick={() => logoRef.current?.click()}
                       className="font-medium text-indigo-600 hover:text-indigo-700">
-                      {logoPreview ? "Ganti Logo" : "Upload Logo"}
+                      {logoPreview ? "Ganti Logo" : "Unggah logo"}
                     </button>
                     <p className="mt-0.5 text-xs text-slate-400">JPG, PNG — auto convert ke WebP</p>
                     {logoPreview && (
@@ -463,16 +513,25 @@ export default function StorePage() {
                   <select required value={form.default_warehouse} onChange={(e) => set("default_warehouse", e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="">Pilih gudang penjualan</option>
+                    {!editId ? (
+                      <option value={NEW_WAREHOUSE_OPTION}>+ Buat gudang penjualan baru…</option>
+                    ) : null}
                     {warehousesForCompany.map((w) => (
                       <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
                     ))}
                   </select>
+                  {form.default_warehouse === NEW_WAREHOUSE_OPTION ? (
+                    <input
+                      required
+                      value={form.new_warehouse_name}
+                      onChange={(e) => set("new_warehouse_name", e.target.value)}
+                      placeholder={form.name ? `Gudang ${form.name}` : "Nama gudang penjualan"}
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  ) : null}
                   <p className="mt-1 text-xs text-slate-400">
-                    Gudang untuk stok penjualan / POS. Buat gudang penjualan tambahan di{" "}
-                    <Link href="/gudang/daftar" className="text-indigo-600 hover:underline">
-                      Daftar Gudang
-                    </Link>
-                    .
+                    Gudang untuk stok penjualan / POS. Satu toko boleh punya banyak gudang — buat baru di sini
+                    atau pilih yang sudah ada.
                   </p>
                 </div>
                 <div className="sm:col-span-2">

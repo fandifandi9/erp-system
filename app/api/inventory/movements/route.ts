@@ -121,9 +121,14 @@ export async function POST(req: Request) {
       }
     }
 
+    const posted = body.post === true;
     return NextResponse.json({
       ok: true,
-      data: { id: movement.id, movement_no: movement.movement_no },
+      data: {
+        id: movement.id,
+        movement_no: movement.movement_no,
+        status: posted ? "posted" : "draft",
+      },
     });
   } catch (err) {
     return jsonError(err);

@@ -358,7 +358,7 @@ export function buildSalesDocumentActivityTimeline(input: {
     if (r.exception_status === "open") {
       pushTimeline(events, {
         id: `ret-exc-${r.id}`,
-        label: "Perlu klarifikasi bisnis",
+        label: "Klarifikasi retur",
         at: r.wms_received_at || r.updated,
         detail: r.retur_no,
         kind: "retur",

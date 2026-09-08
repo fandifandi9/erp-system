@@ -27,6 +27,7 @@ import {
 } from "@/lib/bisnis/internal-process-notes";
 import { isCashInvoice } from "@/lib/bisnis/invoice-status";
 import { isCashPurchase } from "@/lib/bisnis/purchase-status";
+import { parseSerialNumbersJson } from "@/lib/wms/serial-numbers";
 import { marketplaceLabelFromInvoice } from "@/lib/bisnis/mp-invoice-meta";
 import { formatPosNotesForDisplay } from "@/lib/pos/meta";
 import {
@@ -78,9 +79,11 @@ function parseDocNotes(raw?: string) {
   const { textNotes: notesPlain, internal: _internal } = parseNotesWithInternalProcess(notesNoShip);
   const { reference, body } = parseReferenceFromNotes(notesPlain);
   const shippingInfo =
-    shipping.enabled && (shipping.courier.trim() || shipping.tracking_no.trim())
+    shipping.enabled &&
+    (shipping.courier.trim() || shipping.shipping_service.trim() || shipping.tracking_no.trim())
       ? {
           courier: shipping.courier.trim() || undefined,
+          service: shipping.shipping_service.trim() || undefined,
           trackingNo: shipping.tracking_no.trim() || undefined,
         }
       : undefined;
@@ -141,13 +144,17 @@ function totalsRows(base: {
 }
 
 function salesLines(lines: SalesOrderLine[]): BizDocumentPrintData["lines"] {
-  return lines.map((l) => ({
-    product: l.expand?.product?.name || l.name_snapshot || "—",
-    qty: bizDocFmtNum(l.qty),
-    unitPrice: bizDocFmtMoney(l.unit_price),
-    discount: l.discount_percent ? `${l.discount_percent}%` : undefined,
-    lineTotal: bizDocFmtMoney(l.line_total),
-  }));
+  return lines.map((l) => {
+    const serials = parseSerialNumbersJson(l.serial_numbers_json);
+    return {
+      product: l.expand?.product?.name || l.name_snapshot || "—",
+      qty: bizDocFmtNum(l.qty),
+      unitPrice: bizDocFmtMoney(l.unit_price),
+      discount: l.discount_percent ? `${l.discount_percent}%` : undefined,
+      lineTotal: bizDocFmtMoney(l.line_total),
+      serials: serials.length > 0 ? serials : undefined,
+    };
+  });
 }
 
 function purchaseLines(lines: PurchaseOrderLine[]): BizDocumentPrintData["lines"] {
@@ -166,13 +173,16 @@ export function buildSalesOrderPrintData(
 ): BizDocumentPrintData {
   const notes = parseDocNotes(so.notes);
   const customer = so.expand?.customer;
+  // Fallback ke relasi store yang menempel di SO agar penjual tidak hilang saat
+  // list toko di memori belum siap (stabil & ringan — tanpa fetch tambahan).
+  const storeForSeller = store ?? so.expand?.store ?? null;
   return {
     kind: "sales_order",
     docNo: so.order_no,
     docDate: bizDocFmtDate(so.order_date),
     dueDate: bizDocFmtDate(so.due_date),
     refNo: notes.refNo,
-    seller: sellerFromStore(store),
+    seller: sellerFromStore(storeForSeller),
     party: {
       title: "Pelanggan",
       name: customer?.name || "—",
@@ -207,6 +217,8 @@ export function buildInvoicePrintData(
   const notes = parseDocNotes(invoice.notes);
   const snapshot = parseIdentitySnapshot(invoice.identity_snapshot_json);
   const customer = invoice.expand?.customer;
+  const storeForSeller =
+    store ?? invoice.expand?.store ?? invoice.expand?.sales_order?.expand?.store ?? null;
   const cash = isCashInvoice(invoice);
   const isMp = invoice.source === "marketplace_import";
   const mpLabel = marketplaceLabelFromInvoice(invoice);
@@ -226,7 +238,7 @@ export function buildInvoicePrintData(
       ? `SO: ${invoice.expand.sales_order.order_no}`
       : undefined,
     paymentNote: cash ? "Pembayaran: Cash / Lunas" : undefined,
-    seller: snapshot ? sellerFromIdentity(snapshot, store) : sellerFromStore(store),
+    seller: snapshot ? sellerFromIdentity(snapshot, storeForSeller) : sellerFromStore(storeForSeller),
     legalFooter: legalFooterFromIdentity(snapshot),
     party: {
       title: isMp ? "Kontak pembukuan" : "Ditagihkan kepada",

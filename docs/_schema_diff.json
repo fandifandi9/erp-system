@@ -1,0 +1,2734 @@
+{
+  "generated": "2026-08-28T05:39:29.727Z",
+  "local_url": "http://127.0.0.1:8090",
+  "prod_url": "https://pb.serba.space",
+  "local_collection_count": 21,
+  "prod_collection_count": 93,
+  "diff": [
+    {
+      "collection": "attendance",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "attendance",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "attendance_logs",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "check_in",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "check_in_selfie",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "file",
+            "required": false
+          }
+        },
+        {
+          "field": "check_out",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "date",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "distance_meter",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "lat",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "late_minutes",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "lng",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "user",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "work_hours",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && user = @request.auth.id",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "attendance_settings",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "attendance_settings",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_activity_events",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "module",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "select",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": true
+          }
+        },
+        {
+          "field": "severity",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "select",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": true
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "biz_bill_payments",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_bill_payments",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_cash_accounts",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_cash_accounts",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_cash_reconciliations",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_cash_reconciliations",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_cash_transfers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_cash_transfers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_company_profile",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "address",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "city",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "email",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "npwp",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "npwp_display_mode",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "phone",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "show_npwp_on_documents",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "bool",
+            "required": false
+          }
+        },
+        {
+          "field": "website",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "biz_courier_services",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_courier_services",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_couriers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_couriers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_credit_notes",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_credit_notes",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_customers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_customers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_expenses",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_expenses",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_invoices",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_invoices",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_fee_rules",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_fee_rules",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_fee_template_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_fee_template_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_fee_templates",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_fee_templates",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_product_fees",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_product_fees",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_product_mappings",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_product_mappings",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_seller_tiers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_seller_tiers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_mp_tier_defaults",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_mp_tier_defaults",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_payment_conditions",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_payment_conditions",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_payment_import_batches",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_payment_import_batches",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_payment_import_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_payment_import_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_payment_methods",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_payment_methods",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_payment_terms",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_payment_terms",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_payments",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_payments",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_pos_registers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_pos_registers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_product_prices",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_product_prices",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_product_tags",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_product_tags",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_purchase_bills",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_purchase_bills",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_purchase_order_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_purchase_order_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_purchase_orders",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_purchase_orders",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_retur_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_retur_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_returs",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_returs",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_sales_channels",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_sales_channels",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_sales_import_batches",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_sales_import_batches",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_sales_import_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_sales_import_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_sales_order_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_sales_order_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_sales_orders",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "approved_by",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "awb_label",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "file",
+            "required": false
+          }
+        },
+        {
+          "field": "awb_ready_at",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "awb_source",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "business_channel",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "created_by",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "customer",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "discount_amount",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "due_date",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "materai_amount",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "notes",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "outbound_workflow_json",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "payment_method",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "payment_status",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "pk_no",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "platform_source",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "sale_mode",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "send_to_warehouse_at",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "date",
+            "required": false
+          },
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "share_token",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "shipped_date",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "status",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "subtotal",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "tax_amount",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "warehouse",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "warehouse_hold_note",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "warehouse_process_status",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "warehouse_processed_at",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "warehouse_processed_by",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "wms_booking_no",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "biz_store_channel_accounts",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_store_channel_accounts",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_stores",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "address",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "bank_account_name",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "bank_account_number",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "bank_name",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "city",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "code",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "text",
+            "required": true
+          },
+          "prod": null
+        },
+        {
+          "field": "email",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "email",
+            "required": false
+          }
+        },
+        {
+          "field": "email_from_address",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "email",
+            "required": false
+          }
+        },
+        {
+          "field": "email_from_name",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "logo",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "file",
+            "required": false
+          }
+        },
+        {
+          "field": "name",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": true
+          },
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "npwp_display",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "phone",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "biz_suppliers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_suppliers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_tax_rates",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "biz_tax_rates",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "biz_user_companies",
+      "status": "DIFFERENT",
+      "fieldDiff": [],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != ''",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != ''",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "division_quotas",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "division_quotas",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "field_activity_requests",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "field_activity_requests",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "hr_case_attachments",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_case_attachments",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "kind",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "parent_id",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "original_name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "mime",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_compensation_settings",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "hr_compensation_settings",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "hr_findings",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_findings",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "priority",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "location_text",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "company_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "submitted_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "closed_by",
+          "type": "relation",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_rating_aspects",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_rating_aspects",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "min_score",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "max_score",
+          "type": "number",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_rating_assignments",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_rating_assignments",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "period",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "reviewer_count",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "assignment_method",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "selection_evidence_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_rating_periods",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_rating_periods",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_rating_results",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_rating_results",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "assignment",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "overall_score",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "respondent_count",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "aspect_scores_json",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "strengths",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "improvements",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "suggestions",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "calculated_at",
+          "type": "date",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_rating_reviewers",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_rating_reviewers",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "assignment",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "reviewer",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "relevance_tier",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "selection_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "submitted_at",
+          "type": "date",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_rating_scores",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_rating_scores",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "reviewer_row",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "aspect",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "score",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "comment",
+          "type": "text",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "hr_staff_reports",
+      "status": "LOCAL_ONLY",
+      "local": {
+        "name": "hr_staff_reports",
+        "type": "base"
+      },
+      "prod": null,
+      "fields_local": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "priority",
+          "type": "select",
+          "required": false
+        },
+        {
+          "name": "location_text",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": true
+        },
+        {
+          "name": "company_id",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "hr_note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "submitted_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "closed_by",
+          "type": "relation",
+          "required": false
+        }
+      ]
+    },
+    {
+      "collection": "inv_audit_log",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_audit_log",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_brands",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_brands",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_categories",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_categories",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_cctv_cameras",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_cctv_cameras",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_locations",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_locations",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_media_files",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_media_files",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_packing_checklist_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_packing_checklist_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_packing_sessions",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_packing_sessions",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_packing_stations",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_packing_stations",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_product_barcodes",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_product_barcodes",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_product_bundle_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_product_bundle_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_product_placements",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_product_placements",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_product_price_tiers",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_product_price_tiers",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_products",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_products",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_staff_activities",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_staff_activities",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_stock_balances",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_stock_balances",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_stock_movement_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_stock_movement_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_stock_movements",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_stock_movements",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_stock_opname_adjustments",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_stock_opname_adjustments",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_stock_opname_lines",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_stock_opname_lines",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_stock_opname_sessions",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_stock_opname_sessions",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_sync_outbox",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_sync_outbox",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_warehouses",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "address",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "code",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": true
+          },
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "name",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": true
+          },
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\"",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "inv_zone_sessions",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_zone_sessions",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "inv_zones",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "inv_zones",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "leave_balances",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "leave_balances",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "leave_requests",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "date",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "devision",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "hr_action_at",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "hr_action_by",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "hr_action_name",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "logs",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "logs",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "office_holidays",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "office_holidays",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "offices",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "address",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "code",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": null
+        },
+        {
+          "field": "max_checkin_distance",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "name",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": true
+          },
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "timezone",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role = \"owner\")",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "overtime_requests",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "overtime_requests",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "payroll_adjustments",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "payroll_adjustments",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "payroll_items",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "payroll_items",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "payroll_periods",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "payroll_periods",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "payroll_settings",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "payroll_settings",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "profiles",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "absence_deduction_rupiah_per_day",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "address",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "avatar",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "file",
+            "required": false
+          }
+        },
+        {
+          "field": "bio",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "date_of_birth",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "default_warehouse",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "department",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "division",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "email",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "email",
+            "required": false
+          }
+        },
+        {
+          "field": "employee_code",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "extra_bonus_amount",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "extra_bonus_enabled",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "grace_minutes",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "inventory_role",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "join_date",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "date",
+            "required": false
+          }
+        },
+        {
+          "field": "late_deduction_rupiah_per_minute",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "late_tolerance",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "leave_bookings_quota",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "leave_daily_rate",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "nik",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "npwp",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "office_id",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "phone",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "position",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "profile_status",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "select",
+            "required": false
+          },
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "require_checkin_selfie",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "bool",
+            "required": false
+          }
+        },
+        {
+          "field": "salary",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "number",
+            "required": false
+          }
+        },
+        {
+          "field": "shift_end_saturday",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "shift_end_sunday",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "shift_start_saturday",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "shift_start_sunday",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "user",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "relation",
+            "required": true
+          },
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "work_end",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "work_start",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "createRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (@request.data.user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "request_auth_id_",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "request_auth_id_",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "request_auth_role_owner",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "request_auth_role_owner",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "settings_hr",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "settings_hr",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "sys_audit_log",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "actor_ip",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "entity_id",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "entity_label",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "entity_type",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "request_id",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "createRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": null,
+          "prod": "",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "users",
+      "status": "DIFFERENT",
+      "fieldDiff": [
+        {
+          "field": "account_type",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "select",
+            "required": false
+          },
+          "prod": null
+        },
+        {
+          "field": "avatar",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "file",
+            "required": false
+          },
+          "prod": null
+        },
+        {
+          "field": "dashboard_access",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "bool",
+            "required": false
+          },
+          "prod": null
+        },
+        {
+          "field": "inventory_warehouses",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "relation",
+            "required": false
+          }
+        },
+        {
+          "field": "last_checkin",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "last_checkout",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "text",
+            "required": false
+          }
+        },
+        {
+          "field": "locale",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "mobile_session_nonce",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": null
+        },
+        {
+          "field": "role",
+          "status": "DIFFERENT",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": {
+            "type": "select",
+            "required": false
+          }
+        },
+        {
+          "field": "role_code",
+          "status": "LOCAL_ONLY",
+          "local": {
+            "type": "text",
+            "required": false
+          },
+          "prod": null
+        },
+        {
+          "field": "shift_active",
+          "status": "PROD_ONLY",
+          "local": null,
+          "prod": {
+            "type": "bool",
+            "required": false
+          }
+        }
+      ],
+      "ruleDiff": [
+        {
+          "rule": "listRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "viewRule",
+          "local": "@request.auth.id != \"\"",
+          "prod": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "createRule",
+          "local": "",
+          "prod": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        },
+        {
+          "rule": "updateRule",
+          "local": "@request.auth.id = id",
+          "prod": "@request.auth.id != \"\" && (\n  (\n    id = @request.auth.id\n    && (@request.data.role:isset = false || @request.data.role = role)\n    && (@request.data.status:isset = false || @request.data.status = status)\n  )\n  || @request.auth.role = \"hr\"\n  || @request.auth.role_code = \"hr\"\n  || @request.auth.role = \"owner\"\n  || @request.auth.role_code = \"owner\"\n  || @request.auth.account_type = \"owner\"\n)",
+          "match": false
+        },
+        {
+          "rule": "deleteRule",
+          "local": "id = @request.auth.id",
+          "prod": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+          "match": false
+        }
+      ]
+    },
+    {
+      "collection": "wms_workstation_sessions",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "wms_workstation_sessions",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "wms_workstations",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "wms_workstations",
+        "type": "base"
+      }
+    },
+    {
+      "collection": "work_calendar_settings",
+      "status": "PROD_ONLY",
+      "local": null,
+      "prod": {
+        "name": "work_calendar_settings",
+        "type": "base"
+      }
+    }
+  ]
+}

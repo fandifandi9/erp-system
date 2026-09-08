@@ -19,10 +19,12 @@ import { fetchMasterProducts, resolveProductByScan } from "@/lib/wms/product-mas
 import { getErrorMessage } from "@/lib/errors";
 import type { InvWarehouse } from "@/lib/inventory/types";
 import type { MasterProductView } from "@/lib/wms/product-master";
+import { useLocale } from "@/components/LocaleProvider";
 
 type Line = { product: string; sku: string; name: string; qty: string };
 
 export default function WmsReceivingPage() {
+  const { t } = useLocale();
   const router = useRouter();
   const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [products, setProducts] = useState<MasterProductView[]>([]);
@@ -83,7 +85,7 @@ export default function WmsReceivingPage() {
 
   const submit = async () => {
     if (!warehouse) {
-      setError("Pilih gudang.");
+      setError(t("inventory.receivingWms.selectWarehouse"));
       return;
     }
     const parsed = lines
@@ -98,7 +100,7 @@ export default function WmsReceivingPage() {
     try {
       const notes = [
         "[RECEIVING]",
-        supplier && `Supplier: ${supplier}`,
+        supplier && `Pemasok: ${supplier}`,
         poRef && `PO: ${poRef}`,
         `QC: ${qcStatus}`,
       ]
@@ -140,8 +142,8 @@ export default function WmsReceivingPage() {
   return (
     <InventoryGate>
       <InventoryShell
-        title="Penerimaan barang"
-        subtitle="Goods receipt — foto dokumentasi, referensi PO, dan draf mutasi masuk."
+        title={t("inventory.receivingWms.title")}
+        subtitle={t("inventory.receivingWms.subtitle")}
         module="wms"
       >
         <WmsCard padding="p-4">
@@ -183,7 +185,7 @@ export default function WmsReceivingPage() {
               {detailOpen ? (
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="block text-sm">
-                    <span className="font-medium text-slate-700">Gudang</span>
+                    <span className="font-medium text-slate-700">{t("inventory.common.warehouse")}</span>
                     <select
                       className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm shadow-sm"
                       value={warehouse}
@@ -197,7 +199,7 @@ export default function WmsReceivingPage() {
                     </select>
                   </label>
                   <label className="block text-sm">
-                    <span className="font-medium text-slate-700">Supplier</span>
+                    <span className="font-medium text-slate-700">Pemasok</span>
                     <input
                       className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                       value={supplier}
@@ -259,12 +261,12 @@ export default function WmsReceivingPage() {
                     }
                   }}
                 />
-                <WmsSecondaryButton onClick={() => void addProduct(barcode)}>Tambah</WmsSecondaryButton>
+                <WmsSecondaryButton onClick={() => void addProduct(barcode)}>{t("inventory.common.add")}</WmsSecondaryButton>
               </div>
               <ul className="mt-4 space-y-2">
                 {lines.length === 0 ? (
                   <li className="rounded-xl bg-slate-50 py-8 text-center text-sm text-slate-500">
-                    Belum ada baris — scan produk untuk mulai.
+                    {t("inventory.receivingWms.emptyLines")}
                   </li>
                 ) : (
                   lines.map((l, i) => (
@@ -325,7 +327,7 @@ export default function WmsReceivingPage() {
                 <p className="mt-2 text-sm text-slate-600">Letakkan foto di sini</p>
                 <label className="mt-3 cursor-pointer">
                   <span className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-indigo-600 shadow-sm ring-1 ring-slate-200">
-                    <Camera className="h-3.5 w-3.5" /> Pilih foto
+                    <Camera className="h-3.5 w-3.5" /> {t("inventory.common.select")}
                   </span>
                   <input
                     type="file"
@@ -342,7 +344,7 @@ export default function WmsReceivingPage() {
                     <li key={i} className="flex justify-between gap-2">
                       <span className="truncate">{f.name}</span>
                       <button type="button" className="text-red-600" onClick={() => setPhotos(photos.filter((_, j) => j !== i))}>
-                        Hapus
+                        {t("inventory.common.delete")}
                       </button>
                     </li>
                   ))}
@@ -351,15 +353,15 @@ export default function WmsReceivingPage() {
             </WmsCard>
 
             <WmsCard className="bg-gradient-to-br from-indigo-50/80 to-white">
-              <p className="text-sm font-semibold text-slate-800">Simpan penerimaan</p>
+              <p className="text-sm font-semibold text-slate-800">{t("inventory.common.save")}</p>
               <p className="mt-1 text-xs text-slate-500">
                 Membuat draf mutasi IN. Supervisor mem-posting untuk update stok.
               </p>
               <div className="mt-4 flex flex-col gap-2">
                 <WmsPrimaryButton disabled={saving} onClick={() => void submit()}>
-                  {saving ? "Menyimpan…" : "Simpan draf penerimaan"}
+                  {saving ? t("inventory.common.loading") : t("inventory.receivingWms.saveDraft")}
                 </WmsPrimaryButton>
-                <WmsSecondaryButton onClick={() => router.push("/wms")}>Batal</WmsSecondaryButton>
+                <WmsSecondaryButton onClick={() => router.push("/wms")}>{t("inventory.common.cancel")}</WmsSecondaryButton>
               </div>
             </WmsCard>
           </div>

@@ -1,6 +1,11 @@
 import { ClientResponseError } from "pocketbase";
 import { pb } from "./pocketbase";
 
+/**
+ * @deprecated Phase 33A — operational flags are updated server-side (admin PB).
+ * Legacy client path retained for diagnostics only; will fail under hardened users.updateRule.
+ */
+
 async function refreshAuthUserModelFromServer(userId: string): Promise<void> {
   try {
     const token = pb.authStore.token;

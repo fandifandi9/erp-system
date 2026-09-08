@@ -31,9 +31,8 @@ import { getProductImageUrl, fetchCategories, fetchBrands } from "@/lib/inventor
 import type { InvBrand, InvCategory } from "@/lib/inventory/types";
 import { getErrorMessage } from "@/lib/errors";
 import { pb } from "@/lib/pocketbase";
-import { fetchProductsStockTotals } from "@/lib/catalog/product-stock";
+import { fetchCatalogStockMeta } from "@/lib/catalog/product-stock";
 import {
-  fetchProductsLastSale,
   isProductLowStock,
   type ProductLastSaleInfo,
 } from "@/lib/catalog/product-last-sale";
@@ -97,52 +96,54 @@ export default function KatalogProdukPage() {
       setItems(res.items);
       setTotalItems(res.totalItems);
       setDraftCount(draftRes.totalItems);
-
-      if (fieldVis.editLogistics) {
-        setStockLoading(true);
-        try {
-          const simpleIds = res.items.map((p) => p.id);
-          const [stockTotals, lastSales] = await Promise.all([
-            fetchProductsStockTotals(simpleIds),
-            fetchProductsLastSale(simpleIds),
-          ]);
-          setStockByProduct(stockTotals.global);
-          setSellableByProduct(stockTotals.sellable);
-          setLastSaleByProduct(lastSales);
-        } catch {
-          setStockByProduct({});
-          setSellableByProduct({});
-          setLastSaleByProduct({});
-        } finally {
-          setStockLoading(false);
-        }
-      } else {
-        setStockByProduct({});
-        setSellableByProduct({});
-        setLastSaleByProduct({});
-      }
     } catch (e: unknown) {
       setError(getErrorMessage(e, t("catalog.produk.errLoad")));
     } finally {
       setLoading(false);
     }
-  }, [q, lifecycle, fieldVis.editLogistics, t]);
+  }, [q, lifecycle, t]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [cats, brs] = await Promise.all([fetchCategories(true), fetchBrands(true)]);
-        setCategories(cats);
-        setBrands(brs);
-      } catch {
-        /* abaikan */
-      }
-    })();
-  }, []);
+  const loadStockMeta = useCallback(async (productIds: string[]) => {
+    if (!fieldVis.editLogistics || productIds.length === 0) {
+      setStockByProduct({});
+      setSellableByProduct({});
+      setLastSaleByProduct({});
+      return;
+    }
+
+    setStockLoading(true);
+    try {
+      const meta = await fetchCatalogStockMeta(productIds);
+      setStockByProduct(meta.global);
+      setSellableByProduct(meta.sellable);
+      setLastSaleByProduct(meta.lastSales);
+    } catch {
+      setStockByProduct({});
+      setSellableByProduct({});
+      setLastSaleByProduct({});
+    } finally {
+      setStockLoading(false);
+    }
+  }, [fieldVis.editLogistics]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadStockMeta(items.map((p) => p.id));
+  }, [items, loadStockMeta]);
+
+  const ensureLookupData = useCallback(async () => {
+    if (categories.length > 0 && brands.length > 0) return;
+    try {
+      const [cats, brs] = await Promise.all([fetchCategories(true), fetchBrands(true)]);
+      setCategories(cats);
+      setBrands(brs);
+    } catch {
+      /* abaikan */
+    }
+  }, [categories.length, brands.length]);
 
   const tableColSpan = useMemo(
     () => 6 + (fieldVis.showSellPrice ? 1 : 0) + (fieldVis.editLogistics ? 1 : 0),
@@ -163,11 +164,13 @@ export default function KatalogProdukPage() {
   }, [items]);
 
   const openNew = () => {
+    void ensureLookupData();
     setEditingProduct(null);
     setModalOpen(true);
   };
 
   const openEdit = (p: CatalogProductListItem) => {
+    void ensureLookupData();
     setEditingProduct(p);
     setModalOpen(true);
   };

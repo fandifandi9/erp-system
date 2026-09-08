@@ -12,12 +12,14 @@ import {
   validateGPSRadius,
 } from "./gps";
 import { getDeviceInfo } from "./device";
+import { getBusinessDateYmd } from "./business-date";
 import {
-  syncOperationalAccessAfterCheckIn,
-  syncOperationalAccessAfterCheckOut,
-} from "./operational-access-sync";
-import { isRetriableTransportError } from "./network";
-import { enqueueOfflineItem } from "./offline-queue/enqueue";
+  isAttendanceApiConfigured,
+  mobileCheckIn,
+  mobileCheckOut,
+  mobileGetTodayAttendance,
+  mobileListMyAttendance,
+} from "@/lib/hr-attendance-api";
 
 export const DEFAULT_LATE_TOLERANCE_MINUTES = 10;
 const DEFAULT_OFFICE_RADIUS_M = 100;
@@ -235,11 +237,7 @@ export function resolveProfileShiftForDate(
 }
 
 export function getTodayDate(): string {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, "0");
-  const d = String(today.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return getBusinessDateYmd();
 }
 
 export function parseShiftTime(timeStr: string): Date {
@@ -310,22 +308,12 @@ export function calculateWorkHours(checkIn: string, checkOut: string): number {
 export async function getTodayAttendance(
   userId: string
 ): Promise<AttendanceRecord | null> {
+  if (!userId) return null;
+  if (!isAttendanceApiConfigured()) return null;
   try {
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    const uid = pbEsc(userId);
-    const todayStr = getTodayDate();
-    const result = await pb.collection("attendance_logs").getList(1, 1, {
-      filter: `user="${uid}" && ((created >= "${start.toISOString()}" && created <= "${end.toISOString()}") || date = "${todayStr}")`,
-      sort: "-created",
-      requestKey: null,
-    });
-    return result.items[0]
-      ? (result.items[0] as unknown as AttendanceRecord)
-      : null;
+    const api = await mobileGetTodayAttendance();
+    if (!api.success) return null;
+    return (api.data as AttendanceRecord) || null;
   } catch {
     return null;
   }
@@ -334,17 +322,15 @@ export async function getTodayAttendance(
 async function fetchLatestAttendanceWithCoordinates(
   userId: string
 ): Promise<{ lat: number; lng: number; checkIn: string } | null> {
+  if (!userId || !isAttendanceApiConfigured()) return null;
   try {
-    const uid = pbEsc(userId);
-    const res = await pb.collection("attendance_logs").getList(1, 12, {
-      filter: `user="${uid}"`,
-      sort: "-created",
-      requestKey: null,
-    });
-    for (const row of res.items) {
-      const lat = row.lat as number | undefined;
-      const lng = row.lng as number | undefined;
-      const cin = row.check_in as string | undefined;
+    const api = await mobileListMyAttendance(1, 12);
+    if (!api.success) return null;
+    for (const row of api.items || []) {
+      const rec = row as AttendanceRecord;
+      const lat = rec.lat;
+      const lng = rec.lng;
+      const cin = rec.check_in;
       if (
         typeof lat === "number" &&
         !Number.isNaN(lat) &&
@@ -399,14 +385,28 @@ export async function getUserProfile(userId: string): Promise<{
 }> {
   try {
     const profile = await ensureProfileExists(userId);
-    const profileWithOffice = await pb.collection("profiles").getOne(
-      profile.id,
-      { expand: "office_id", requestKey: null }
-    );
-    const office = profileWithOffice.expand?.office_id || null;
+    const profileWithOffice = await pb.collection("profiles").getOne(profile.id, {
+      expand: "office_id",
+      requestKey: null,
+    });
+    let office = (profileWithOffice.expand?.office_id as Office | undefined) || null;
+    if (!office) {
+      const officeId = String(
+        (profileWithOffice as { office_id?: string }).office_id ?? profile.office_id ?? "",
+      ).trim();
+      if (officeId) {
+        try {
+          office = (await pb.collection("offices").getOne(officeId, {
+            requestKey: null,
+          })) as unknown as Office;
+        } catch {
+          office = null;
+        }
+      }
+    }
     return {
       profile: profileWithOffice as unknown as Profile,
-      office: office as unknown as Office,
+      office: office as Office | null,
     };
   } catch {
     return { profile: null, office: null };
@@ -416,26 +416,25 @@ export async function getUserProfile(userId: string): Promise<{
 export async function hasApprovedLeaveToday(userId: string): Promise<boolean> {
   const uid = pbEsc(userId);
   const todayStr = getTodayDate();
-  const hybridFilter = `user="${uid}" && status="approved" && (
-    date="${todayStr}" ||
-    (start_date<="${todayStr}" && end_date>="${todayStr}")
-  )`;
-  const legacyFilter = `user="${uid}" && date="${todayStr}" && status="approved"`;
-  try {
-    await pb.collection("leave_requests").getFirstListItem(hybridFilter, {
-      requestKey: null,
-    });
-    return true;
-  } catch {
+  const dayStart = `${todayStr} 00:00:00.000Z`;
+  const dayEnd = `${todayStr} 23:59:59.999Z`;
+  const filters = [
+    `user="${uid}" && status="approved" && date >= "${dayStart}" && date <= "${dayEnd}"`,
+    `user="${uid}" && status="approved" && date ~ "${todayStr}"`,
+    `user="${uid}" && status="approved" && date="${todayStr}"`,
+    `user="${uid}" && status="approved" && (start_date<="${todayStr}" && end_date>="${todayStr}")`,
+  ];
+  for (const filter of filters) {
     try {
-      await pb.collection("leave_requests").getFirstListItem(legacyFilter, {
+      await pb.collection("leave_requests").getFirstListItem(filter, {
         requestKey: null,
       });
       return true;
     } catch {
-      return false;
+      /* try next */
     }
   }
+  return false;
 }
 
 async function userHasApprovedFieldActivityForDate(
@@ -489,6 +488,7 @@ export async function checkIn(
   message: string;
   data?: AttendanceRecord;
   queued?: boolean;
+  httpStatus?: number;
 }> {
   try {
     if (!userId) {
@@ -499,7 +499,7 @@ export async function checkIn(
     if (existing?.check_in && !existing.check_out) {
       return {
         success: false,
-        message: "Sudah check-in hari ini. Check-out dulu.",
+        message: "Sudah absen masuk hari ini. Absen pulang dulu.",
       };
     }
     if (await hasApprovedLeaveToday(userId)) {
@@ -520,7 +520,7 @@ export async function checkIn(
       return {
         success: false,
         message:
-          "HR mewajibkan foto selfie saat check-in. Ambil foto dulu, lalu check-in lagi.",
+          "HR mewajibkan foto selfie saat absen masuk. Ambil foto dulu, lalu absen masuk lagi.",
       };
     }
     const { shiftStart } = resolveProfileShiftForDate(profile, todayYmd);
@@ -698,56 +698,53 @@ export async function checkIn(
     }
 
     const selfie = options?.selfie;
-    try {
-      const record = await pb.collection("attendance_logs").create(
-        selfie?.uri
-          ? {
-              ...dataToSave,
-              check_in_selfie: {
+
+    if (isAttendanceApiConfigured()) {
+      try {
+        const api = await mobileCheckIn({
+          lat: userLocation?.lat ?? null,
+          lng: userLocation?.lng ?? null,
+          accuracy: userLocation?.accuracy ?? null,
+          device_id: deviceInfo.deviceId,
+          selfie: selfie?.uri
+            ? {
                 uri: selfie.uri,
                 name: selfie.name || "checkin_selfie.jpg",
                 type: selfie.type || "image/jpeg",
-              },
-            }
-          : dataToSave
-      );
-
-      const op = await syncOperationalAccessAfterCheckIn(userId);
-      if (!op.ok) {
-        console.warn("[mobile] Akses web operasional tidak diperbarui (users / rule PB):", op.error);
-      }
-
-      return {
-        success: true,
-        message: `Absensi OK. ${gpsValidation.message}`,
-        data: record as unknown as AttendanceRecord,
-      };
-    } catch (error: unknown) {
-      if (!selfie?.uri && isRetriableTransportError(error)) {
-        await enqueueOfflineItem({
-          type: "attendance_checkin",
-          payload: {
-            user_id: userId,
-            date_ymd: todayYmd,
-            dataToSave,
-          },
-          idempotency_key: `att_ci_${userId}_${todayYmd}`,
+              }
+            : null,
         });
+        if (!api.success) {
+          return { success: false, message: api.message, httpStatus: api.httpStatus };
+        }
         return {
           success: true,
-          queued: true,
-          message: `Tersimpan lokal — akan disinkron otomatis. ${gpsValidation.message}`,
+          message: api.message,
+          data: api.data as AttendanceRecord | undefined,
+          httpStatus: api.httpStatus,
+        };
+      } catch (error: unknown) {
+        // Phase 11 owner decision: offline attendance NOT used in production.
+        // Do not queue check-in for later PB replay (unsafe without server re-validation).
+        return {
+          success: false,
+          message: getErrorMessage(
+            error,
+            "Absen masuk gagal. Periksa koneksi lalu coba lagi (mode offline absensi tidak dipakai).",
+          ),
         };
       }
-      return {
-        success: false,
-        message: getErrorMessage(error, "Check-in gagal"),
-      };
     }
+
+    return {
+      success: false,
+      message:
+        "Absensi wajib lewat server ERP. Mode offline absensi tidak dipakai.",
+    };
   } catch (error: unknown) {
     return {
       success: false,
-      message: getErrorMessage(error, "Check-in gagal"),
+      message: getErrorMessage(error, "Absen masuk gagal"),
     };
   }
 }
@@ -757,6 +754,7 @@ export async function checkOut(userId: string): Promise<{
   message: string;
   data?: AttendanceRecord;
   queued?: boolean;
+  httpStatus?: number;
 }> {
   try {
     if (!userId) {
@@ -764,60 +762,51 @@ export async function checkOut(userId: string): Promise<{
     }
     const record = await getTodayAttendance(userId);
     if (!record) {
-      return { success: false, message: "Belum ada check-in hari ini" };
+      return { success: false, message: "Belum ada absen masuk hari ini" };
     }
     if (!record.check_in) {
-      return { success: false, message: "Check-in dulu" };
+      return { success: false, message: "Absen masuk dulu" };
     }
     if (record.check_out) {
-      return { success: false, message: "Sudah check-out" };
+      return { success: false, message: "Sudah absen pulang" };
     }
     const now = new Date();
     const workHours = calculateWorkHours(record.check_in, now.toISOString());
     const checkOutIso = now.toISOString();
-    try {
-      const updated = await pb.collection("attendance_logs").update(record.id, {
-        check_out: checkOutIso,
-        work_hours: workHours,
-      });
 
-      const op = await syncOperationalAccessAfterCheckOut(userId);
-      if (!op.ok) {
-        console.warn("[mobile] Cutoff akses web operasional gagal (users / rule PB):", op.error);
-      }
-
-      return {
-        success: true,
-        message: `Check-out OK. Jam kerja: ${workHours} j`,
-        data: updated as unknown as AttendanceRecord,
-      };
-    } catch (error: unknown) {
-      if (isRetriableTransportError(error)) {
-        await enqueueOfflineItem({
-          type: "attendance_checkout",
-          payload: {
-            user_id: userId,
-            record_id: record.id,
-            check_out: checkOutIso,
-            work_hours: workHours,
-          },
-          idempotency_key: `att_co_${record.id}`,
-        });
+    if (isAttendanceApiConfigured()) {
+      try {
+        const api = await mobileCheckOut();
+        if (!api.success) {
+          return { success: false, message: api.message, httpStatus: api.httpStatus };
+        }
         return {
           success: true,
-          queued: true,
-          message: `Check-out tersimpan lokal — akan disinkron otomatis (±${workHours} j).`,
+          message: api.message,
+          data: api.data as AttendanceRecord | undefined,
+          httpStatus: api.httpStatus,
+        };
+      } catch (error: unknown) {
+        // Phase 11 owner decision: offline attendance NOT used in production.
+        return {
+          success: false,
+          message: getErrorMessage(
+            error,
+            "Absen pulang gagal. Periksa koneksi lalu coba lagi (mode offline absensi tidak dipakai).",
+          ),
         };
       }
-      return {
-        success: false,
-        message: getErrorMessage(error, "Check-out gagal"),
-      };
     }
+
+    return {
+      success: false,
+      message:
+        "Absensi wajib lewat server ERP. Mode offline absensi tidak dipakai.",
+    };
   } catch (error: unknown) {
     return {
       success: false,
-      message: getErrorMessage(error, "Check-out gagal"),
+      message: getErrorMessage(error, "Absen pulang gagal"),
     };
   }
 }

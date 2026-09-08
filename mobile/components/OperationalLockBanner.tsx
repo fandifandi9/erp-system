@@ -19,13 +19,13 @@ export function OperationalLockBanner({ compact, variant = "default" }: Props) {
       </View>
       <View style={styles.body}>
         <Text style={styles.title}>
-          {isWorkSection ? "Meja kerja terkunci" : "Dashboard terkunci"}
+          {isWorkSection ? "Meja kerja terkunci" : "Dasbor terkunci"}
         </Text>
         <Text style={styles.msg}>
           {isWorkSection ? (
             <>
-              Tab <Text style={styles.bold}>Meja kerja</Text> baru aktif setelah check-in di tab{" "}
-              <Text style={styles.bold}>Absensi</Text>. Setelah check-out, meja kerja tertutup lagi. Tab Absensi
+              Tab <Text style={styles.bold}>Meja kerja</Text> baru aktif setelah absen masuk di tab{" "}
+              <Text style={styles.bold}>Absensi</Text>. Setelah absen pulang, meja kerja tertutup lagi. Tab Absensi
               dan Profil tetap bisa dipakai. Owner dan HR tidak dibatasi.
             </>
           ) : (
@@ -38,7 +38,7 @@ export function OperationalLockBanner({ compact, variant = "default" }: Props) {
         <Link href="/(tabs)/attendance" asChild>
           <Pressable style={styles.btn}>
             <Ionicons name="today" size={16} color="#fff" />
-            <Text style={styles.btnTxt}>Ke absensi — check-in</Text>
+            <Text style={styles.btnTxt}>Ke absensi — absen masuk</Text>
           </Pressable>
         </Link>
       </View>

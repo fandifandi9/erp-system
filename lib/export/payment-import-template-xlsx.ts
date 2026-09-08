@@ -17,7 +17,7 @@ function buildColumns(): XlsxColumnDef<string>[] {
 
 const sampleRows: Record<string, unknown>[] = [
   {
-    invoice_no: "INV-062026-00001",
+    invoice_no: "INV090726-0001",
     payment_date: new Date(2026, 5, 1),
     amount: 500000,
     metode_bayar: "Transfer Bank",
@@ -26,7 +26,7 @@ const sampleRows: Record<string, unknown>[] = [
     lunas_penuh: "T",
   },
   {
-    invoice_no: "INV-062026-00002",
+    invoice_no: "INV090726-0002",
     payment_date: new Date(2026, 5, 1),
     amount: 0,
     metode_bayar: "Kas",

@@ -9,52 +9,78 @@ import { useLocale } from "@/components/LocaleProvider";
 type PreviewItem = { id: string; url: string; name: string };
 
 export function ValidatePackPhotoCapture({
+  autoOpenCamera = false,
   uploadedCount,
   uploading,
   onCapture,
   onRemoveUploaded,
   maxPhotos = WMS_PACK_PHOTO_MAX,
+  title,
+  subtitle,
 }: {
   uploadedCount: number;
   uploading: boolean;
   onCapture: (file: File) => void | Promise<void>;
   onRemoveUploaded?: () => void;
   maxPhotos?: number;
+  /** Buka kamera otomatis saat modal tampil (alur tanpa mouse). */
+  autoOpenCamera?: boolean;
+  title?: string;
+  subtitle?: string;
 }) {
   const { t } = useLocale();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [previews, setPreviews] = useState<PreviewItem[]>([]);
+  const previewsRef = useRef(previews);
+  previewsRef.current = previews;
+  const atMax = uploadedCount >= maxPhotos;
+
+  useEffect(() => {
+    if (!autoOpenCamera || uploading || atMax) return;
+    const timer = window.setTimeout(() => cameraRef.current?.click(), 300);
+    return () => window.clearTimeout(timer);
+  }, [autoOpenCamera, uploading, atMax, uploadedCount]);
 
   useEffect(() => {
     return () => {
-      for (const p of previews) URL.revokeObjectURL(p.url);
+      for (const p of previewsRef.current) URL.revokeObjectURL(p.url);
     };
-  }, [previews]);
+  }, []);
 
-  const total = uploadedCount + previews.length;
+  useEffect(() => {
+    if (uploadedCount !== 0) return;
+    setPreviews((prev) => {
+      if (prev.length === 0) return prev;
+      for (const p of prev) URL.revokeObjectURL(p.url);
+      return [];
+    });
+  }, [uploadedCount]);
 
   const handleFiles = (files: FileList | null) => {
-    if (total >= maxPhotos) return;
+    if (uploadedCount >= maxPhotos || uploading) return;
     const file = files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
     const url = URL.createObjectURL(file);
     const id = `${Date.now()}-${file.name}`;
-    setPreviews((prev) => [...prev, { id, url, name: file.name }]);
+    setPreviews((prev) => {
+      for (const p of prev) URL.revokeObjectURL(p.url);
+      return [{ id, url, name: file.name }];
+    });
     void onCapture(file);
   };
 
   return (
     <div>
       <WmsSectionTitle
-        title={t("wms.photo.title")}
-        subtitle={t("wms.photo.subtitle", { max: maxPhotos })}
+        title={title ?? t("wms.photo.title")}
+        subtitle={subtitle ?? t("wms.photo.subtitle", { max: maxPhotos })}
       />
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
-          disabled={uploading || total >= maxPhotos}
+          disabled={uploading || atMax}
           onClick={() => cameraRef.current?.click()}
           className="flex min-h-[120px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-indigo-300 bg-gradient-to-b from-indigo-50 to-white px-4 py-6 text-indigo-900 shadow-sm transition hover:border-indigo-500 hover:bg-indigo-50 disabled:opacity-50"
         >
@@ -69,7 +95,7 @@ export function ValidatePackPhotoCapture({
 
         <button
           type="button"
-          disabled={uploading || total >= maxPhotos}
+          disabled={uploading || atMax}
           onClick={() => galleryRef.current?.click()}
           className="flex min-h-[120px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-6 text-slate-800 transition hover:border-slate-300 hover:bg-white disabled:opacity-50"
         >
@@ -79,6 +105,7 @@ export function ValidatePackPhotoCapture({
         </button>
       </div>
 
+      {/* Kamera: capture=environment → buka kamera (HP/tablet). */}
       <input
         ref={cameraRef}
         type="file"
@@ -90,10 +117,11 @@ export function ValidatePackPhotoCapture({
           e.target.value = "";
         }}
       />
+      {/* Galeri: tanpa capture → buka galeri / file picker. */}
       <input
         ref={galleryRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.jpg,.jpeg,.png,.webp"
         className="hidden"
         onChange={(e) => {
           handleFiles(e.target.files);
@@ -116,7 +144,7 @@ export function ValidatePackPhotoCapture({
         {t("wms.photo.saved", { count: uploadedCount, max: maxPhotos })}
         {uploading ? (
           <span className="ml-2 text-indigo-600">{t("wms.photo.uploading")}</span>
-        ) : total >= 1 ? (
+        ) : uploadedCount >= 1 ? (
           <span className="ml-2 font-semibold text-emerald-700">{t("wms.photo.ready")}</span>
         ) : (
           <span className="ml-2 font-semibold text-amber-700">{t("wms.photo.minRequired")}</span>

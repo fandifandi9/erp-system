@@ -138,12 +138,11 @@ export async function fetchFieldActivityForUser(userId: string): Promise<FieldAc
 }
 
 export async function fetchFieldActivityForHr(): Promise<FieldActivityRequest[]> {
-  const list = await pb.collection(FIELD_ACTIVITY_COLLECTION).getFullList({
-    sort: "-created",
-    expand: "user",
-    requestKey: null,
-  });
-  return normalizeFieldActivityRows(list as unknown[]);
+  // FLEX-ORG-05-FIX — use scoped server API (no unscoped getFullList).
+  const { mobileFetchFieldQueue } = await import("@/lib/hr-queue-api");
+  const res = await mobileFetchFieldQueue();
+  if (!res.ok) throw new Error(res.error || "Gagal memuat antrian field activity.");
+  return normalizeFieldActivityRows(res.items);
 }
 
 export async function createFieldActivityRequest(input: {
@@ -173,19 +172,19 @@ export async function createFieldActivityRequest(input: {
   if (reason.length < 10) return { success: false, message: "Jelaskan keperluan aktivitas (min. 10 karakter)." };
 
   try {
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).create({
-      user: uid,
+    const { mobileSubmitFieldActivity } = await import("@/lib/hr-field-api");
+    const res = await mobileSubmitFieldActivity({
       start_date: sd,
       end_date: ed,
       activity_type: input.activity_type,
       destination: dest,
       reason,
-      status: "pending_hr",
     });
+    if (!res.success) return res;
     return {
       success: true,
       message:
-        "Pengajuan terkirim. Setelah HR menyetujui, Anda dapat check-in di luar zona kantor pada tanggal yang diajukan.",
+        "Pengajuan terkirim. Setelah disetujui, Anda dapat absen masuk di luar zona kantor pada tanggal yang diajukan.",
     };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyimpan pengajuan.") };
@@ -194,16 +193,13 @@ export async function createFieldActivityRequest(input: {
 
 export async function hrApproveFieldActivity(id: string): Promise<{ success: boolean; message: string }> {
   try {
-    const rec = await pb.collection(FIELD_ACTIVITY_COLLECTION).getOne(id);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.status) !== "pending_hr") {
-      return { success: false, message: "Hanya pengajuan menunggu ACC yang dapat disetujui." };
-    }
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).update(id, {
-      status: "approved",
-      ...hrActionPayload(),
-    });
-    return { success: true, message: "Aktivitas luar disetujui. Staff dapat absensi di luar radius pada tanggal tersebut." };
+    const { mobileApproveFieldActivity } = await import("@/lib/hr-field-api");
+    const res = await mobileApproveFieldActivity(id);
+    if (!res.success) return res;
+    return {
+      success: true,
+      message: "Aktivitas luar disetujui. Staff dapat absensi di luar radius pada tanggal tersebut.",
+    };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyetujui.") };
   }
@@ -216,16 +212,9 @@ export async function hrRejectFieldActivity(
   const r = String(reason ?? "").trim();
   if (r.length < 5) return { success: false, message: "Alasan penolakan minimal 5 karakter." };
   try {
-    const rec = await pb.collection(FIELD_ACTIVITY_COLLECTION).getOne(id);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.status) !== "pending_hr") {
-      return { success: false, message: "Hanya pengajuan menunggu ACC yang dapat ditolak." };
-    }
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).update(id, {
-      status: "rejected",
-      rejection_reason: r,
-      ...hrActionPayload(),
-    });
+    const { mobileRejectFieldActivity } = await import("@/lib/hr-field-api");
+    const res = await mobileRejectFieldActivity(id, r);
+    if (!res.success) return res;
     return { success: true, message: "Pengajuan ditolak." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menolak.") };

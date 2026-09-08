@@ -217,7 +217,7 @@ function OfflineStrip({
   const insets = useSafeAreaInsets();
   const label =
     tone === "offline"
-      ? "Offline — scan/absensi tetap dicatat lokal"
+      ? "Tidak ada jaringan — scan/absensi tetap dicatat lokal"
       : tone === "pending"
         ? `Menunggu sinkron${pending > 1 ? ` (${pending})` : ""}`
         : tone === "sync_ok"

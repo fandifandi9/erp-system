@@ -80,7 +80,7 @@ export function ImportActivityPanel({ defaultKindFilter = "all", showKindFilter 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-slate-900">Riwayat pemrosesan</h2>
-          <p className="text-xs text-slate-500">Upload Excel massal — lacak status, buka detail, batalkan batch draft</p>
+          <p className="text-xs text-slate-500">Unggah Excel massal — lacak status, buka detail, batalkan batch draf</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {showKindFilter && (

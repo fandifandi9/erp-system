@@ -26,7 +26,7 @@ export function OperationalGate({ children, title }: Props) {
       {title ? <Text style={styles.h1}>{title}</Text> : null}
       <OperationalLockBanner />
       <Text style={styles.hint}>
-        Setelah check-in dari tab Absensi, tarik layar ke bawah untuk memuat ulang status akses.
+        Setelah absen masuk dari tab Absensi, tarik layar ke bawah untuk memuat ulang status akses.
       </Text>
     </ScrollView>
   );

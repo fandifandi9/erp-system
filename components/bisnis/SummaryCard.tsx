@@ -1,38 +1,59 @@
 const fmt = (v: number) =>
-  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(v);
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(v);
 
 export function SummaryCard({
   label,
   count,
   amount,
   color,
+  hint,
 }: {
   label: string;
   count: number;
   amount: number;
   color: "orange" | "red" | "green";
+  hint?: string;
 }) {
-  const styles = {
-    orange: "border-l-orange-400 bg-orange-50",
-    red: "border-l-red-400 bg-red-50",
-    green: "border-l-emerald-400 bg-emerald-50",
-  };
-  const countBg = {
-    orange: "bg-orange-400",
-    red: "bg-red-400",
-    green: "bg-emerald-400",
-  };
+  const accent = {
+    orange: {
+      bar: "bg-amber-500",
+      count: "bg-amber-100 text-amber-900",
+      amount: "text-slate-900",
+    },
+    red: {
+      bar: "bg-rose-500",
+      count: "bg-rose-100 text-rose-900",
+      amount: "text-slate-900",
+    },
+    green: {
+      bar: "bg-emerald-500",
+      count: "bg-emerald-100 text-emerald-900",
+      amount: "text-slate-900",
+    },
+  }[color];
+
   return (
-    <div className={`rounded-lg border border-slate-200 border-l-4 p-4 ${styles[color]}`}>
-      <div className="mb-1 flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
+    <div className="relative overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
+      <span className={`absolute inset-y-0 left-0 w-1 ${accent.bar}`} aria-hidden />
+      <div className="flex items-start justify-between gap-3 pl-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+          <p className={`mt-1.5 text-xl font-bold tabular-nums tracking-tight ${accent.amount}`}>
+            {fmt(amount)}
+          </p>
+          {hint ? <p className="mt-1 text-[11px] text-slate-400">{hint}</p> : null}
+        </div>
         <span
-          className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${countBg[color]}`}
+          className={`inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg px-2 text-sm font-bold tabular-nums ${accent.count}`}
+          title={`${count} dokumen`}
         >
           {count}
         </span>
       </div>
-      <div className="text-lg font-bold text-slate-900">{fmt(amount)}</div>
     </div>
   );
 }

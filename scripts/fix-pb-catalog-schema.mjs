@@ -157,6 +157,7 @@ await patchCollection("inv_products", [
   textField("commercial_ready_at", "cmrdy"),
   textField("commercial_ready_by", "cmrby"),
   textField("created_by_role", "cbrl"),
+  textField("catalog_updated_at", "catupd"),
   fileField("image_2", "img2"),
   fileField("image_3", "img3"),
 ]);

@@ -15,6 +15,7 @@ import {
   hasProductImageUploads,
   PRODUCT_IMAGE_FIELDS,
 } from "./product-images";
+import { catalogUpdatedAtPatch } from "./catalog-meta";
 import type { CatalogProduct, CatalogProductPayload, ProductLifecycleStatus } from "./types";
 
 export async function getCatalogPb(): Promise<PocketBase> {
@@ -169,6 +170,7 @@ export async function createCatalogProductRecord(
     lifecycle_status: lifecycle,
     is_active: syncIsActiveFromLifecycle(lifecycle),
     created_by_role: createdByRoleSnapshot(user),
+    ...catalogUpdatedAtPatch(),
   };
 
   if (lifecycle === "active") {
@@ -204,7 +206,7 @@ export async function updateCatalogProductRecord(
     delete body.lifecycle_status;
   }
 
-  const patch: Record<string, unknown> = { ...body };
+  const patch: Record<string, unknown> = { ...body, ...catalogUpdatedAtPatch() };
   if (body.lifecycle_status) {
     const status = body.lifecycle_status as ProductLifecycleStatus;
     Object.assign(patch, lifecyclePatch(status, { userId: String(user.id ?? "") }));
@@ -243,7 +245,7 @@ export async function activateCatalogProductRecord(user: Record<string, unknown>
 
   const updated = await pb.collection(INV_COLLECTIONS.products).update(
     id,
-    lifecyclePatch("active", { userId: String(user.id ?? "") }),
+    { ...lifecyclePatch("active", { userId: String(user.id ?? "") }), ...catalogUpdatedAtPatch() },
   );
   return stripProductForRole(await fetchProductWithExpand(pb, updated.id), role);
 }
@@ -262,7 +264,7 @@ export async function archiveCatalogProductRecord(user: Record<string, unknown>,
 
   const updated = await pb.collection(INV_COLLECTIONS.products).update(
     id,
-    lifecyclePatch("draft"),
+    { ...lifecyclePatch("draft"), ...catalogUpdatedAtPatch() },
   );
   return stripProductForRole(await fetchProductWithExpand(pb, updated.id), role);
 }

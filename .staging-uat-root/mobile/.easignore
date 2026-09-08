@@ -1,0 +1,7 @@
+# Hindari upload folder monorepo / Next.js ke EAS (bisa bikin duplikat React & gagal Gradle)
+../node_modules
+../.next
+../android
+../out
+../build
+.git

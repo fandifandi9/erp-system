@@ -1,0 +1,3 @@
+SOURCE=git-archive HEAD fad420b7ceab949e1778d487c659636f67428dee
+OVERLAY=phase12-rating+phase11-attendance-selective
+DATE=2026-08-13T13:50:20.0981576+07:00

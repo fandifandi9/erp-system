@@ -1,6 +1,7 @@
 import type PocketBase from "pocketbase";
 import { INV_COLLECTIONS } from "@/lib/inventory/types";
 import { getCatalogPb } from "./api-server";
+import { touchCatalogProductUpdatedAt } from "./catalog-meta";
 import { validateBundleLineInput, validateBundleForActivation, validateBundleRetailStockForActivation } from "./bundle-guards";
 import { normalizeLifecycleStatus } from "./product-lifecycle";
 import type { BundleLine, BundleLineInput, CatalogProduct } from "./types";
@@ -28,10 +29,10 @@ export async function loadBundleComponentsMap(
   if (unique.length === 0) return map;
 
   const filter = unique.map((id) => `bundle_product = "${escId(id)}"`).join(" || ");
+  // Tanpa expand component_product — expand sering 403 untuk non-admin.
   const rows = await pb.collection(INV_COLLECTIONS.productBundleLines).getFullList<BundleLine>({
     filter: `(${filter}) && is_active != false`,
     sort: "sort_order,created",
-    expand: "component_product",
     requestKey: null,
   });
 
@@ -113,6 +114,7 @@ export async function replaceBundleLines(
     }
   }
 
+  await touchCatalogProductUpdatedAt(pb, bundleProductId);
   return fetchBundleLines(pb, bundleProductId);
 }
 

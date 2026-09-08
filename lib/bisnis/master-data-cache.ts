@@ -40,6 +40,12 @@ export async function getCachedSalesStores(loader: () => Promise<import("./types
   return cachedFetch("sales-stores", loader);
 }
 
+/** Panggil setelah create/update/delete toko agar dropdown penjualan ikut terbaru. */
+export function invalidateSalesStoresCache() {
+  store.delete("sales-stores");
+  store.delete("all-stores");
+}
+
 export async function getCachedWarehouses(loader: () => Promise<import("@/lib/inventory/types").InvWarehouse[]>) {
   return cachedFetch("warehouses-active", loader);
 }

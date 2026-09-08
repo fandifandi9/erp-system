@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { pb } from "@/lib/pocketbase";
 import { MapPin, Plus, Edit2, Trash2, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { canAccess, normalizeAuthModel } from "@/lib/rbac";
 import { useLocale } from "@/components/LocaleProvider";
+import { ShareFeedbackToast, type ShareToastState } from "@/components/bisnis/ShareFeedbackToast";
+import { hrApiAuthHeaders } from "@/lib/hr/hr-api-client";
 
 interface Office {
   id: string;
@@ -16,6 +18,19 @@ interface Office {
   address?: string;
   max_checkin_distance?: number;
   timezone?: string;
+}
+
+async function parseOfficeApi(res: Response): Promise<{ ok: boolean; error?: string; items?: Office[]; data?: Office }> {
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    items?: Office[];
+    data?: Office;
+  };
+  if (!res.ok || json.ok === false) {
+    throw new Error(json.error || `HTTP ${res.status}`);
+  }
+  return { ...json, ok: true };
 }
 
 export default function OfficesPage() {
@@ -36,6 +51,11 @@ export default function OfficesPage() {
   });
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState<ShareToastState>(null);
+
+  const showToast = useCallback((kind: "success" | "error", title: string) => {
+    setToast({ kind, title });
+  }, []);
 
   const currentUser = pb.authStore.model;
   const hasAccess = !!currentUser && canAccess(currentUser, "/hr/offices");
@@ -51,16 +71,18 @@ export default function OfficesPage() {
 
   const fetchOffices = async () => {
     try {
-      // Force fresh data dengan timestamp
-      const result = await pb.collection("offices").getList(1, 50, {
-        sort: "-created",
-        requestKey: `offices_${Date.now()}`, // Force refresh
+      const res = await fetch("/api/hr/offices", {
+        credentials: "include",
+        headers: hrApiAuthHeaders(),
       });
-      
-      console.log("FETCHED OFFICES:", result.items);
-      setOffices(result.items as unknown as Office[]);
+      const json = await parseOfficeApi(res);
+      setOffices(json.items ?? []);
     } catch (err) {
       console.error("Fetch offices error:", err);
+      showToast(
+        "error",
+        err instanceof Error ? err.message : t("hr.offices.saveFailed"),
+      );
     } finally {
       setLoading(false);
     }
@@ -114,15 +136,6 @@ export default function OfficesPage() {
       const radius = parseInt(formData.radius, 10); // Explicit base 10
       const maxCheckinDistance = parseInt(formData.max_checkin_distance, 10);
 
-      console.log("🔍 PARSING INPUT:", {
-        raw_lat: formData.lat,
-        raw_lng: formData.lng,
-        raw_radius: formData.radius,
-        parsed_lat: lat,
-        parsed_lng: lng,
-        parsed_radius: radius,
-      });
-
       if (isNaN(lat) || isNaN(lng)) {
         setError(t("hr.offices.errInvalidCoords"));
         setProcessing(false);
@@ -165,43 +178,30 @@ export default function OfficesPage() {
         timezone: formData.timezone || "Asia/Jakarta",
       };
 
-      console.log("📤 DATA TO SAVE:", data);
-      console.log("📊 DATA TYPES:", {
-        lat: typeof data.lat,
-        lng: typeof data.lng,
-        radius: typeof data.radius,
-        is_active: typeof data.is_active,
-      });
-
-      let savedRecord;
       if (editingOffice) {
-        // Update
-        savedRecord = await pb.collection("offices").update(editingOffice.id, data);
-        console.log("✅ UPDATED - Response:", savedRecord);
+        const res = await fetch(`/api/hr/offices/${encodeURIComponent(editingOffice.id)}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: hrApiAuthHeaders(),
+          body: JSON.stringify(data),
+        });
+        await parseOfficeApi(res);
       } else {
-        // Create
-        savedRecord = await pb.collection("offices").create(data);
-        console.log("✅ CREATED - Response:", savedRecord);
+        const res = await fetch("/api/hr/offices", {
+          method: "POST",
+          credentials: "include",
+          headers: hrApiAuthHeaders(),
+          body: JSON.stringify(data),
+        });
+        await parseOfficeApi(res);
       }
 
-      // Verify saved by fetching the specific record
-      const verifyRecord = await pb.collection("offices").getOne(savedRecord.id);
-      console.log("🔍 VERIFICATION - DB has:", {
-        id: verifyRecord.id,
-        name: verifyRecord.name,
-        radius: verifyRecord.radius,
-        type: typeof verifyRecord.radius,
-      });
-
-      // Force refresh ALL offices data with cache bust
-      setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 200));
-      await fetchOffices();
-      
       handleCloseModal();
-      
-      // Show success message
-      alert(editingOffice ? t("hr.offices.updated") : t("hr.offices.created"));
+      await fetchOffices();
+      showToast(
+        "success",
+        editingOffice ? t("hr.offices.updated") : t("hr.offices.created"),
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("hr.offices.saveFailed"));
     } finally {
@@ -213,24 +213,39 @@ export default function OfficesPage() {
     if (!confirm(t("hr.offices.deleteConfirm"))) return;
 
     try {
-      await pb.collection("offices").delete(id);
+      const res = await fetch(`/api/hr/offices/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: hrApiAuthHeaders(),
+      });
+      await parseOfficeApi(res);
       await fetchOffices();
+      showToast("success", t("hr.offices.deleted"));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t("hr.offices.deleteFailed"));
+      showToast(
+        "error",
+        err instanceof Error ? err.message : t("hr.offices.deleteFailed"),
+      );
     }
   };
 
   const handleToggleActive = async (office: Office) => {
     try {
-      await pb.collection("offices").update(office.id, {
-        is_active: !office.is_active,
+      const res = await fetch(`/api/hr/offices/${encodeURIComponent(office.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: hrApiAuthHeaders(),
+        body: JSON.stringify({ is_active: !office.is_active }),
       });
-      
-      // Force refresh
+      await parseOfficeApi(res);
+
       await fetchOffices();
-      alert(t("hr.offices.toggleSuccess"));
+      showToast("success", t("hr.offices.toggleSuccess"));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t("hr.common.statusChangeFailed"));
+      showToast(
+        "error",
+        err instanceof Error ? err.message : t("hr.common.statusChangeFailed"),
+      );
     }
   };
 
@@ -255,6 +270,7 @@ export default function OfficesPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <ShareFeedbackToast toast={toast} onDismiss={() => setToast(null)} />
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>

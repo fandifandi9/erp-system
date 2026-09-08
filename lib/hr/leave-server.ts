@@ -24,7 +24,13 @@ import { computeLeaveCompensationAmount } from "@/lib/hr-compensation";
 import { PROFILE_LEAVE_DAILY_RATE_FIELD } from "@/lib/profile";
 import { getAccessibleCompanyIds } from "@/lib/hr/company-scope";
 import { HrApiError, type HrApiAuthContext } from "@/lib/hr/api-auth";
+import { isHrOperationalActor } from "@/lib/access/hr-api-enforcement";
+import { getHrOperationalCompanyIds } from "@/lib/org/resolve-hr-operational-company-scope";
 import { emitBusinessEventServer } from "@/lib/tenant/activity-server";
+import {
+  assertOrgHierarchyApprover,
+  canOrgHierarchyApprove,
+} from "@/lib/hr/org-approval-authority";
 
 const DEFAULT_MAX_PEOPLE_PER_DAY = 2;
 const MAX_DAYS_PER_BOOKING = 1;
@@ -94,10 +100,11 @@ export async function assertHrLeaveSubjectInScope(
   leaveUserIdValue: string,
 ): Promise<void> {
   if (ctx.isOwner) return;
-  if (!ctx.isHr) {
+  if (!isHrOperationalActor(ctx)) {
     throw new HrApiError("Akses HR ditolak.", 403);
   }
-  if (ctx.companyIds.length === 0) {
+  const effectiveCompanies = await getHrOperationalCompanyIds(adminPb, ctx);
+  if (effectiveCompanies.length === 0) {
     throw new HrApiError("Scope entitas HR tidak dapat ditentukan.", 403);
   }
   const subjectCompanies = await getAccessibleCompanyIds(adminPb, leaveUserIdValue);
@@ -107,7 +114,7 @@ export async function assertHrLeaveSubjectInScope(
       403,
     );
   }
-  const overlap = subjectCompanies.some((id) => ctx.companyIds.includes(id));
+  const overlap = subjectCompanies.some((id) => effectiveCompanies.includes(id));
   if (!overlap) {
     throw new HrApiError("Akses lintas entitas ditolak.", 403);
   }
@@ -234,9 +241,9 @@ async function checkDivisionQuota(
   // Live schema uses `devision` (legacy typo). `division` may be absent — do not
   // require it in filters or PocketBase returns 400 and approve fails closed incorrectly.
   const filterCandidates = [
-    `devision="${pbEscape(division)}" && status="approved"`,
-    `division="${pbEscape(division)}" && status="approved"`,
-    `(division="${pbEscape(division)}" || devision="${pbEscape(division)}") && status="approved"`,
+    `devision="${pbEscape(division)}" && (status="approved" || status="pending")`,
+    `division="${pbEscape(division)}" && (status="approved" || status="pending")`,
+    `(division="${pbEscape(division)}" || devision="${pbEscape(division)}") && (status="approved" || status="pending")`,
   ];
   let loaded = false;
   for (const filter of filterCandidates) {
@@ -301,6 +308,95 @@ async function resolveLeaveDailyRate(adminPb: PocketBase, userId: string): Promi
       return 0;
     }
   }
+}
+
+async function assertCanApproveOrRejectLeave(
+  adminPb: PocketBase,
+  ctx: HrApiAuthContext,
+  subjectUserId: string,
+): Promise<void> {
+  // FLEX-ORG-05-FIX — FOM/entity scope first (HR admin cannot approve outside ops scope).
+  await assertHrLeaveSubjectInScope(adminPb, ctx, subjectUserId);
+  await assertOrgHierarchyApprover(adminPb, ctx, subjectUserId, {
+    selfApproveCode: "LEAVE_SELF_APPROVE",
+    orgAuthorityCode: "LEAVE_ORG_AUTHORITY_REQUIRED",
+    // Fallback only when subject has no org seat — still gated by FOM scope above.
+    allowHrAdminFallback: true,
+  });
+}
+
+/**
+ * Scoped leave monitor for HR Desktop — all statuses within FOM operational entity scope.
+ * Fail-closed when FOM ops empty (non-owner).
+ */
+export async function serverListLeaveForHrScope(
+  adminPb: PocketBase,
+  ctx: HrApiAuthContext,
+): Promise<Record<string, unknown>[]> {
+  if (!ctx.isOwner && !isHrOperationalActor(ctx)) {
+    throw new HrApiError("Akses HR ditolak.", 403);
+  }
+  const operational = await getHrOperationalCompanyIds(adminPb, ctx);
+  if (!ctx.isOwner && operational.length === 0) return [];
+
+  const rows = await adminPb.collection(LEAVE_COLLECTION).getFullList({
+    sort: "-created",
+    expand: "user",
+    requestKey: null,
+  });
+
+  if (ctx.isOwner) return rows as unknown as Record<string, unknown>[];
+
+  const out: Record<string, unknown>[] = [];
+  for (const raw of rows) {
+    const r = raw as Record<string, unknown>;
+    const subject = leaveUserId(r);
+    if (!subject) continue;
+    try {
+      await assertHrLeaveSubjectInScope(adminPb, ctx, subject);
+      out.push(r);
+    } catch {
+      /* out of FOM / membership scope */
+    }
+  }
+  return out;
+}
+
+/** Scoped pending leave queue for approvers (Mobile/Desktop) — no raw PB getFullList. */
+export async function serverListPendingLeaveForApprover(
+  adminPb: PocketBase,
+  ctx: HrApiAuthContext,
+): Promise<Record<string, unknown>[]> {
+  const operational = await getHrOperationalCompanyIds(adminPb, ctx);
+  if (!ctx.isOwner && operational.length === 0) return [];
+
+  const rows = await adminPb.collection(LEAVE_COLLECTION).getFullList({
+    filter: 'status="pending"',
+    sort: "-created",
+    expand: "user",
+    requestKey: null,
+  });
+  const out: Record<string, unknown>[] = [];
+  for (const raw of rows) {
+    const r = raw as Record<string, unknown>;
+    const subject = leaveUserId(r);
+    if (!subject) continue;
+    try {
+      await assertHrLeaveSubjectInScope(adminPb, ctx, subject);
+    } catch {
+      continue;
+    }
+    if (
+      await canOrgHierarchyApprove(adminPb, ctx, subject, {
+        selfApproveCode: "LEAVE_SELF_APPROVE",
+        orgAuthorityCode: "LEAVE_ORG_AUTHORITY_REQUIRED",
+        allowHrAdminFallback: true,
+      })
+    ) {
+      out.push(r);
+    }
+  }
+  return out;
 }
 
 export type LeaveMutationResult = {
@@ -447,10 +543,6 @@ export async function serverApproveLeave(
   ctx: HrApiAuthContext,
   requestId: string,
 ): Promise<LeaveMutationResult> {
-  if (!ctx.isOwner && !ctx.isHr) {
-    throw new HrApiError("Akses HR ditolak.", 403);
-  }
-
   const record = (await adminPb.collection(LEAVE_COLLECTION).getOne(requestId)) as unknown as Record<
     string,
     unknown
@@ -464,7 +556,7 @@ export async function serverApproveLeave(
   }
 
   const userId = leaveUserId(record);
-  await assertHrLeaveSubjectInScope(adminPb, ctx, userId);
+  await assertCanApproveOrRejectLeave(adminPb, ctx, userId);
 
   const bounds = pickLeaveDates(record);
   const divisionKey = String(record.division ?? record.devision ?? "").trim();
@@ -545,10 +637,6 @@ export async function serverRejectLeave(
   requestId: string,
   reasonRaw: string,
 ): Promise<LeaveMutationResult> {
-  if (!ctx.isOwner && !ctx.isHr) {
-    throw new HrApiError("Akses HR ditolak.", 403);
-  }
-
   const reason = String(reasonRaw ?? "").trim();
   if (reason.length < 5) {
     return {
@@ -561,15 +649,14 @@ export async function serverRejectLeave(
     string,
     unknown
   >;
+  const userId = leaveUserId(record);
+  await assertCanApproveOrRejectLeave(adminPb, ctx, userId);
   if (String(record.status) !== "pending") {
     return {
       success: false,
       message: "Hanya pengajuan Menunggu yang bisa ditolak.",
     };
   }
-
-  const userId = leaveUserId(record);
-  await assertHrLeaveSubjectInScope(adminPb, ctx, userId);
 
   const hrPayload = buildHrActionFromActor(ctx);
 

@@ -2,19 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Loader2 } from "lucide-react";
+import { Activity, ChevronRight, Loader2 } from "lucide-react";
 import { formatActivityEventLabel } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
+import {
+  activitySeverityClass,
+  parseActivityPayload,
+  resolveActivityActionUrl,
+} from "@/lib/tenant/activity-links";
 import type { ActivityEvent } from "@/lib/tenant/types";
-
-function parsePayload(raw?: string): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
 
 export function ActivityFeedPanel({
   storeId,
@@ -72,13 +68,14 @@ export function ActivityFeedPanel({
       ) : (
         <ul className="divide-y divide-slate-50">
           {items.map((ev) => {
-            const payload = parsePayload(ev.payload_json);
+            const payload = parseActivityPayload(ev.payload_json);
             const label = formatActivityEventLabel(
               locale,
               ev.event_code,
               payload,
               ev.entity_label,
             );
+            const href = resolveActivityActionUrl(ev, payload);
             const storeName = ev.expand?.store?.name;
             const time = ev.occurred_at
               ? new Date(ev.occurred_at).toLocaleTimeString(locale === "en" ? "en-US" : "id-ID", {
@@ -87,16 +84,25 @@ export function ActivityFeedPanel({
                 })
               : "—";
             return (
-              <li key={ev.id} className="flex gap-3 px-5 py-3 text-sm">
-                <span className="shrink-0 font-mono text-xs text-slate-400">{time}</span>
-                <div className="min-w-0 flex-1">
-                  {storeName ? (
-                    <span className="mb-0.5 inline-block rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                      {storeName}
-                    </span>
-                  ) : null}
-                  <p className="text-slate-800">{label}</p>
-                </div>
+              <li key={ev.id}>
+                <Link
+                  href={href}
+                  className="group flex gap-3 px-5 py-3 text-sm transition hover:bg-slate-50"
+                >
+                  <span
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${activitySeverityClass(ev.severity)}`}
+                  />
+                  <span className="shrink-0 font-mono text-xs text-slate-400">{time}</span>
+                  <div className="min-w-0 flex-1">
+                    {storeName ? (
+                      <span className="mb-0.5 inline-block rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                        {storeName}
+                      </span>
+                    ) : null}
+                    <p className="text-slate-800 group-hover:text-indigo-700">{label}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-indigo-500" />
+                </Link>
               </li>
             );
           })}

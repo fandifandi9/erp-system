@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useContext } from "react";
+import { useState, useCallback, useContext, useEffect } from "react";
 import { MessageCircle, Mail, Link2, Check, Loader2, ExternalLink } from "lucide-react";
 import {
   ActionMenuDropdown,
@@ -80,6 +80,34 @@ export function DocumentShareMenu({
   const [toast, setToast] = useState<ShareToastState>(null);
   const [active, setActive] = useState<ShareActionId>(null);
   const [done, setDone] = useState<ShareActionId>(null);
+  const [resolvedShare, setResolvedShare] = useState(share);
+
+  useEffect(() => {
+    setResolvedShare(share);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/bisnis/share/ensure-url", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: share.docKind, id: share.docId }),
+        });
+        const data = (await res.json()) as { url?: string; error?: string };
+        if (!res.ok || !data.url || cancelled) return;
+        setResolvedShare({
+          ...share,
+          url: data.url,
+          message: share.message.split(share.url).join(data.url),
+        });
+      } catch {
+        /* fallback ke URL lama */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [share]);
 
   const finishSuccess = useCallback(
     (action: ShareActionId, title: string, detail: string) => {
@@ -108,7 +136,7 @@ export function DocumentShareMenu({
     });
 
     window.setTimeout(() => {
-      let phone = share.toPhone;
+      let phone = resolvedShare.toPhone;
       if (!phone) {
         setToast(null);
         const raw = prompt("Nomor WhatsApp (08xxx atau 62xxx):", "");
@@ -124,7 +152,7 @@ export function DocumentShareMenu({
         setToast({ kind: "loading", title: "Membuka WhatsApp…" });
       }
 
-      const opened = openWhatsAppShare(phone, share.message);
+      const opened = openWhatsAppShare(phone, resolvedShare.message);
       if (!opened) {
         finishError(
           "Pop-up diblokir",
@@ -149,7 +177,7 @@ export function DocumentShareMenu({
     });
 
     void (async () => {
-      let to = share.toEmail?.trim();
+      let to = resolvedShare.toEmail?.trim();
       if (!to) {
         setToast(null);
         const manual = prompt("Email penerima:", "");
@@ -167,8 +195,8 @@ export function DocumentShareMenu({
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            kind: share.docKind,
-            id: share.docId,
+            kind: resolvedShare.docKind,
+            id: resolvedShare.docId,
             to,
           }),
         });
@@ -203,7 +231,7 @@ export function DocumentShareMenu({
 
   const openPreview = () => {
     setActive("preview");
-    const opened = openSharePreviewInNewTab(share.url);
+    const opened = openSharePreviewInNewTab(resolvedShare.url);
     if (opened) {
       finishSuccess("preview", "Pratinjau dibuka", "Dibuka di tab baru browser.");
     } else {
@@ -219,24 +247,24 @@ export function DocumentShareMenu({
     setToast({ kind: "loading", title: "Menyalin link…" });
     void (async () => {
       try {
-        await navigator.clipboard.writeText(share.url);
+        await navigator.clipboard.writeText(resolvedShare.url);
         finishSuccess(
           "copy",
           "Link disalin",
           "Bagikan ke pelanggan. Saat diklik dari WA Web, pilih Buka pratinjau (tab baru).",
         );
       } catch {
-        prompt("Salin link:", share.url);
+        prompt("Salin link:", resolvedShare.url);
         finishSuccess("copy", "Link ditampilkan", "Salin dari kotak dialog.");
       }
     })();
   };
 
   const sellerHint =
-    share.seller?.phone || share.seller?.email
+    resolvedShare.seller?.phone || resolvedShare.seller?.email
       ? t("share.sellerInfo", {
-          name: share.seller.name,
-          phone: share.seller.phone ? ` · WA ${share.seller.phone}` : "",
+          name: resolvedShare.seller.name,
+          phone: resolvedShare.seller.phone ? ` · WA ${resolvedShare.seller.phone}` : "",
         })
       : t("share.sellerHint");
 

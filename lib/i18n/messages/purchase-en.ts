@@ -52,9 +52,9 @@ export const purchaseEn: MessageTree = {
   },
   poList: {
     title: "Purchase Orders",
-    subtitle: "PO history — WMS path auto-creates bills after receiving is complete.",
+    subtitle: "PO history — remains listed after becoming a bill. Bills are under Billing.",
     newPo: "Create PO",
-    emptyHint: "Create PO via New Purchase. Non-WMS: create bill manually from PO detail.",
+    emptyHint: "Create PO via New Purchase. After completion / bill, the PO stays here as history (Completed).",
   },
   filter: {
     allStatus: "All statuses",
@@ -89,9 +89,9 @@ export const purchaseEn: MessageTree = {
     poNo: "PO No.",
     billNo: "Bill No.",
     billNoPlaceholder: "System or external number",
-    billNoHint: "Billing number — auto BILL or external.",
+    billNoHint: "Auto BILL090726-0001 (continues; wraps after 9999) or external.",
     poNoPlaceholder: "System or external number",
-    poNoHint: "Auto system number or external — both are searchable.",
+    poNoHint: "Auto PO090726-0001 (continues) or external — both are searchable.",
     paymentTerm: "Payment terms",
     dueDateLabel: "Due date",
     paymentMethod: "Payment method",

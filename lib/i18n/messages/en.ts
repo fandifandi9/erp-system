@@ -1,4 +1,5 @@
 import type { MessageTree } from "../types";
+import { inventoryEn } from "./inventory-en";
 import { catalogEn } from "./catalog-en";
 import { hubsEn } from "./hubs-en";
 import { purchaseEn } from "./purchase-en";
@@ -7,6 +8,7 @@ import { wmsEn } from "./wms-en";
 import { hrEn } from "./hr-en";
 import { laporanEn } from "./laporan-en";
 import { pengaturanEn } from "./pengaturan-en";
+import { designEn } from "./design-en";
 
 export const enMessages: MessageTree = {
   common: {
@@ -31,6 +33,8 @@ export const enMessages: MessageTree = {
     empty: "No activity today yet",
     emptyAll: "No activity yet",
     markRead: "Mark as read",
+    loadError: "Failed to load notifications",
+    refreshing: "Refreshing…",
     viewReport: "View reports",
     pageTitle: "Activity History",
     pageSubtitle: "Monitor business and warehouse operations in real time",
@@ -55,10 +59,13 @@ export const enMessages: MessageTree = {
       "wms.picking.completed": "Picking completed · {order_no}",
       "wms.packing.completed": "Packing + QC done · {order_no}",
       "wms.awb.uploaded": "AWB uploaded · {order_no}",
-      "wms.ready_pickup": "Ready to pickup · {order_no}",
-      "wms.pickup.completed": "Courier pickup · {order_no}",
+      "wms.ready_pickup": "Ready for pickup · {order_no}",
+      "wms.pickup.completed": "Courier handover · {order_no}",
       "hr.attendance.checkin": "{name} checked in",
       "hr.attendance.checkout": "{name} checked out",
+      "payroll_bank.change_requested": "Payroll account change request — {employee_name}",
+      "payroll_bank.change_approved": "Payroll bank account change approved",
+      "payroll_bank.change_rejected": "Payroll bank account change rejected",
       "retur.sales.wms_received": "Return {retur_no} received at WMS — clarification needed",
       "retur.sales.wms_exception": "Return {retur_no} — WMS result does not match estimate",
       "retur.purchase.wms_prepared": "Purchase return {retur_no} ready to ship to supplier",
@@ -70,6 +77,12 @@ export const enMessages: MessageTree = {
   nav: {
     activity: "Activity",
     openLink: "Open {label}",
+    logout: "Log out",
+    loggingOut: "Signing out…",
+    dashboard: "Dashboard",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+    profile: "Profile",
   },
   dashboard: {
     ownerTitle: "Owner Dashboard",
@@ -97,24 +110,25 @@ export const enMessages: MessageTree = {
   hr: hrEn,
   laporan: laporanEn,
   pengaturan: pengaturanEn,
+  inventory: inventoryEn,
   wms: {
     ...wmsEn,
     badge: {
-      not_queued: "Not queued",
+      not_queued: "Direct sale",
       wh_not_selected: "Warehouse not selected",
       wh_pending: "Awaiting picking",
       wh_checking: "Picking in progress",
       wh_hold: "Picking on hold",
-      wh_processing: "Packing",
+      wh_processing: "Packing in progress",
       wh_complete: "Ready to ship",
       so_shipped: "Shipped",
       so_delivered: "Delivered",
       po_received: "Stock received",
       stage_new_order: "New order",
-      stage_picking: "Picking",
-      stage_validate_pack: "Validation & Packing",
+      stage_picking: "Picking in progress",
+      stage_validate_pack: "Packing in progress",
       stage_ready_pickup: "Ready to pickup",
-      stage_completed: "Completed",
+      stage_completed: "Warehouse complete",
       stage_cancelled: "Cancelled",
       stage_validation_failed: "Validation failed",
     },
@@ -131,4 +145,5 @@ export const enMessages: MessageTree = {
     sellerHint: "Add phone & email in Store master to show in messages.",
     sellerInfo: "Store: {name}{phone}",
   },
+  ...designEn,
 };

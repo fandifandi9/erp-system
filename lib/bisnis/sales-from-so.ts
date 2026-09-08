@@ -1,5 +1,6 @@
 import { pb } from "@/lib/pocketbase";
 import { cancelWmsTasksForEntity } from "@/lib/wms/fulfillment";
+import { parseOutboundWorkflow } from "@/lib/wms/outbound-workflow";
 import {
   applySalesStockOnly,
   createInvoice,
@@ -28,14 +29,86 @@ export async function fetchInvoiceBySalesOrder(soId: string): Promise<Invoice | 
   return list[0] ?? null;
 }
 
+async function assertWmsPickReadyForInvoice(so: SalesOrder, wmsPickComplete?: boolean) {
+  if (!wmsPickComplete) {
+    const blocked = invoiceBlockedReason(so);
+    if (!canCreateInvoiceFromSalesOrder(so)) {
+      throw new Error(blocked ?? "SO belum siap untuk invoice.");
+    }
+    return;
+  }
+  const wf = parseOutboundWorkflow(so.outbound_workflow_json);
+  if (!wf.pick?.completed_at) {
+    throw new Error("Picking belum selesai — invoice WMS belum bisa dibuat.");
+  }
+}
+
+async function applySalesStockIfNeeded(so: SalesOrder): Promise<void> {
+  if (!so.warehouse) return;
+  const { hasPostedSalesStockOut } = await import("./sales-retur-guards");
+  const posted = await hasPostedSalesStockOut(pb, so.id, so.order_no);
+  if (posted) return;
+
+  const lines = await fetchSalesOrderLines(so.id);
+  if (lines.length === 0) throw new Error("SO tidak punya item produk");
+
+  const stockMsg = await validateStockForSale(
+    so.warehouse,
+    lines.map((l) => ({
+      product: l.product,
+      productName: l.name_snapshot || l.expand?.product?.name,
+      qty: l.qty,
+    })),
+  );
+  if (stockMsg) throw new Error(stockMsg);
+
+  await applySalesStockOnly(so.id, {
+    warehouse: so.warehouse,
+    reference_no: so.order_no,
+    lines: lines.map((l) => ({
+      product: l.product,
+      qty: l.qty,
+      sales_order_line_id: l.id,
+    })),
+  });
+}
+
+/**
+ * Pastikan SO sudah punya invoice + stok keluar + status confirmed.
+ * Idempotent — dipakai saat picking ACC dan backfill order yang masih Draf.
+ */
+export async function ensureInvoiceAndStockFromSalesOrder(
+  soId: string,
+  userId: string,
+  opts?: { isCash?: boolean; invoiceNo?: string; wmsPickComplete?: boolean },
+): Promise<Invoice> {
+  const so = await fetchSalesOrder(soId);
+  if (so.status === "cancelled") {
+    throw new Error("SO dibatalkan tidak bisa dibuat invoice");
+  }
+
+  const existing = await fetchInvoiceBySalesOrder(soId);
+  if (existing) {
+    if (existing.status !== "cancelled") {
+      await applySalesStockIfNeeded(so);
+      if (so.status === "draft") {
+        await updateSalesOrder(so.id, { status: "confirmed" });
+      }
+      return existing;
+    }
+  }
+
+  return createInvoiceFromSalesOrder(soId, userId, opts);
+}
+
 /** Buat invoice dari SO yang sudah ada, lalu posting stok keluar. */
 export async function createInvoiceFromSalesOrder(
   soId: string,
   userId: string,
-  opts?: { isCash?: boolean; invoiceNo?: string },
+  opts?: { isCash?: boolean; invoiceNo?: string; wmsPickComplete?: boolean },
 ): Promise<Invoice> {
   const existing = await fetchInvoiceBySalesOrder(soId);
-  if (existing) {
+  if (existing && existing.status !== "cancelled") {
     throw new Error(`SO ini sudah punya invoice: ${existing.invoice_no}`);
   }
 
@@ -47,10 +120,7 @@ export async function createInvoiceFromSalesOrder(
   const holdBlock = salesOrderHoldBlockedInBisnis(so);
   if (holdBlock) throw new Error(holdBlock);
 
-  const blocked = invoiceBlockedReason(so);
-  if (!canCreateInvoiceFromSalesOrder(so)) {
-    throw new Error(blocked ?? "SO belum siap untuk invoice.");
-  }
+  await assertWmsPickReadyForInvoice(so, opts?.wmsPickComplete);
 
   const lines = await fetchSalesOrderLines(soId);
   if (lines.length === 0) {
@@ -110,25 +180,22 @@ export async function createInvoiceFromSalesOrder(
     status: isCash ? "paid" : "unpaid",
     is_cash: isCash,
     notes: so.notes,
+    platform_source: so.platform_source,
     created_by: userId,
   };
   const inv = await createInvoice(
     storeId ? await enrichInvoiceWithStore(invBase, storeId) : invBase,
   );
 
-  if (so.warehouse) {
-    await applySalesStockOnly(so.id, {
-      warehouse: so.warehouse,
-      reference_no: so.order_no,
-      lines: lines.map((l) => ({
-        product: l.product,
-        qty: l.qty,
-        sales_order_line_id: l.id,
-      })),
-    });
+  try {
+    await applySalesStockIfNeeded({ ...so });
+    if (so.status === "draft") {
+      await updateSalesOrder(so.id, { status: "confirmed" });
+    }
+  } catch (e) {
+    // Invoice sudah ada — biarkan ensure/retry menyelesaikan stok + status.
+    throw e;
   }
-
-  await updateSalesOrder(so.id, { status: "confirmed" });
 
   void emitBusinessEvent({
     event_code: "sales.invoice.created",

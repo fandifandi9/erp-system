@@ -20,7 +20,7 @@ function pbErrorMessage(e: unknown, fallback: string): string {
   return raw;
 }
 
-const VALID_SOURCES: AwbSource[] = ["manual", "excel", "zip_import", "wms_pickup"];
+const VALID_SOURCES: AwbSource[] = ["manual", "excel", "zip_import", "wms_pickup", "system"];
 
 function parseSource(raw: string | null): AwbSource {
   const s = (raw ?? "manual").trim() as AwbSource;

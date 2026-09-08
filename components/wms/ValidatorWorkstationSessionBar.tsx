@@ -1,126 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { Monitor, LogOut, Scan, Link2, Smartphone } from "lucide-react";
-import { pb } from "@/lib/pocketbase";
-import { isValidWorkstationCheckInInput } from "@/lib/wms/workstation-qr";
-import {
-  bindWorkstationSession,
-  checkInWorkstationDesk,
-  checkOutWorkstationDesk,
-  fetchActiveWorkstationSession,
-  fetchWorkstationDeskConfig,
-  type WorkstationDeskConfig,
-  type WorkstationSessionDto,
-} from "@/lib/wms/workstation-session-client";
-import type { WmsWorkstation } from "@/lib/wms/workstations";
-import { getErrorMessage } from "@/lib/errors";
 import { useLocale } from "@/components/LocaleProvider";
+import {
+  type ValidatorWorkstationSessionApi,
+  useValidatorWorkstationSession,
+  validatorUserName,
+} from "@/lib/wms/use-validator-workstation-session";
+import type { WmsWorkstation } from "@/lib/wms/workstations";
 
 export function ValidatorWorkstationSessionBar({
-  onWorkstationChange,
-  onSessionChange,
+  api,
 }: {
-  onWorkstationChange?: (ws: WmsWorkstation | null) => void;
-  onSessionChange?: (session: WorkstationSessionDto | null) => void;
+  api: ValidatorWorkstationSessionApi;
 }) {
   const { t } = useLocale();
-  const [session, setSession] = useState<WorkstationSessionDto | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [scanInput, setScanInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [localError, setLocalError] = useState("");
-  const [deskConfig, setDeskConfig] = useState<WorkstationDeskConfig | null>(null);
+  const {
+    session,
+    loading,
+    busy,
+    localError,
+    deskConfig,
+    scanInput,
+    setScanInput,
+    doCheckIn,
+    doBind,
+    doCheckOut,
+  } = api;
 
-  const applySession = useCallback(
-    (s: WorkstationSessionDto | null) => {
-      setSession(s);
-      const ws = s?.workstation ?? null;
-      const ready = s && !s.needsBind;
-      onWorkstationChange?.(ready ? ws : null);
-      onSessionChange?.(s);
-    },
-    [onWorkstationChange, onSessionChange],
-  );
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setLocalError("");
-    try {
-      const s = await fetchActiveWorkstationSession();
-      applySession(s);
-    } catch (e) {
-      setLocalError(getErrorMessage(e));
-      applySession(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [applySession]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    void fetchWorkstationDeskConfig()
-      .then(setDeskConfig)
-      .catch(() => setDeskConfig(null));
-  }, []);
-
-  const user = pb.authStore.model;
-  const userName = typeof user?.name === "string" ? user.name : user?.email ?? "—";
-
-  const doCheckIn = async (payload: string) => {
-    const trimmed = payload.trim();
-    if (!trimmed || busy) return;
-    if (!isValidWorkstationCheckInInput(trimmed)) {
-      setLocalError(t("wms.workstation.errInvalidCode"));
-      return;
-    }
-    if (deskConfig && !deskConfig.checkInEnabled) {
-      setLocalError(t("wms.workstation.errDesksLocked"));
-      return;
-    }
-    setBusy(true);
-    setLocalError("");
-    try {
-      const s = await checkInWorkstationDesk({ desk_input: trimmed, channel: "web_desk_scan" });
-      applySession(s);
-      setScanInput("");
-    } catch (e) {
-      setLocalError(getErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doBind = async () => {
-    if (!session?.id || busy) return;
-    setBusy(true);
-    setLocalError("");
-    try {
-      const s = await bindWorkstationSession(session.id);
-      applySession(s);
-    } catch (e) {
-      setLocalError(getErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doCheckOut = async () => {
-    if (!session?.id || busy) return;
-    setBusy(true);
-    setLocalError("");
-    try {
-      await checkOutWorkstationDesk(session.id);
-      applySession(null);
-    } catch (e) {
-      setLocalError(getErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const userName = validatorUserName();
 
   if (loading) {
     return <p className="text-xs text-slate-500">{t("wms.workstation.loading")}</p>;
@@ -136,6 +44,7 @@ export function ValidatorWorkstationSessionBar({
           {t("wms.workstation.scanTitle")}
         </p>
         <p className="mt-1 text-xs text-amber-900">{t("wms.workstation.scanHint", { user: userName })}</p>
+        <p className="mt-1 text-[10px] text-amber-800">{t("wms.workstation.idleHint")}</p>
         {deskConfig && !deskConfig.checkInEnabled ? (
           <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-800">
             {t("wms.workstation.desksLockedHint")}
@@ -227,6 +136,7 @@ export function ValidatorWorkstationSessionBar({
           {ws.location} · {t("wms.workstation.cctv", { cctv: ws.cctv })}
           {session.channel === "mobile" ? t("wms.workstation.viaMobile") : ""}
         </p>
+        <p className="mt-0.5 text-[10px] text-emerald-700">{t("wms.workstation.idleHint")}</p>
       </div>
       <button
         type="button"
@@ -245,9 +155,6 @@ export function ValidatorWorkstationSessionBar({
 export function ValidatorWorkstationPanel(props: {
   onWorkstationChange?: (ws: WmsWorkstation | null) => void;
 }) {
-  return (
-    <ValidatorWorkstationSessionBar
-      onWorkstationChange={props.onWorkstationChange}
-    />
-  );
+  const api = useValidatorWorkstationSession();
+  return <ValidatorWorkstationSessionBar api={api} />;
 }

@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import { BISNIS_COLLECTIONS, type Invoice, type Store } from "@/lib/bisnis/types";
+import { assertShareAccess } from "@/lib/share-api-auth";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
+  const gate = await assertShareAccess(req, {
+    collection: BISNIS_COLLECTIONS.invoices,
+    recordId: id,
+    shareTokenField: "share_token",
+  });
+  if (!gate.ok) {
+    return NextResponse.json({ error: gate.error }, { status: gate.status });
+  }
   try {
     const pb = await getInventoryAdminPb();
     const inv = await pb.collection(BISNIS_COLLECTIONS.invoices).getOne<Invoice>(id, {

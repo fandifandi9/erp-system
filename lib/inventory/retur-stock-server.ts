@@ -125,6 +125,8 @@ export async function voidReturnStockMovements(
   let voided = 0;
   for (const row of list) {
     const refType = String((row as { reference_type?: string }).reference_type ?? "");
+    // OUT kirim kembali sudah “menyelesaikan” hold — jangan void bersama batal retur biasa.
+    if (refType === "SALES_RETURN_RESEND") continue;
     if (!refType.startsWith("SALES_RETURN") && refType !== "PURCHASE_RETURN") continue;
     await voidStockMovement(pb, row.id, userId, note);
     voided++;

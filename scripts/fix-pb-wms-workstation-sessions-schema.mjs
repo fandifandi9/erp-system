@@ -150,8 +150,44 @@ async function patchCollectionSchema(name, extraFields) {
 
 const usersId = await resolveUsersCollectionId();
 
-/* wms_workstations — tambah qr_payload jika koleksi ada */
-await patchCollectionSchema("wms_workstations", [textField("qr_payload", "wsqr")]);
+/* wms_workstations — buat koleksi jika belum ada, lalu pastikan qr_payload */
+{
+  const name = "wms_workstations";
+  const colRes = await fetch(`${url}/api/collections/${name}`, { headers });
+  const col = await colRes.json();
+  if (!col.id) {
+    console.log(`CREATE ${name}`);
+    const createRes = await fetch(`${url}/api/collections`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        name,
+        type: "base",
+        listRule: "",
+        viewRule: "",
+        createRule: "",
+        updateRule: "",
+        deleteRule: "",
+        schema: [
+          textField("code", "wscode"),
+          textField("name", "wsname"),
+          textField("location", "wsloc"),
+          textField("cctv", "wscctv"),
+          textField("qr_payload", "wsqr"),
+          boolField("is_active", "wsact"),
+        ],
+      }),
+    });
+    const created = await createRes.json();
+    if (!createRes.ok) {
+      console.error(`Create ${name} failed`, created);
+    } else {
+      console.log(`OK create ${name}`);
+    }
+  } else {
+    await patchCollectionSchema(name, [textField("qr_payload", "wsqr"), boolField("is_active", "wsact")]);
+  }
+}
 
 const SESSIONS = "wms_workstation_sessions";
 const existing = await fetch(`${url}/api/collections/${SESSIONS}`, { headers });

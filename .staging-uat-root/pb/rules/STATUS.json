@@ -1,0 +1,6 @@
+{
+  "status": "PARTIAL",
+  "leave_requests_writes": "TARGET_LOCKED_NULL_DOCUMENTED",
+  "production_apply": "BLOCKED_STAGING_REQUIRED",
+  "note": "create/update/delete target = null (superuser-only). Staging PB instance not configured. Production pb.serba.space not modified."
+}

@@ -38,6 +38,7 @@ export async function loadDamagedIntakeRefs(
 ): Promise<Record<string, DamagedIntakeRef[]>> {
   const result: Record<string, DamagedIntakeRef[]> = {};
   const uniqueProducts = [...new Set(productIds.filter(Boolean))];
+  const whSet = new Set(damagedWarehouseIds);
   if (damagedWarehouseIds.length === 0 || uniqueProducts.length === 0) return result;
 
   for (const pid of uniqueProducts) {
@@ -46,8 +47,16 @@ export async function loadDamagedIntakeRefs(
     }
   }
 
-  const whFilter = damagedWarehouseIds.map((id) => `to_warehouse = "${escId(id)}"`).join(" || ");
-  const movements = await pb.collection(INV_COLLECTIONS.movements).getFullList<{
+  const prodFilter = uniqueProducts.map((id) => `product = "${escId(id)}"`).join(" || ");
+  const lineRes = await pb.collection(INV_COLLECTIONS.movementLines).getList(1, 400, {
+    filter: `(${prodFilter})`,
+    expand: "movement",
+    sort: "-created",
+    fields: "movement,product,qty",
+    requestKey: null,
+  });
+
+  type MovExpand = {
     id: string;
     movement_no?: string;
     reference_type?: string;
@@ -57,61 +66,29 @@ export async function loadDamagedIntakeRefs(
     posted_at?: string;
     created?: string;
     status?: string;
-  }>({
-    filter: `status = "posted" && (${whFilter})`,
-    sort: "-posted_at,-created",
-    fields: "id,movement_no,reference_type,reference_no,from_warehouse,to_warehouse,posted_at,created,status",
-    requestKey: null,
-  });
+  };
 
-  if (movements.length === 0) return result;
-
-  const movementIds = movements.map((m) => m.id);
-  const movFilter = movementIds.map((id) => `movement = "${escId(id)}"`).join(" || ");
-  const prodFilter = uniqueProducts.map((id) => `product = "${escId(id)}"`).join(" || ");
-
-  const lines = await pb.collection(INV_COLLECTIONS.movementLines).getFullList<{
-    movement: string;
-    product: string;
-    qty?: number;
-  }>({
-    filter: `(${movFilter}) && (${prodFilter})`,
-    fields: "movement,product,qty",
-    requestKey: null,
-  });
-
-  const linesByMovement = new Map<string, typeof lines>();
-  for (const line of lines) {
-    const mid = String(line.movement);
-    const list = linesByMovement.get(mid) ?? [];
-    list.push(line);
-    linesByMovement.set(mid, list);
-  }
-
-  for (const mov of movements) {
+  for (const line of lineRes.items) {
+    const mov = line.expand?.movement as MovExpand | undefined;
+    if (!mov || mov.status !== "posted") continue;
     const whId = String(mov.to_warehouse ?? "");
-    if (!damagedWarehouseIds.includes(whId)) continue;
+    if (!whSet.has(whId)) continue;
 
-    const movLines = linesByMovement.get(mov.id) ?? [];
-    for (const line of movLines) {
-      const pid = String(line.product);
-      const key = `${whId}:${pid}`;
-      if (!result[key]) continue;
+    const pid = String(line.product);
+    const key = `${whId}:${pid}`;
+    const list = result[key];
+    if (!list || list.length >= 3) continue;
 
-      const ref: DamagedIntakeRef = {
-        movementId: mov.id,
-        movementNo: mov.movement_no ?? mov.id,
-        referenceType: mov.reference_type ?? "TRANSFER",
-        referenceNo: mov.reference_no ?? mov.movement_no ?? "",
-        fromWarehouseId: mov.from_warehouse,
-        postedAt: mov.posted_at ?? mov.created,
-        qty: Number(line.qty) || 0,
-        label: refLabel(mov.reference_type ?? "TRANSFER", mov.reference_no ?? mov.movement_no ?? ""),
-      };
-
-      const list = result[key];
-      if (list.length < 3) list.push(ref);
-    }
+    list.push({
+      movementId: mov.id,
+      movementNo: mov.movement_no ?? mov.id,
+      referenceType: mov.reference_type ?? "TRANSFER",
+      referenceNo: mov.reference_no ?? mov.movement_no ?? "",
+      fromWarehouseId: mov.from_warehouse,
+      postedAt: mov.posted_at ?? mov.created,
+      qty: Number(line.qty) || 0,
+      label: refLabel(mov.reference_type ?? "TRANSFER", mov.reference_no ?? mov.movement_no ?? ""),
+    });
   }
 
   return result;

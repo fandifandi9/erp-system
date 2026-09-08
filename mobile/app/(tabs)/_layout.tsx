@@ -5,12 +5,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import { useAuth } from "@/context/auth";
-import { shouldShowMejaKerjaTab } from "@/lib/work-dashboard-menu";
+import { hasCapability } from "@/lib/capabilities";
 import { usePushRegistration } from "@/lib/notifications";
 import { getAppVersionDisplay } from "@/lib/app-version";
+import { useMobileLocale } from "@/lib/i18n";
 import { PWA } from "@/constants/pwaTheme";
 
-const TAB_ICON_SIZE = 24;
+const TAB_ICON_SIZE = 22;
 
 type IonName = ComponentProps<typeof Ionicons>["name"];
 
@@ -26,9 +27,25 @@ const TAB_BAR_BASE_HEIGHT = 56;
 
 export default function TabsLayout() {
   const { hydrated, user } = useAuth();
+  const { t } = useMobileLocale();
   const insets = useSafeAreaInsets();
   usePushRegistration(!!user);
-  const showMejaKerjaTab = useMemo(() => shouldShowMejaKerjaTab(user), [user]);
+  const showMejaKerjaTab = useMemo(
+    () => !!user && hasCapability(user, "dashboard.work"),
+    [user],
+  );
+  const showRatingTab = useMemo(
+    () => !!user && hasCapability(user, "rating.task_view"),
+    [user],
+  );
+  const showAttendanceTab = useMemo(
+    () => !!user && hasCapability(user, "attendance.view"),
+    [user],
+  );
+  const showProfileTab = useMemo(
+    () => !!user && hasCapability(user, "profile.view_own"),
+    [user],
+  );
 
   const tabBarBottom = Math.max(insets.bottom, Platform.OS === "android" ? 10 : 8);
   const tabBarHeight = TAB_BAR_BASE_HEIGHT + tabBarBottom;
@@ -37,7 +54,7 @@ export default function TabsLayout() {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={PWA.indigo} size="large" />
-        <Text style={styles.loadingLabel}>Memuat…</Text>
+        <Text style={styles.loadingLabel}>{t("common.loading")}</Text>
       </View>
     );
   }
@@ -72,10 +89,10 @@ export default function TabsLayout() {
         tabBarActiveTintColor: PWA.indigo,
         tabBarInactiveTintColor: PWA.textMuted,
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: "600",
           marginBottom: 0,
-          marginTop: 2,
+          marginTop: 1,
         },
         tabBarIconStyle: { marginTop: 0 },
         tabBarItemStyle: {
@@ -90,6 +107,7 @@ export default function TabsLayout() {
         options={{
           title: "Absensi",
           tabBarLabel: "Absensi",
+          href: showAttendanceTab ? undefined : null,
           tabBarIcon: tabBarIconPair("today-outline", "today"),
         }}
       />
@@ -100,6 +118,15 @@ export default function TabsLayout() {
           tabBarLabel: "Meja kerja",
           href: showMejaKerjaTab ? undefined : null,
           tabBarIcon: tabBarIconPair("briefcase-outline", "briefcase"),
+        }}
+      />
+      <Tabs.Screen
+        name="rating"
+        options={{
+          title: t("rating.title"),
+          tabBarLabel: t("rating.tabLabel"),
+          href: showRatingTab ? undefined : null,
+          tabBarIcon: tabBarIconPair("star-outline", "star"),
         }}
       />
       <Tabs.Screen
@@ -124,6 +151,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="izin"
+        options={{
+          href: null,
+          title: "Off",
+        }}
+      />
+      <Tabs.Screen
+        name="my-submissions"
+        options={{
+          href: null,
+          title: "Pengajuan Saya",
+        }}
+      />
+      <Tabs.Screen
         name="payroll"
         options={{
           href: null,
@@ -135,6 +176,7 @@ export default function TabsLayout() {
         options={{
           title: "Profil",
           tabBarLabel: "Profil",
+          href: showProfileTab ? undefined : null,
           tabBarIcon: tabBarIconPair("person-circle-outline", "person-circle"),
         }}
       />
@@ -159,8 +201,8 @@ const styles = StyleSheet.create({
     color: PWA.textMuted,
   },
   tabIconWrap: {
-    height: 28,
-    width: 32,
+    height: 24,
+    width: 28,
     alignItems: "center",
     justifyContent: "center",
   },

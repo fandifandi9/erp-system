@@ -3,44 +3,43 @@
 import { useEffect, useState } from "react";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
-import { fetchAuditLogs, fetchWarehouses } from "@/lib/inventory/client";
+import { useWorkContext } from "@/components/WorkContextProvider";
+import { fetchAuditLogs } from "@/lib/inventory/client";
 import { isInventorySupervisorOrAbove } from "@/lib/inventory/access";
 import { pb } from "@/lib/pocketbase";
-import type { InvAuditLog, InvWarehouse } from "@/lib/inventory/types";
+import type { InvAuditLog } from "@/lib/inventory/types";
 import { Loader2 } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function InventoryAuditPage() {
+  const { t } = useLocale();
   const user = pb.authStore.model;
   const allowed = user && isInventorySupervisorOrAbove(user);
+  const { warehouses } = useWorkContext();
   const [items, setItems] = useState<InvAuditLog[]>([]);
-  const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const load = async (whId: string) => {
-    setLoading(true);
-    try {
-      setItems(await fetchAuditLogs({ warehouseId: whId || undefined }));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    void fetchWarehouses().then((list) => {
-      setWarehouses(list);
-      void load("");
-    });
-  }, []);
-
-  useEffect(() => {
-    void load(warehouseId);
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const list = await fetchAuditLogs({ warehouseId: warehouseId || undefined });
+        if (!cancelled) setItems(list);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [warehouseId]);
 
   if (!allowed) {
     return (
       <InventoryGate>
-        <InventoryShell title="Log audit" subtitle="Hanya supervisor/admin.">
+        <InventoryShell title={t("inventory.audit.title")} subtitle={t("inventory.audit.subtitle")}>
           <p className="text-sm text-slate-600">Akses ditolak.</p>
         </InventoryShell>
       </InventoryGate>
@@ -49,15 +48,15 @@ export default function InventoryAuditPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Log audit" subtitle="Jejak perubahan stok dan operasi gudang (hanya tambah).">
+      <InventoryShell title={t("inventory.audit.title")} subtitle={t("inventory.audit.subtitle")}>
         <label className="text-sm">
-          Filter gudang
+          {t("inventory.common.warehouse")}
           <select
             className="mt-1 block rounded-lg border border-slate-300 px-3 py-2"
             value={warehouseId}
             onChange={(e) => setWarehouseId(e.target.value)}
           >
-            <option value="">Semua gudang</option>
+            <option value="">{t("inventory.common.all")}</option>
             {warehouses.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.code} — {w.name}
@@ -71,10 +70,10 @@ export default function InventoryAuditPage() {
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">Waktu</th>
-                <th className="px-4 py-3">Aksi</th>
-                <th className="px-4 py-3">Entitas</th>
+                <th className="px-4 py-3">{t("inventory.common.actions")}</th>
+                <th className="px-4 py-3">{t("inventory.common.entity")}</th>
                 <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Gudang</th>
+                <th className="px-4 py-3">{t("inventory.common.warehouse")}</th>
               </tr>
             </thead>
             <tbody>
@@ -87,7 +86,7 @@ export default function InventoryAuditPage() {
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                    Belum ada entri audit (posting mutasi otomatis menulis log).
+                    {t("inventory.audit.empty")}
                   </td>
                 </tr>
               ) : (

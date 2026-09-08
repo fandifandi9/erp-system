@@ -21,6 +21,7 @@ import {
   sumReturnedQtyForSoLine,
 } from "@/lib/bisnis/sales-retur-guards";
 import { resolveSalesReturCompanyId } from "@/lib/bisnis/retur-company";
+import { resolveProcessActorName } from "@/lib/bisnis/process-actor";
 import {
   getDamagedWarehouse,
   getTransitWarehouse,
@@ -129,7 +130,7 @@ async function buildStockBuckets(
   };
 }
 
-/** Posting stok: transit → gudang penjualan / rusak. Tidak menyentuh pembukuan settlement. */
+/** Posting stok: transit → gudang penjualan / rusak sesuai kondisi baris (putusan bisnis). Tidak menyentuh pembukuan settlement. */
 export async function finalizeSalesReturStock(
   pb: PocketBase,
   returId: string,
@@ -151,7 +152,88 @@ export async function finalizeSalesReturStock(
     requestKey: null,
   });
   const soId = retur.sales_order || retur.reference_id;
-  if (!soId) throw new Error("Retur harus terhubung ke sales order.");
+
+  // Retur mandiri (tanpa SO): stok berdasarkan gudang retur.
+  if (!soId) {
+    const goodLines: { product: string; qty: number }[] = [];
+    const damagedLines: { product: string; qty: number }[] = [];
+    let refundTotal = 0;
+    for (const line of lines) {
+      const qty = Number(line.actual_qty ?? line.qty) || 0;
+      if (qty <= 0) continue;
+      const condition =
+        line.actual_condition === "damaged" || line.condition === "damaged" ? "damaged" : "good";
+      const unitPrice = Number(line.unit_price) || 0;
+      refundTotal += Number(line.line_total) || roundMoney(unitPrice * qty);
+      const bucket = condition === "damaged" ? damagedLines : goodLines;
+      const existing = bucket.find((b) => b.product === line.product);
+      if (existing) existing.qty += qty;
+      else bucket.push({ product: line.product, qty });
+    }
+    if (!goodLines.length && !damagedLines.length) {
+      throw new Error("Tidak ada qty retur yang valid.");
+    }
+    const companyId = await resolveSalesReturCompanyId(pb, retur, undefined);
+    const transitWarehouse = companyId ? await getTransitWarehouse(companyId, pb) : null;
+    if (!transitWarehouse?.id) throw new Error("Gudang sementara tidak ditemukan untuk entitas ini.");
+    const mainWarehouseId = retur.warehouse;
+    const damagedWarehouseId =
+      retur.damaged_warehouse ||
+      (companyId ? (await getDamagedWarehouse(companyId, pb))?.id : "") ||
+      "";
+    if (goodLines.length && !mainWarehouseId) throw new Error("Gudang tujuan tidak ditemukan.");
+    if (damagedLines.length && !damagedWarehouseId) {
+      throw new Error("Gudang rusak belum dikonfigurasi.");
+    }
+
+    const { resolveReturnLinesFromSale } = await import("@/lib/catalog/sale-stock-lines");
+    const expandedGood = await resolveReturnLinesFromSale(pb, goodLines);
+    const expandedDamaged = await resolveReturnLinesFromSale(pb, damagedLines);
+
+    if (expandedGood.length && mainWarehouseId) {
+      await postTransferStockMovementServer({
+        from_warehouse: transitWarehouse.id,
+        to_warehouse: mainWarehouseId,
+        reference_type: "SALES_RETURN",
+        reference_id: returId,
+        reference_no: retur.retur_no,
+        lines: expandedGood,
+        userId,
+        noteSuffix: "Retur mandiri: layak dijual → gudang",
+      });
+    }
+    if (expandedDamaged.length && damagedWarehouseId) {
+      await postTransferStockMovementServer({
+        from_warehouse: transitWarehouse.id,
+        to_warehouse: damagedWarehouseId,
+        reference_type: "SALES_RETURN_DAMAGED",
+        reference_id: returId,
+        reference_no: retur.retur_no,
+        lines: expandedDamaged,
+        userId,
+        noteSuffix: "Retur mandiri: tidak layak → gudang rusak",
+      });
+    }
+
+    const now = new Date().toISOString();
+    const updated = await pb.collection(BISNIS_COLLECTIONS.returs).update<Retur>(returId, {
+      stock_posted_at: now,
+      total: refundTotal,
+      warehouse: mainWarehouseId ?? retur.warehouse,
+      damaged_warehouse: damagedWarehouseId || retur.damaged_warehouse,
+      status: "completed",
+      workflow_phase: "completed",
+      completed_at: now,
+      settled_at: now,
+      reminder_due_at: "",
+    });
+    return {
+      retur: updated,
+      refund_total: refundTotal,
+      good_lines: goodLines.length,
+      damaged_lines: damagedLines.length,
+    };
+  }
 
   const so = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getOne<SalesOrder>(soId);
   await assertSalesReturEligible(pb, soId, so.order_no, {
@@ -197,20 +279,12 @@ export async function finalizeSalesReturStock(
     warehouse: buckets.mainWarehouseId ?? retur.warehouse,
     damaged_warehouse: buckets.damagedWarehouseId || retur.damaged_warehouse,
     exception_status: retur.exception_status === "open" ? "resolved" : retur.exception_status ?? "none",
+    // Stok sudah keluar dari hold; lanjut pembukuan di langkah berikutnya (Selesai = stok+pembukuan).
     workflow_phase: pendingSettlement ? "awaiting_settlement" : retur.workflow_phase,
     reminder_due_at: pendingSettlement ? retur.reminder_due_at : "",
   });
 
-  if (pendingSettlement) {
-    return {
-      retur: updated,
-      refund_total: buckets.refundTotal,
-      good_lines: buckets.goodLines.length,
-      damaged_lines: buckets.damagedLines.length,
-      awaiting_settlement: true,
-    };
-  }
-
+  // Selalu lanjut settle — tombol Selesai menutup stok + pembukuan sekaligus.
   return settleSalesReturFinance(pb, returId, userId, buckets.refundTotal);
 }
 
@@ -287,12 +361,20 @@ export async function settleSalesReturFinance(
     });
     accountingSnapshot.expenseIds.push(...settlementResult.expenseIds);
 
+    const bizId = retur.business_processed_by || retur.created_by || userId;
+    const bizActor =
+      retur.business_processed_by_name || (await resolveProcessActorName(pb, bizId));
+
     const updated = await pb.collection(BISNIS_COLLECTIONS.returs).update<Retur>(returId, {
       status: "completed",
       workflow_phase: "completed",
       total: refundTotal,
       completed_at: new Date().toISOString(),
       settled_at: new Date().toISOString(),
+      business_process_completed_at: new Date().toISOString(),
+      // Jangan timpa dengan user WMS saat auto-finalize; tetap pencatat bisnis.
+      business_processed_by: retur.business_processed_by || retur.created_by || userId,
+      business_processed_by_name: bizActor,
       mp_claim_amount: mpClaim,
       shipping_reimb_amount: shippingReimb,
       reminder_due_at: "",
@@ -331,6 +413,16 @@ export async function completeSalesRetur(
   userId: string,
 ): Promise<CompleteSalesReturResult> {
   const retur = await pb.collection(BISNIS_COLLECTIONS.returs).getOne<Retur>(returId);
+  if (retur.workflow_phase === "resend") {
+    throw new Error("Retur dalam alur kirim kembali — tidak bisa disimpan ke gudang lewat Selesai.");
+  }
+  const disputed =
+    retur.wms_claim_decision === "disagree" || retur.exception_status === "open";
+  if (disputed && retur.business_resolution !== "accept_wms") {
+    throw new Error(
+      "WMS membantah claim. Pilih Terima klarifikasi WMS dulu, atau Kirim kembali ke pelanggan.",
+    );
+  }
   if (retur.workflow_phase === "awaiting_settlement" || returAwaitingSettlement(retur.workflow_phase)) {
     return settleSalesReturFinance(pb, returId, userId);
   }

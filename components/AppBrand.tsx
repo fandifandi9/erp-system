@@ -25,7 +25,7 @@ export function AppBrand({
     <div className={`flex min-w-0 items-center gap-2.5 ${className}`}>
       <Image
         src={SYSTEM_LOGO_WIDE_PATH}
-        alt="SDI"
+        alt={APP_DISPLAY_NAME}
         width={width}
         height={height}
         className="shrink-0 object-contain"

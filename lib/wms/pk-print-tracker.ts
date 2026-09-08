@@ -29,3 +29,9 @@ export function markPkAutoPrinted(orderId: string): void {
   ids.add(orderId);
   writeIds(ids);
 }
+
+/** Batalkan tanda (mis. saat cetak gagal) agar bisa dicoba lagi. */
+export function unmarkPkAutoPrinted(orderId: string): void {
+  const ids = readIds();
+  if (ids.delete(orderId)) writeIds(ids);
+}

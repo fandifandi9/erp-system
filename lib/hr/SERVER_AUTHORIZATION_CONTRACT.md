@@ -58,6 +58,31 @@ Leave mutations:
 
 See `lib/hr/leave-server.ts`.
 
+## Implemented (Phase 11 / Wave 3 — attendance)
+
+- `POST /api/hr/attendance/check-in`
+- `POST /api/hr/attendance/check-out`
+- `GET /api/hr/attendance/today`
+- `GET /api/hr/attendance` — HR/Owner, company-scoped
+- `POST /api/hr/attendance/:id/correct` — HR/Owner correction + reason + `biz_activity_events` audit
+
+Owner decisions (locked):
+- GPS only (no QR)
+- Offline attendance **not** used for production
+- Dedicated staging admin (never production admin for staging scripts)
+
+See `lib/hr/attendance-server.ts`.
+
+## Implemented (Phase 12 — HR Rating)
+
+- Periods / assignments / Smart Random / manual exception
+- Reviewer tasks (draft → submit → locked)
+- Subject aggregate result (no reviewer identities)
+- HR/Owner drill-down detail
+- Collections: `hr_rating_*` (staging schema script; PB rules locked null)
+
+See `lib/hr/rating-server.ts`, `docs/PHASE_12_RATING_REPORT.md`.
+
 ## Wave 2B — PocketBase write lock
 
 Target: `createRule` / `updateRule` / `deleteRule` = **`null`** (superuser-only).

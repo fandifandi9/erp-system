@@ -59,13 +59,14 @@ export default function HrOvertimeQueueScreen() {
 
   const load = useCallback(async () => {
     try {
-      const list = await pb.collection("overtime_requests").getFullList({
-        filter: 'status="waiting_hr" && source="staff_request"',
-        sort: "-created",
-        expand: "user",
-        requestKey: null,
-      });
-      const rows = (list as unknown as Record<string, unknown>[]).map((raw) => ({
+      const { mobileFetchOvertimeQueue } = await import("@/lib/hr-queue-api");
+      const res = await mobileFetchOvertimeQueue();
+      if (!res.ok) {
+        Alert.alert("Gagal memuat", res.error || "Tidak bisa mengambil antrean lembur.");
+        setItems([]);
+        return;
+      }
+      const rows = res.items.map((raw) => ({
         id: String(raw.id),
         user: String(raw.user ?? ""),
         work_date: String(raw.work_date ?? ""),

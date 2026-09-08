@@ -1,21 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Activity, ChevronRight, Loader2 } from "lucide-react";
 import { formatActivityEventLabel } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
+import {
+  activitySeverityClass,
+  parseActivityPayload,
+  resolveActivityActionUrl,
+} from "@/lib/tenant/activity-links";
 import type { ActivityEvent } from "@/lib/tenant/types";
 
 const MODULES = ["", "sales", "warehouse", "purchase", "finance", "hr", "settings"] as const;
-
-function parsePayload(raw?: string): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
 
 export default function AktivitasPage() {
   const { locale, t } = useLocale();
@@ -41,7 +38,7 @@ export default function AktivitasPage() {
   }, [module]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   return (
@@ -86,13 +83,14 @@ export default function AktivitasPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {items.map((ev) => {
-              const payload = parsePayload(ev.payload_json);
+              const payload = parseActivityPayload(ev.payload_json);
               const label = formatActivityEventLabel(
                 locale,
                 ev.event_code,
                 payload,
                 ev.entity_label,
               );
+              const href = resolveActivityActionUrl(ev, payload);
               const time = ev.occurred_at
                 ? new Date(ev.occurred_at).toLocaleString(locale === "en" ? "en-US" : "id-ID", {
                     day: "2-digit",
@@ -103,21 +101,30 @@ export default function AktivitasPage() {
                   })
                 : "—";
               return (
-                <li key={ev.id} className="flex gap-4 px-5 py-4 text-sm">
-                  <span className="w-36 shrink-0 font-mono text-xs text-slate-400">{time}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-800">{label}</p>
-                    <div className="mt-1 flex flex-wrap gap-2 text-[10px]">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
-                        {t(`activity.modules.${ev.module}` as "activity.modules.sales")}
-                      </span>
-                      {ev.expand?.store?.name ? (
-                        <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">
-                          {ev.expand.store.name}
+                <li key={ev.id}>
+                  <Link
+                    href={href}
+                    className="group flex items-start gap-3 px-5 py-4 text-sm transition hover:bg-slate-50"
+                  >
+                    <span
+                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${activitySeverityClass(ev.severity)}`}
+                    />
+                    <span className="w-32 shrink-0 font-mono text-xs text-slate-400">{time}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-800 group-hover:text-indigo-700">{label}</p>
+                      <div className="mt-1 flex flex-wrap gap-2 text-[10px]">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                          {t(`activity.modules.${ev.module}` as "activity.modules.sales")}
                         </span>
-                      ) : null}
+                        {ev.expand?.store?.name ? (
+                          <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">
+                            {ev.expand.store.name}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
+                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 group-hover:text-indigo-500" />
+                  </Link>
                 </li>
               );
             })}

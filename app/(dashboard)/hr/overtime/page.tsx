@@ -25,6 +25,7 @@ import { formatIntegerId, parseIntegerInput } from "@/lib/format-number";
 import { Loader2, Moon, User, CheckCircle, XCircle, Plus, Clock, Calendar } from "lucide-react";
 import Link from "next/link";
 import { useLocale } from "@/components/LocaleProvider";
+import { hrApiAuthHeaders } from "@/lib/hr/hr-api-client";
 
 type HrRow = OvertimeRequest & {
   expand?: {
@@ -62,15 +63,24 @@ export default function HrOvertimePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await pb.collection("overtime_requests").getFullList({
-        sort: "-created",
-        expand: "user",
-        requestKey: null,
+      // FLEX-ORG-05-FIX — scoped server list (FOM entity scope). No client getFullList.
+      const res = await fetch("/api/hr/overtime?forHrMonitor=1", {
+        credentials: "include",
+        headers: hrApiAuthHeaders(),
       });
-      const mapped = normalizeOvertimeFromPb(res as unknown[]);
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        items?: unknown[];
+      };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Gagal memuat lembur.");
+      }
+      const items = json.items ?? [];
+      const mapped = normalizeOvertimeFromPb(items);
       const merged = mapped.map((m, i) => ({
         ...m,
-        expand: (res[i] as { expand?: HrRow["expand"] }).expand,
+        expand: (items[i] as { expand?: HrRow["expand"] })?.expand,
       })) as HrRow[];
       setRows(merged);
     } catch (e) {

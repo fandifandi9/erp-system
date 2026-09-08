@@ -49,6 +49,9 @@ const BIZ_DOC_STYLE = `
   .bizdoc .bd-table .bd-r { text-align: right; }
   .bizdoc .bd-table .bd-l { text-align: left; }
   .bizdoc .bd-table .bd-prod { font-weight: 600; color: #0f172a; overflow-wrap: anywhere; }
+  .bizdoc .bd-table .bd-sn { margin-top: 2px; font-size: 10px; font-weight: 400; color: #64748b;
+    font-family: ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+  .bizdoc .bd-table .bd-sn b { font-weight: 600; color: #475569; font-family: Inter, Arial, sans-serif; }
   .bizdoc .bd-table .bd-num { color: #334155; font-variant-numeric: tabular-nums; }
   .bizdoc .bd-table .bd-sum { font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; }
   .bizdoc .bd-table .bd-empty { text-align: center; color: #94a3b8; padding: 22px 0; }
@@ -154,7 +157,11 @@ function tableBlock(data: BizDocumentPrintData): string {
     .map(
       (l) => `
       <tr>
-        <td class="bd-l bd-prod">${esc(l.product)}</td>
+        <td class="bd-l bd-prod">${esc(l.product)}${
+          l.serials && l.serials.length > 0
+            ? `<div class="bd-sn"><b>SN:</b> ${esc(l.serials.join(", "))}</div>`
+            : ""
+        }</td>
         <td class="bd-c bd-num">${esc(l.qty)}</td>
         <td class="bd-r bd-num">${esc(l.unitPrice)}</td>
         ${showDiscount ? `<td class="bd-r bd-num">${esc(l.discount ?? "")}</td>` : ""}
@@ -244,6 +251,7 @@ function shippingSection(data: BizDocumentPrintData): string {
   if (!s) return "";
   const body = [
     kvRow("Expedisi", s.courier),
+    kvRow("Layanan", s.service),
     kvRow("Nomor Lacak", s.trackingNo),
   ].join("");
   return `

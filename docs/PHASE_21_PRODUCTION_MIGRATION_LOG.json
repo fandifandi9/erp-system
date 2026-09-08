@@ -1,0 +1,238 @@
+{
+  "started_at": "2026-08-28T06:18:28.904Z",
+  "prod_url": "https://pb.serba.space",
+  "operations": [
+    {
+      "timestamp": "2026-08-28T06:18:31.302Z",
+      "operation": "ADD_FIELD",
+      "collection": "users",
+      "field": "mobile_session_nonce",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.302Z",
+      "operation": "ADD_FIELD",
+      "collection": "users",
+      "field": "account_type",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.302Z",
+      "operation": "ADD_FIELD",
+      "collection": "users",
+      "field": "role_code",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.302Z",
+      "operation": "ADD_FIELD",
+      "collection": "users",
+      "field": "dashboard_access",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "start_date",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "end_date",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "reason",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "division",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "position",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "booking_date",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "daily_compensation_rate",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "compensation_amount",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.718Z",
+      "operation": "ADD_FIELD",
+      "collection": "leave_requests",
+      "field": "rejection_reason",
+      "result": "OK"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:31.822Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_rating_periods",
+      "result": "OK",
+      "step": "D1",
+      "detail": "id=8cruv5wfpicis6h, fields=6"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:32.055Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_rating_aspects",
+      "result": "OK",
+      "step": "D2",
+      "detail": "id=ztukbif2cxgc8qz, fields=7"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:32.239Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_rating_assignments",
+      "result": "OK",
+      "step": "D3",
+      "detail": "id=v61y2dy5zoto3d7, fields=7"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:32.418Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_rating_reviewers",
+      "result": "OK",
+      "step": "D4",
+      "detail": "id=d61zc3b6xymtnv2, fields=6"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:32.513Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_rating_scores",
+      "result": "OK",
+      "step": "D5",
+      "detail": "id=jgaerdpgwrpt3hl, fields=4"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:32.820Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_rating_results",
+      "result": "OK",
+      "step": "D6",
+      "detail": "id=jcxb6yiaw4xz8qh, fields=10"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:32.918Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_staff_reports",
+      "result": "OK",
+      "step": "C1",
+      "detail": "id=l7j6ttjyvruyscw, fields=12"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:33.092Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_findings",
+      "result": "OK",
+      "step": "C2",
+      "detail": "id=rn17s8ey80on1b3, fields=12"
+    },
+    {
+      "timestamp": "2026-08-28T06:18:33.252Z",
+      "operation": "CREATE_COLLECTION",
+      "collection": "hr_case_attachments",
+      "result": "OK",
+      "step": "C3",
+      "detail": "id=lm6ex7209l3svqt, fields=7"
+    }
+  ],
+  "errors": [],
+  "summary": {
+    "collections_created": 9,
+    "collections_skipped": 0,
+    "fields_added": 13,
+    "conflicts": 0,
+    "rules_preserved": true,
+    "counts_preserved": true,
+    "file_field_ok": true,
+    "all_pass": true
+  },
+  "rules_before": {
+    "users": {
+      "listRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (\n  (\n    id = @request.auth.id\n    && (@request.data.role:isset = false || @request.data.role = role)\n    && (@request.data.status:isset = false || @request.data.status = status)\n  )\n  || @request.auth.role = \"hr\"\n  || @request.auth.role_code = \"hr\"\n  || @request.auth.role = \"owner\"\n  || @request.auth.role_code = \"owner\"\n  || @request.auth.account_type = \"owner\"\n)",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    },
+    "leave_requests": {
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    "profiles": {
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.data.user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    }
+  },
+  "rules_after": {
+    "users": {
+      "listRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (\n  (\n    id = @request.auth.id\n    && (@request.data.role:isset = false || @request.data.role = role)\n    && (@request.data.status:isset = false || @request.data.status = status)\n  )\n  || @request.auth.role = \"hr\"\n  || @request.auth.role_code = \"hr\"\n  || @request.auth.role = \"owner\"\n  || @request.auth.role_code = \"owner\"\n  || @request.auth.account_type = \"owner\"\n)",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    },
+    "leave_requests": {
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": null,
+      "updateRule": null,
+      "deleteRule": null
+    },
+    "profiles": {
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.data.user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    }
+  },
+  "counts_before": {
+    "captured_at": "2026-08-28T06:18:30.532Z",
+    "users": 23,
+    "leave_requests": 34,
+    "profiles": 23
+  },
+  "counts_after": {
+    "users": 23,
+    "leave_requests": 34,
+    "profiles": 23
+  },
+  "finished_at": "2026-08-28T06:18:34.122Z"
+}

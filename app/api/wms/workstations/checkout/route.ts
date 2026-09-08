@@ -3,7 +3,7 @@ import { getApiAuthUser, InventoryApiError, jsonError } from "@/lib/inventory/ap
 import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import { checkOutWorkstationSession } from "@/lib/wms/workstation-session";
 
-type Body = { session_id?: string; device_id?: string };
+type Body = { session_id?: string; device_id?: string; reason?: string };
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     await checkOutWorkstationSession(adminPb, body.session_id.trim(), {
       userId: auth.userId,
       deviceId: body.device_id?.trim(),
+      reason: body.reason?.trim() || "checkout",
     });
 
     return NextResponse.json({ ok: true });

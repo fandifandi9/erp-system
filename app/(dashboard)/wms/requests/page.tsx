@@ -4,18 +4,20 @@ import { FileStack } from "lucide-react";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
 import { WmsCard, WmsEmpty, WmsBadge } from "@/components/wms/ui";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function WmsRequestsPage() {
+  const { t } = useLocale();
   return (
     <InventoryGate>
       <InventoryShell
-        title="Permintaan gudang"
-        subtitle="Transfer antar gudang, permintaan stok internal, dan approval supervisor."
+        title={t("inventory.requests.title")}
+        subtitle={t("inventory.requests.subtitle")}
         module="wms"
       >
         <WmsEmpty
-          title="Modul permintaan gudang"
-          description="Workflow permintaan akan terhubung ke mutasi TRANSFER dan approval. Gunakan mutasi stok sementara."
+          title={t("inventory.requests.title")}
+          description={t("inventory.requests.subtitle")}
           action={<WmsBadge tone="indigo">Fase berikutnya — engine stok siap</WmsBadge>}
         />
         <WmsCard>

@@ -1,17 +1,34 @@
-import { fetchPurchaseOrder, fetchSalesOrder } from "./client";
+import { fetchPurchaseOrder } from "./client";
 import {
   createBillFromPurchaseOrder,
   fetchPurchaseBillByPurchaseOrder,
 } from "./purchase-from-po";
-import {
-  createInvoiceFromSalesOrder,
-  fetchInvoiceBySalesOrder,
-} from "./sales-from-so";
 import { emitBusinessEvent } from "@/lib/tenant/activity-events";
+import { pb } from "@/lib/pocketbase";
 
 function isDuplicateDocError(message: string, kind: "bill" | "invoice"): boolean {
   if (kind === "bill") return /sudah punya tagihan/i.test(message);
   return /sudah punya invoice/i.test(message);
+}
+
+async function ensureInvoiceViaApi(soId: string): Promise<void> {
+  const token = pb.authStore.token;
+  if (!token) throw new Error("User belum login");
+  const res = await fetch(`/api/wms/sales-orders/${soId}/ensure-invoice`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "include",
+    body: JSON.stringify({ wmsPickComplete: true }),
+  });
+  const json = (await res.json()) as { ok?: boolean; error?: string };
+  if (!res.ok || !json.ok) {
+    const msg = json.error || "Gagal memastikan invoice.";
+    if (isDuplicateDocError(msg, "invoice")) return;
+    throw new Error(msg);
+  }
 }
 
 /** WMS penerimaan selesai → buat tagihan otomatis. Non-WMS: tidak dipanggil (manual dari detail PO). */
@@ -45,33 +62,18 @@ export async function autoCreateBillAfterWmsComplete(
   }
 }
 
-/** WMS pickup selesai → buat invoice otomatis. Non-WMS: tidak dipanggil (manual dari detail SO). */
+/** WMS pickup selesai → pastikan invoice + stok (fallback jika belum terbit saat picking). */
 export async function autoCreateInvoiceAfterWmsComplete(
   soId: string,
-  userId: string,
+  _userId: string,
 ): Promise<void> {
-  const so = await fetchSalesOrder(soId);
-  if (!so.send_to_warehouse_at) return;
-  if (so.warehouse_process_status !== "complete") return;
-  if (so.status === "cancelled") return;
+  await ensureInvoiceViaApi(soId);
+}
 
-  const existing = await fetchInvoiceBySalesOrder(soId);
-  if (existing) return;
-
-  try {
-    const invoice = await createInvoiceFromSalesOrder(soId, userId);
-    void emitBusinessEvent({
-      event_code: "sales.invoice.auto_from_wms",
-      module: "sales",
-      entity_type: "biz_invoices",
-      entity_id: invoice.id,
-      entity_label: invoice.invoice_no,
-      payload: { order_no: so.order_no, ref: invoice.invoice_no },
-      actor_id: userId,
-    });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (isDuplicateDocError(msg, "invoice")) return;
-    throw e;
-  }
+/** WMS picking selesai (ACC) → SO/PO → invoice + potong stok. */
+export async function autoCreateInvoiceAfterPickComplete(
+  soId: string,
+  _userId: string,
+): Promise<void> {
+  await ensureInvoiceViaApi(soId);
 }

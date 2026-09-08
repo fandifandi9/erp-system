@@ -4,10 +4,10 @@ import {
   getAuthenticatedHrUser,
   hrJsonError,
   rejectClientPrivilegeFields,
-  requireOwnerOrHrApiUser,
   HrApiError,
 } from "@/lib/hr/api-auth";
 import { serverApproveLeave } from "@/lib/hr/leave-server";
+import { notifyLeaveDecision } from "@/lib/notifications/dispatch";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,7 +18,8 @@ export async function POST(req: Request, context: Ctx) {
       throw new HrApiError("ID pengajuan wajib.", 400);
     }
 
-    const auth = await requireOwnerOrHrApiUser(req);
+    const auth = await getAuthenticatedHrUser(req);
+    if (!auth) throw new HrApiError("Login diperlukan.", 401);
 
     let body: Record<string, unknown> = {};
     try {
@@ -38,7 +39,31 @@ export async function POST(req: Request, context: Ctx) {
       );
     }
 
-    return NextResponse.json({ ok: true, message: result.message, id: result.id });
+    const response = NextResponse.json({ ok: true, message: result.message, id: result.id });
+
+    // Fire-and-forget: notify requester of approval
+    if (result.id) {
+      const leaveRequestId = result.id;
+      void (async () => {
+        try {
+          // Fetch the leave request to get the requester user ID
+          const record = await adminPb
+            .collection("leave_requests")
+            .getOne(leaveRequestId, { requestKey: null }) as { user: string };
+          if (record.user && record.user !== auth.userId) {
+            await notifyLeaveDecision(adminPb, {
+              requesterId: record.user,
+              leaveRequestId,
+              decision: "approved",
+            });
+          }
+        } catch {
+          // Notification failure must never break the main response
+        }
+      })();
+    }
+
+    return response;
   } catch (err) {
     return hrJsonError(err);
   }

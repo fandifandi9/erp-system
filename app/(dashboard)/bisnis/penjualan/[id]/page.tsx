@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Printer, Loader2, X, CheckCircle2,
-  Clock, AlertTriangle, CreditCard, Pencil, Ban, FileText, RotateCcw,
+  Clock, AlertTriangle, CreditCard, Pencil, Ban, FileText, RotateCcw, Eye,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import {
@@ -22,6 +22,7 @@ import {
   canCreateInvoiceFromSalesOrder,
   invoiceBlockedReason,
   getSalesWmsDisplayStatus,
+  cancelSalesOrderWithoutInvoice,
 } from "@/lib/bisnis/client";
 import { getErrorMessage } from "@/lib/errors";
 import { CancelInvoiceModal } from "@/components/bisnis/CancelInvoiceModal";
@@ -50,13 +51,15 @@ import { BizDocumentSheet } from "@/components/bisnis/BizDocumentSheet";
 import { openBizDocumentPrint } from "@/lib/bisnis/doc-print";
 import { buildInvoicePrintData, buildSalesOrderPrintData } from "@/lib/bisnis/doc-print-mappers";
 import { AwbLabelPanel } from "@/components/bisnis/AwbLabelPanel";
+import { PkEmailStatusPanel } from "@/components/bisnis/PkEmailStatusPanel";
 import { parseNotesWithShipping } from "@/lib/bisnis/shipping-notes";
-import { canShowSalesReturUi, salesReturBlockedHint } from "@/lib/bisnis/sales-retur-ui";
+import { canShowSalesReturUi, findActiveSalesRetur, findViewableSalesRetur, salesReturBlockedHint } from "@/lib/bisnis/sales-retur-ui";
 import { returDisplayForSalesOrder } from "@/lib/bisnis/retur-workflow";
-import { SalesReturCreateModal } from "@/components/bisnis/SalesReturCreateModal";
+import { returCreateUrl } from "@/lib/bisnis/module-routes";
 import { SalesReturSoSection } from "@/components/bisnis/SalesReturSoSection";
 import { getCachedPaymentMethods } from "@/lib/bisnis/master-data-cache";
 import { useLocale } from "@/components/LocaleProvider";
+import { translateWmsBadge } from "@/lib/i18n/wms-badge";
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(v);
@@ -77,9 +80,7 @@ const SalesDocumentChainSection = dynamic(
 );
 
 function findOpenReturFromList(returs: Retur[]): Retur | null {
-  return (
-    returs.find((r) => r.status === "draft" || r.status === "approved") ?? null
-  );
+  return findActiveSalesRetur(returs);
 }
 
 const STATUS_ICONS = {
@@ -125,8 +126,10 @@ function OpenReturBanner({ retur, t }: { retur: Retur; t: (key: string) => strin
 
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromRetur = searchParams.get("from") === "retur";
   const { context: workCtx, stores: workStores } = useWorkContext();
   const [mode, setMode] = useState<"invoice" | "so">("invoice");
   const [so, setSo] = useState<SalesOrder | null>(null);
@@ -149,9 +152,9 @@ export default function InvoiceDetailPage() {
   const [storeInfo, setStoreInfo] = useState<Store | null>(null);
   const [openRetur, setOpenRetur] = useState<Retur | null>(null);
   const [retursHistory, setRetursHistory] = useState<Retur[]>([]);
-  const [returModalSo, setReturModalSo] = useState<SalesOrder | null>(null);
   const [chainRefreshKey, setChainRefreshKey] = useState(0);
   const [chainEnabled, setChainEnabled] = useState(false);
+  const [cancellingSo, setCancellingSo] = useState(false);
 
   const resolveStoreInfo = useCallback(
     (warehouseId?: string) => {
@@ -229,16 +232,13 @@ export default function InvoiceDetailPage() {
 
       const soData = await fetchSalesOrder(id);
       const linkedInv = await fetchInvoiceBySalesOrder(soData.id);
-      if (linkedInv) {
-        router.replace(`/bisnis/penjualan/${linkedInv.id}`);
-        return;
-      }
+      // Tetap di histori SO — jangan lempar ke invoice meski sudah punya invoice.
       setMode("so");
       setSo(soData);
       setLinkedSo(null);
       setInvoice(null);
       setPayments([]);
-      setLinkedInvoice(null);
+      setLinkedInvoice(linkedInv);
 
       const [l, returs, pm, cashAccts] = await Promise.all([
         fetchSalesOrderLines(soData.id),
@@ -344,12 +344,28 @@ export default function InvoiceDetailPage() {
   };
 
   const handleCreateRetur = (targetSo: SalesOrder) => {
-    setReturModalSo(targetSo);
+    router.push(returCreateUrl({ type: "penjualan", so: targetSo.id }));
   };
 
-  const onReturCreated = () => {
-    setReturModalSo(null);
-    void load();
+  const handleCancelSoWithoutInvoice = async (targetSo: SalesOrder) => {
+    if (
+      !confirm(
+        `Batalkan SO ${targetSo.order_no}?\n\nSO belum punya invoice — ini bukan retur. Pesanan akan dibatalkan.`,
+      )
+    ) {
+      return;
+    }
+    setCancellingSo(true);
+    try {
+      await cancelSalesOrderWithoutInvoice(targetSo.id);
+      await load();
+      alert(`SO ${targetSo.order_no} dibatalkan.`);
+      router.push("/bisnis/retur/buat?type=penjualan&mode=doc");
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, "Gagal membatalkan SO"));
+    } finally {
+      setCancellingSo(false);
+    }
   };
 
   const handleSendToWarehouse = async (target?: SalesOrder | null) => {
@@ -383,6 +399,7 @@ export default function InvoiceDetailPage() {
       salesOrder: so,
       invoice: linkedInvoice,
       hasInvoice: !!linkedInvoice,
+      hasActiveRetur: !!openRetur,
     });
     const returHint = salesReturBlockedHint({
       salesOrder: so,
@@ -390,13 +407,70 @@ export default function InvoiceDetailPage() {
       hasInvoice: !!linkedInvoice,
     });
     const soPrintData = buildSalesOrderPrintData(so, lines, storeInfo);
+    const viewRetur = openRetur ?? findViewableSalesRetur(retursHistory);
 
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-          <Link href="/bisnis/penjualan" className="mb-1 inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700">
-            <ArrowLeft className="h-3.5 w-3.5" /> Penjualan
+          <Link href="/bisnis/penjualan/pesanan" className="mb-1 inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700">
+            <ArrowLeft className="h-3.5 w-3.5" /> Pesanan
           </Link>
+
+          {fromRetur ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <div>
+                <p className="font-semibold">
+                  {canRetur
+                    ? "Preview pesanan untuk retur"
+                    : linkedInvoice
+                      ? "Pesanan ini belum bisa diretur"
+                      : "SO belum invoice — batalkan (bukan retur)"}
+                </p>
+                <p className="mt-0.5 text-xs text-amber-800">
+                  {canRetur
+                    ? "Periksa pembeli, produk, dan status. Jika benar, lanjutkan buat retur."
+                    : linkedInvoice
+                      ? returHint || "Retur belum tersedia untuk status penjualan ini."
+                      : "Belum ada invoice aktif. Batalkan SO jika pesanan tidak jadi."}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/bisnis/retur/buat?type=penjualan&mode=doc"
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                >
+                  ← Kembali cari
+                </Link>
+                {canRetur ? (
+                  <button
+                    type="button"
+                    onClick={() => handleCreateRetur(so)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Lanjutkan buat retur
+                  </button>
+                ) : viewRetur ? (
+                  <Link
+                    href={`/bisnis/retur/${viewRetur.id}`}
+                    className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+                  >
+                    Lihat retur aktif
+                  </Link>
+                ) : !linkedInvoice && so.status !== "cancelled" ? (
+                  <button
+                    type="button"
+                    disabled={cancellingSo}
+                    onClick={() => void handleCancelSoWithoutInvoice(so)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {cancellingSo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                    Batalkan SO
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -413,7 +487,7 @@ export default function InvoiceDetailPage() {
               <span className={`rounded-full px-3 py-1 text-sm font-semibold ${soSt.cls}`}>{soSt.label}</span>
               {whSt && (
                 <span className={`rounded-full px-3 py-1 text-sm font-semibold ${whSt.cls}`}>
-                  WMS: {whSt.label}
+                  WMS: {translateWmsBadge(locale, whSt)}
                 </span>
               )}
               <button type="button" onClick={() => openBizDocumentPrint(soPrintData)}
@@ -437,7 +511,7 @@ export default function InvoiceDetailPage() {
                   Send → Picking
                 </button>
               )}
-              {canRetur && !openRetur && (
+              {canRetur ? (
                 <button
                   type="button"
                   onClick={() => handleCreateRetur(so)}
@@ -446,7 +520,15 @@ export default function InvoiceDetailPage() {
                   <RotateCcw className="h-4 w-4" />
                   Buat Retur
                 </button>
-              )}
+              ) : viewRetur ? (
+                <Link
+                  href={`/bisnis/retur/${viewRetur.id}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-900 shadow-sm hover:bg-indigo-100"
+                >
+                  <Eye className="h-4 w-4" />
+                  Lihat Retur
+                </Link>
+              ) : null}
               {linkedInvoice ? (
                 <Link href={`/bisnis/penjualan/${linkedInvoice.id}`}
                   className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
@@ -516,17 +598,12 @@ export default function InvoiceDetailPage() {
               <AwbLabelPanel salesOrderId={so.id} />
             </div>
           )}
+          <div className="mb-4">
+            <PkEmailStatusPanel salesOrder={so} onUpdated={setSo} />
+          </div>
 
           <BizDocumentSheet data={soPrintData} />
         </div>
-        {returModalSo ? (
-          <SalesReturCreateModal
-            open
-            salesOrder={returModalSo}
-            onClose={() => setReturModalSo(null)}
-            onCreated={onReturCreated}
-          />
-        ) : null}
       </div>
     );
   }
@@ -549,17 +626,57 @@ export default function InvoiceDetailPage() {
   const methodLabel = (value?: string, expanded?: { name?: string }) =>
     paymentMethodLabel(paymentMethods, value, expanded);
   const invoiceCanRetur =
-    linkedSo &&
-    canShowSalesReturUi({ salesOrder: linkedSo, invoice, hasInvoice: true }) &&
+    !!linkedSo &&
     !isCancelled &&
-    !openRetur;
+    canShowSalesReturUi({
+      salesOrder: linkedSo,
+      invoice,
+      hasInvoice: true,
+      hasActiveRetur: !!openRetur,
+    });
   const invoiceReturHint =
     linkedSo && !invoiceCanRetur && !openRetur && !isCancelled
       ? salesReturBlockedHint({ salesOrder: linkedSo, invoice, hasInvoice: true })
       : null;
+  const viewRetur = openRetur ?? findViewableSalesRetur(retursHistory);
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {fromRetur ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <div>
+              <p className="font-semibold">Preview invoice untuk retur</p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Periksa dokumen penjualan lengkap. Jika benar, lanjutkan buat retur.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/bisnis/retur/buat?type=penjualan&mode=doc"
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                ← Kembali cari
+              </Link>
+              {invoiceCanRetur ? (
+                <button
+                  type="button"
+                  onClick={() => handleCreateRetur(linkedSo!)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Lanjutkan buat retur
+                </button>
+              ) : viewRetur ? (
+                <Link
+                  href={`/bisnis/retur/${viewRetur.id}`}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+                >
+                  Lihat retur aktif
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         {/* Header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -584,6 +701,14 @@ export default function InvoiceDetailPage() {
                 <RotateCcw className="h-4 w-4" />
                 Buat Retur
               </button>
+            ) : viewRetur ? (
+              <Link
+                href={`/bisnis/retur/${viewRetur.id}`}
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-900 shadow-sm hover:bg-indigo-100 transition"
+              >
+                <Eye className="h-4 w-4" />
+                Lihat Retur
+              </Link>
             ) : null}
             {canCancelInvoice(invoice) && (
               <button type="button" onClick={() => setShowCancelModal(true)}
@@ -668,6 +793,11 @@ export default function InvoiceDetailPage() {
             <AwbLabelPanel salesOrderId={linkedSo.id} />
           </div>
         )}
+        {linkedSo ? (
+          <div className="mb-4">
+            <PkEmailStatusPanel salesOrder={linkedSo} />
+          </div>
+        ) : null}
 
         {linkedSo && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm">
@@ -845,14 +975,6 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
       )}
-      {returModalSo ? (
-        <SalesReturCreateModal
-          open
-          salesOrder={returModalSo}
-          onClose={() => setReturModalSo(null)}
-          onCreated={onReturCreated}
-        />
-      ) : null}
     </div>
   );
 }

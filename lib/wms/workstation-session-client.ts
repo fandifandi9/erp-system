@@ -74,12 +74,19 @@ export async function checkInWorkstationDesk(input: {
   return json.data;
 }
 
-export async function checkOutWorkstationDesk(sessionId: string): Promise<void> {
+export async function checkOutWorkstationDesk(
+  sessionId: string,
+  reason = "checkout",
+): Promise<void> {
   const res = await fetch("/api/wms/workstations/checkout", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, device_id: getWmsDeviceId() }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      device_id: getWmsDeviceId(),
+      reason,
+    }),
   });
   const json = await parseJson<{ error?: string }>(res);
   if (!res.ok) throw new Error(json.error ?? "Check-out meja gagal");

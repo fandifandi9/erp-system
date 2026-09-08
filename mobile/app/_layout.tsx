@@ -10,6 +10,7 @@ import { AuthProvider } from "@/context/auth";
 import { OfflineQueueProvider } from "@/context/offline-queue";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { useAllowScreenSleep } from "@/lib/screen-behavior";
+import { MobileLocaleProvider } from "@/lib/i18n";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
+            <MobileLocaleProvider>
             <AppErrorBoundary>
               <OfflineQueueProvider>
                 <KeyboardDismissOnNavigation />
@@ -44,6 +46,7 @@ export default function RootLayout() {
                 </Stack>
               </OfflineQueueProvider>
             </AppErrorBoundary>
+            </MobileLocaleProvider>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

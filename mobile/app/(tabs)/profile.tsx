@@ -17,12 +17,16 @@ import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/auth";
 import { pb } from "@/lib/pocketbase";
 import { getErrorMessage } from "@/lib/errors";
+import { patchSelfProfileMobile, uploadSelfAvatarMobile } from "@/lib/profile-self-api";
+import { changeSelfPasswordViaApi } from "@/lib/session-api";
 import { PWA } from "@/constants/pwaTheme";
 import { ensureAndSyncProfileMobile, type MobileProfile } from "@/lib/profileEnsure";
 import { PayrollStaffPanel } from "./payroll";
+import { useMobileLocale } from "@/lib/i18n";
 
 type AuthUser = {
   id: string;
@@ -66,6 +70,8 @@ type InfoDef = { icon: keyof typeof Ionicons.glyphMap; label: string; value: str
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { locale, setLocale, t } = useMobileLocale();
+  const insets = useSafeAreaInsets();
   const uid = user?.id ?? "";
   const authUser = user as AuthUser | null;
 
@@ -139,14 +145,9 @@ export default function ProfileScreen() {
     const file = picked.assets[0];
     setUploadingAvatar(true);
     try {
-      const fd = new FormData();
       const uri =
         Platform.OS === "android" ? file.uri : file.uri.replace("file://", "");
-      fd.append(
-        "avatar",
-        { uri, name: "avatar.jpg", type: "image/jpeg" } as unknown as Blob
-      );
-      await pb.collection("profiles").update(profile.id, fd);
+      await uploadSelfAvatarMobile(uri);
       await load();
       Alert.alert("Berhasil", "Foto profil diperbarui.");
     } catch (e: unknown) {
@@ -157,11 +158,34 @@ export default function ProfileScreen() {
     }
   }
 
+  async function deleteAvatar() {
+    if (!profile?.id || !profile.avatar) return;
+    Alert.alert("Hapus foto", "Yakin ingin menghapus foto profil?", [
+      { text: "Batal", style: "cancel" },
+      {
+        text: "Hapus",
+        style: "destructive",
+        onPress: async () => {
+          setUploadingAvatar(true);
+          try {
+            await uploadSelfAvatarMobile("", true);
+            await load();
+            Alert.alert("Berhasil", "Foto profil dihapus.");
+          } catch (e: unknown) {
+            Alert.alert("Gagal", getErrorMessage(e, "Tidak bisa menghapus foto profil"));
+          } finally {
+            setUploadingAvatar(false);
+          }
+        },
+      },
+    ]);
+  }
+
   async function savePersonal() {
     if (!profile?.id) return;
     setSaving(true);
     try {
-      await pb.collection("profiles").update(profile.id, {
+      await patchSelfProfileMobile({
         phone: formData.phone.trim(),
         address: formData.address.trim(),
         date_of_birth: formData.date_of_birth.trim(),
@@ -193,17 +217,20 @@ export default function ProfileScreen() {
     }
     setPasswordSaving(true);
     try {
-      await pb.collection("users").update(uid, {
+      const result = await changeSelfPasswordViaApi({
         oldPassword: passwordOld,
         password: passwordNew,
         passwordConfirm: passwordNew,
       });
+      if (!result.ok) {
+        throw new Error(result.error || "Gagal mengubah kata sandi.");
+      }
       setPasswordOld("");
       setPasswordNew("");
       setPasswordConfirm("");
       Alert.alert("Berhasil", "Kata sandi diubah. Gunakan sandi baru saat login berikutnya.");
     } catch (e: unknown) {
-      Alert.alert("Gagal", getErrorMessage(e, "Periksa sandi lama atau aturan PocketBase."));
+      Alert.alert("Gagal", getErrorMessage(e, "Kata sandi lama salah atau sandi baru tidak memenuhi aturan."));
     } finally {
       Keyboard.dismiss();
       setPasswordSaving(false);
@@ -306,12 +333,16 @@ export default function ProfileScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: 24 + insets.bottom + 88 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.pageTitle}>Profil saya</Text>
@@ -340,8 +371,35 @@ export default function ProfileScreen() {
                 )}
               </Pressable>
             </View>
+            {!!avatarUrl && (
+              <Pressable
+                onPress={() => void deleteAvatar()}
+                disabled={uploadingAvatar}
+                accessibilityLabel="Hapus foto profil"
+                style={{ marginTop: 6 }}
+              >
+                <Text style={{ fontSize: 12, color: "#ef4444", textDecorationLine: "underline" }}>
+                  Hapus foto
+                </Text>
+              </Pressable>
+            )}
             <Text style={styles.displayName}>{displayName}</Text>
             <Text style={styles.displayEmail}>{displayEmail}</Text>
+            <Text style={styles.sectionKicker}>{t("common.language")}</Text>
+            <View style={styles.langRow}>
+              <Pressable
+                onPress={() => setLocale("id")}
+                style={[styles.langBtn, locale === "id" && styles.langBtnOn]}
+              >
+                <Text style={styles.langText}>Indonesia</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setLocale("en")}
+                style={[styles.langBtn, locale === "en" && styles.langBtnOn]}
+              >
+                <Text style={styles.langText}>English</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.divider} />
@@ -404,21 +462,6 @@ export default function ProfileScreen() {
             multiline
           />
           <Text style={styles.charCount}>{formData.bio.length} karakter</Text>
-
-          <Pressable
-            style={[styles.saveBtn, saving && styles.btnDisabled]}
-            onPress={() => void savePersonal()}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="save-outline" size={20} color="#fff" />
-                <Text style={styles.saveBtnText}>Simpan perubahan</Text>
-              </>
-            )}
-          </Pressable>
         </View>
 
         <View style={[styles.card, styles.cardTightTop]}>
@@ -486,6 +529,32 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Keluar</Text>
         </Pressable>
       </ScrollView>
+
+      <View
+        style={[
+          styles.stickyFooter,
+          {
+            paddingBottom: Math.max(12, insets.bottom + 8),
+            paddingTop: 12,
+          },
+        ]}
+      >
+        <Pressable
+          style={[styles.saveBtn, saving && styles.btnDisabled]}
+          onPress={() => void savePersonal()}
+          disabled={saving || !profile?.id}
+          accessibilityLabel="Simpan perubahan"
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="save-outline" size={20} color="#fff" />
+              <Text style={styles.saveBtnText}>Simpan perubahan</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -558,7 +627,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: PWA.screenBg },
   container: {
     padding: 20,
-    paddingBottom: 48,
+    paddingBottom: 24,
   },
   center: {
     flex: 1,
@@ -617,14 +686,15 @@ const styles = StyleSheet.create({
   },
   avatarBlock: { alignItems: "center" },
   avatarWrap: {
-    width: 128,
-    height: 128,
+    width: 112,
+    height: 112,
     position: "relative",
+    alignSelf: "center",
   },
   avatar: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     borderWidth: 4,
     borderColor: PWA.indigo100,
   },
@@ -650,6 +720,19 @@ const styles = StyleSheet.create({
   camFabDisabled: { opacity: 0.7 },
   displayName: { marginTop: 16, fontSize: 20, fontWeight: "700", color: PWA.text },
   displayEmail: { marginTop: 4, fontSize: 14, color: PWA.textMuted },
+  langRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  langBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: PWA.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PWA.slate50,
+  },
+  langBtnOn: { backgroundColor: "#e0e7ff", borderColor: PWA.indigo },
+  langText: { fontWeight: "700", color: PWA.text },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: PWA.border,
@@ -702,7 +785,7 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 88, paddingTop: 12 },
   charCount: { fontSize: 11, color: PWA.textMuted, marginTop: -8, marginBottom: 8 },
   saveBtn: {
-    marginTop: 8,
+    marginTop: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -710,6 +793,18 @@ const styles = StyleSheet.create({
     backgroundColor: PWA.indigo,
     paddingVertical: 14,
     borderRadius: 14,
+    minHeight: 52,
+  },
+  stickyFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: PWA.border,
+    backgroundColor: PWA.surface,
+    paddingHorizontal: 20,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
   },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   passwordBtn: {

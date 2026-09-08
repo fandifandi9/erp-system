@@ -41,6 +41,8 @@ interface AttendanceData {
       email: string;
     };
   };
+  /** Populated when API expand includes user relation */
+  userName?: string;
 }
 
 export default function HRAttendancePage() {
@@ -58,6 +60,54 @@ export default function HRAttendancePage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
   const [showSuspicious, setShowSuspicious] = useState(false);
+  const [correctTarget, setCorrectTarget] = useState<AttendanceData | null>(null);
+  const [correctReason, setCorrectReason] = useState("");
+  const [correctCheckOut, setCorrectCheckOut] = useState("");
+  const [correctStatus, setCorrectStatus] = useState("");
+  const [correctClearOut, setCorrectClearOut] = useState(false);
+  const [correctBusy, setCorrectBusy] = useState(false);
+  const [correctMsg, setCorrectMsg] = useState<string | null>(null);
+
+  async function submitCorrection() {
+    if (!correctTarget) return;
+    setCorrectBusy(true);
+    setCorrectMsg(null);
+    try {
+      const body: Record<string, unknown> = { reason: correctReason.trim() };
+      if (correctClearOut) body.clear_check_out = true;
+      else if (correctCheckOut.trim()) {
+        body.check_out = new Date(correctCheckOut).toISOString();
+      }
+      if (correctStatus.trim()) body.status = correctStatus.trim();
+      const res = await fetch(`/api/hr/attendance/${correctTarget.id}/correct`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(pb.authStore.token ? { Authorization: `Bearer ${pb.authStore.token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok || json.ok === false) {
+        setCorrectMsg(json.error || json.message || `HTTP ${res.status}`);
+        return;
+      }
+      setCorrectTarget(null);
+      setCorrectReason("");
+      setCorrectCheckOut("");
+      setCorrectStatus("");
+      setCorrectClearOut(false);
+      await fetchData(false);
+    } catch (e) {
+      setCorrectMsg(e instanceof Error ? e.message : "Koreksi gagal");
+    } finally {
+      setCorrectBusy(false);
+    }
+  }
 
   // =========================
   // FETCH USERS (dropdown)
@@ -86,51 +136,24 @@ export default function HRAttendancePage() {
     else setRefreshing(true);
 
     try {
-      const filters = [];
+      const params = new URLSearchParams();
+      if (selectedUser) params.set("user", selectedUser);
+      if (selectedDate) params.set("date", selectedDate);
+      if (selectedStatus) params.set("status", selectedStatus);
+      if (showSuspicious) params.set("suspicious", "true");
+      params.set("perPage", "200");
 
-      if (selectedUser) {
-        filters.push(`user="${selectedUser}"`);
-      }
-
-      if (selectedDate) {
-        const start = `${selectedDate} 00:00:00`;
-        const end = `${selectedDate} 23:59:59`;
-        filters.push(`created >= "${start}" && created <= "${end}"`);
-      }
-
-      if (selectedStatus) {
-        filters.push(`status="${selectedStatus}"`);
-      }
-
-      if (showSuspicious) {
-        filters.push(`is_suspicious=true`);
-      }
-
-      const filter = filters.length > 0 ? filters.join(" && ") : "";
-
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      console.log("📊 FETCHING ATTENDANCE DATA");
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      console.log("Filter:", filter || "NO FILTER (load all)");
-      console.log("Collection: attendance_logs");
-      console.log("Sort: -created");
-      console.log("Expand: user");
-
-      const result = await pb.collection("attendance_logs").getFullList({
-        sort: "-created",
-        expand: "user",
-        filter: filter || undefined,
+      const token = pb.authStore.token;
+      const res = await fetch(`/api/hr/attendance?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(String(json.error || "Gagal memuat absensi."));
+      }
 
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      console.log("✅ DATA LOADED SUCCESSFULLY");
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      console.log("Total records:", result.length);
-      console.log("First record:", result[0]);
-      console.log("Raw data:", result);
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-      setData(result as unknown as AttendanceData[]);
+      const result = (json.items || []) as AttendanceData[];
+      setData(result);
       setLastUpdate(new Date());
     } catch (err: unknown) {
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -493,13 +516,16 @@ export default function HRAttendancePage() {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
                     {t("hr.attendance.colInfo")}
                   </th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
+                    Koreksi
+                  </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
                 {data.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                       <Users className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                       <p>{t("hr.attendance.empty")}</p>
                     </td>
@@ -603,11 +629,99 @@ export default function HRAttendancePage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCorrectTarget(item);
+                            setCorrectReason("");
+                            setCorrectCheckOut("");
+                            setCorrectStatus(item.status || "");
+                            setCorrectClearOut(false);
+                            setCorrectMsg(null);
+                          }}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Koreksi
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {correctTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-900">Koreksi absensi</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {correctTarget.expand?.user?.name || correctTarget.user} — {correctTarget.date}
+            </p>
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Alasan (wajib)
+              <textarea
+                value={correctReason}
+                onChange={(e) => setCorrectReason(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Contoh: lupa check-out, koreksi jam pulang"
+              />
+            </label>
+            <label className="mt-3 block text-sm font-medium text-slate-700">
+              Status
+              <select
+                value={correctStatus}
+                onChange={(e) => setCorrectStatus(e.target.value)}
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">(tidak diubah)</option>
+                <option value="present">present</option>
+                <option value="late">late</option>
+                <option value="absent">absent</option>
+                <option value="leave">leave</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-sm font-medium text-slate-700">
+              Check-out baru (opsional)
+              <input
+                type="datetime-local"
+                value={correctCheckOut}
+                disabled={correctClearOut}
+                onChange={(e) => setCorrectCheckOut(e.target.value)}
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={correctClearOut}
+                onChange={(e) => setCorrectClearOut(e.target.checked)}
+              />
+              Hapus check-out
+            </label>
+            {correctMsg && <p className="mt-3 text-sm text-red-600">{correctMsg}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={correctBusy}
+                onClick={() => setCorrectTarget(null)}
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={correctBusy || correctReason.trim().length < 5}
+                onClick={() => void submitCorrection()}
+                className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {correctBusy ? "Menyimpan…" : "Simpan koreksi"}
+              </button>
+            </div>
           </div>
         </div>
       )}

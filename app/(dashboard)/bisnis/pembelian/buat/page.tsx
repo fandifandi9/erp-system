@@ -26,7 +26,6 @@ import {
   sendPurchaseOrderToWarehouse,
   createBillFromPurchaseOrder,
   cancelPurchaseOrderWithoutBill,
-  createPurchaseReturFromOrderApi,
   canCreateBillFromPurchaseOrder,
   canSendPurchaseOrderToWarehouse,
   billBlockedReason,
@@ -82,6 +81,7 @@ import { lookupPurchaseDocByNumber, type PurchaseDocLookup } from "@/lib/bisnis/
 import { buildPurchasePostSavePayload } from "@/lib/bisnis/post-save-print";
 import { openBizDocumentPrint } from "@/lib/bisnis/doc-print";
 import { canCreatePurchaseRetur } from "@/lib/bisnis/purchase-retur-guards";
+import { returCreateUrl } from "@/lib/bisnis/module-routes";
 import { DocOpenChoiceModal } from "@/components/bisnis/DocOpenChoiceModal";
 import { fetchWarehouseStockMap, getWarehouseStockQty } from "@/lib/bisnis/warehouse-stock";
 import { useWorkContext } from "@/components/WorkContextProvider";
@@ -385,10 +385,9 @@ export default function BuatPembelianPage() {
       setLoadingEdit(true);
       try {
         const poData = await fetchPurchaseOrder(poEditId);
+        // Histori PO: tetap di form PO (read-only jika sudah tagihan), jangan lempar ke bill.
         if (!canEditPurchaseOrder(poData)) {
-          const linked = await fetchPurchaseBillByPurchaseOrder(poData.id);
-          router.replace(linked ? `/bisnis/pembelian/${linked.id}` : `/bisnis/pembelian/${poData.id}`);
-          return;
+          setDocViewLocked(true);
         }
         setEditPoId(poData.id);
         setTimelinePo(poData);
@@ -677,25 +676,16 @@ export default function BuatPembelianPage() {
   );
 
   const startReturFromPo = useCallback(
-    async (poId: string) => {
-      setDocChoiceLoading(true);
-      setError(null);
-      try {
-        const { retur } = await createPurchaseReturFromOrderApi(poId);
-        router.push(`/bisnis/retur/${retur.id}`);
-      } catch (e: unknown) {
-        setError(getErrorMessage(e, "Gagal membuat retur pembelian"));
-      } finally {
-        setDocChoiceLoading(false);
-        setDocChoice(null);
-      }
+    (poId: string) => {
+      setDocChoice(null);
+      router.push(returCreateUrl({ type: "pembelian", po: poId }));
     },
     [router],
   );
 
-  const handleEditRetur = useCallback(async () => {
+  const handleEditRetur = useCallback(() => {
     if (!editPoId) return;
-    await startReturFromPo(editPoId);
+    startReturFromPo(editPoId);
   }, [editPoId, startReturFromPo]);
 
   const persistDocument = async (): Promise<PurchaseSaveTarget | null> => {
@@ -1016,6 +1006,10 @@ export default function BuatPembelianPage() {
       setError(null);
       return;
     }
+    if (isPoEdit || editPoId) {
+      router.push("/bisnis/pembelian/pesanan");
+      return;
+    }
     router.push("/bisnis/pembelian");
   };
 
@@ -1167,7 +1161,7 @@ export default function BuatPembelianPage() {
           docChoice?.canRetur
             ? () => {
                 const poId = docChoice.mode === "bill" ? docChoice.poId : docChoice.poId;
-                void startReturFromPo(poId);
+                startReturFromPo(poId);
               }
             : undefined
         }

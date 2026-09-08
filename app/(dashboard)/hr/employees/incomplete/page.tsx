@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { pb } from "@/lib/pocketbase";
+import { canAccessEmployeeManagement } from "@/lib/capabilities/web-access";
 import { getIncompleteProfiles, type Profile } from "@/lib/profile";
 import { Loader2, AlertTriangle, UserX, Edit } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
@@ -9,6 +11,7 @@ import { useLocale } from "@/components/LocaleProvider";
 export default function IncompleteProfilesPage() {
   const router = useRouter();
   const { t } = useLocale();
+  const hasAccess = canAccessEmployeeManagement(pb.authStore.model as Record<string, unknown> | null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -24,6 +27,7 @@ export default function IncompleteProfilesPage() {
   );
 
   const loadProfiles = useCallback(async () => {
+    if (!hasAccess) return;
     setLoading(true);
     try {
       const result = await getIncompleteProfiles(page, 20);
@@ -34,11 +38,17 @@ export default function IncompleteProfilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, hasAccess]);
 
   useEffect(() => {
+    if (!hasAccess) {
+      router.replace("/hr/employees");
+      return;
+    }
     void loadProfiles();
-  }, [loadProfiles]);
+  }, [hasAccess, loadProfiles, router]);
+
+  if (!hasAccess) return null;
 
   const getMissingFields = (profile: Profile): string[] => {
     const missing: string[] = [];

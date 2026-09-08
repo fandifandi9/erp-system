@@ -21,7 +21,7 @@ import {
 import { fetchWarehouses } from "@/lib/inventory/client";
 import { getCachedSalesStores, getCachedWarehouses } from "@/lib/bisnis/master-data-cache";
 import { InvoiceShareMenu } from "@/components/bisnis/SalesDocActionMenu";
-import { getInvoiceListDisplay } from "@/lib/bisnis/invoice-list-display";
+import { InvoiceListMetaBadges } from "@/components/bisnis/InvoiceListMetaBadges";
 import { useSalesStoreScope } from "@/components/bisnis/SalesStoreScopeContext";
 import { SalesModuleTopBar } from "@/components/bisnis/SalesModuleTopBar";
 import { SummaryCard } from "@/components/bisnis/SummaryCard";
@@ -259,42 +259,86 @@ export default function SalesInvoiceListPage() {
 
   const totalPages = Math.ceil(invTotal / PER_PAGE);
 
+  const selectCls =
+    "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100";
+
   return (
     <>
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <SummaryCard label={t("sales.list.summaryUnpaid")} count={invStats.belumBayar} amount={invStats.belumBayarAmt} color="orange" />
-        <SummaryCard label={t("sales.list.summaryOverdue")} count={invStats.jatuhTempo} amount={invStats.jatuhTempoAmt} color="red" />
-        <SummaryCard label={t("sales.list.summaryPaid30")} count={invStats.lunas30} amount={invStats.lunas30Amt} color="green" />
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <SummaryCard
+          label={t("sales.list.summaryUnpaid")}
+          count={invStats.belumBayar}
+          amount={invStats.belumBayarAmt}
+          color="orange"
+          hint={t("sales.list.summaryUnpaidHint")}
+        />
+        <SummaryCard
+          label={t("sales.list.summaryOverdue")}
+          count={invStats.jatuhTempo}
+          amount={invStats.jatuhTempoAmt}
+          color="red"
+          hint={t("sales.list.summaryOverdueHint")}
+        />
+        <SummaryCard
+          label={t("sales.list.summaryPaid30")}
+          count={invStats.lunas30}
+          amount={invStats.lunas30Amt}
+          color="green"
+          hint={t("sales.list.summaryPaid30Hint")}
+        />
       </div>
 
-      {error && !loading && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
+      {error && !loading ? (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <SalesModuleTopBar />
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-6">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700">
-            {INVOICE_STATUS_FILTER.map((f) => (
-              <option key={f.value} value={f.value}>{t(INVOICE_FILTER_KEY[f.value] ?? f.value)}</option>
-            ))}
-          </select>
-          <select value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700">
-            {INVOICE_ROUTE_FILTER.map((f) => (
-              <option key={f.value} value={f.value}>{t(ROUTE_FILTER_KEY[f.value] ?? f.label)}</option>
-            ))}
-          </select>
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder={t("sales.list.searchPlaceholder")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"
-            />
-          </div>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            {t("sales.list.filterStatus")}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={selectCls}
+            >
+              {INVOICE_STATUS_FILTER.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {t(INVOICE_FILTER_KEY[f.value] ?? f.value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            {t("sales.list.filterRoute")}
+            <select
+              value={routeFilter}
+              onChange={(e) => setRouteFilter(e.target.value)}
+              className={selectCls}
+            >
+              {INVOICE_ROUTE_FILTER.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {t(ROUTE_FILTER_KEY[f.value] ?? f.label)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 sm:max-w-sm">
+            {t("common.search")}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder={t("sales.list.searchPlaceholder")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+          </label>
         </div>
 
         {loading ? (
@@ -308,130 +352,157 @@ export default function SalesInvoiceListPage() {
             <p className="mt-2 text-xs">{t("sales.invList.emptyHint")}</p>
           </div>
         ) : (
-          <table className="w-full table-fixed text-sm">
-            <colgroup>
-              <col className="w-[5.25rem]" />
-              <col className={stores.length > 1 ? "w-[32%]" : "w-[36%]"} />
-              <col className={stores.length > 1 ? "w-[13%]" : "w-[16%]"} />
-              {stores.length > 1 ? <col className="w-[11%]" /> : null}
-              <col className="w-[12%]" />
-              <col className="w-[13%]" />
-              <col className="w-[2.25rem]" />
-            </colgroup>
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs">
-                <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500 sm:pl-4">
-                  {t("sales.list.colDate")}
-                </th>
-                <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
-                  {t("sales.list.colDocument")}
-                </th>
-                <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
-                  {t("sales.list.colCustomer")}
-                </th>
-                {stores.length > 1 ? (
-                  <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
-                    {t("sales.list.colStore")}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-white text-left text-[11px]">
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold uppercase tracking-wider text-slate-400">
+                    {t("sales.list.colDate")}
                   </th>
-                ) : null}
-                <th className="px-3 py-2.5 font-semibold uppercase tracking-wide text-slate-500">
-                  {t("sales.list.colStatus")}
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold uppercase tracking-wide text-slate-500">
-                  {t("sales.list.colBilling")}
-                </th>
-                <th className="px-1 py-2.5 sm:pr-3" aria-hidden />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {invoices.map((inv) => {
-                const disp = getInvoiceDisplayStatus(inv);
-                const st = INVOICE_STATUS_UI[disp];
-                const cash = isCashInvoice(inv);
-                const cancelled = disp === "cancelled";
-                const paid = disp === "paid";
-                const so = inv.expand?.sales_order;
-                const meta = getInvoiceListDisplay(inv, so);
-                const pill = "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset";
-                return (
-                  <tr key={inv.id} className={`align-middle hover:bg-slate-50/70 ${cancelled ? "opacity-55" : ""}`}>
-                    <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600 sm:pl-4">
-                      {fmtDate(inv.issue_date)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Link
-                        href={`/bisnis/penjualan/buat?edit=${inv.id}`}
-                        className="block truncate font-semibold text-indigo-600 hover:underline"
-                        title={inv.invoice_no}
-                      >
-                        {inv.invoice_no}
-                      </Link>
-                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <th className="px-4 py-3 font-semibold uppercase tracking-wider text-slate-400">
+                    {t("sales.list.colDocument")}
+                  </th>
+                  <th className="px-4 py-3 font-semibold uppercase tracking-wider text-slate-400">
+                    {t("sales.list.colCustomer")}
+                  </th>
+                  {stores.length > 1 ? (
+                    <th className="px-4 py-3 font-semibold uppercase tracking-wider text-slate-400">
+                      {t("sales.list.colStore")}
+                    </th>
+                  ) : null}
+                  <th className="px-4 py-3 font-semibold uppercase tracking-wider text-slate-400">
+                    {t("sales.list.colStatus")}
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold uppercase tracking-wider text-slate-400">
+                    {t("sales.list.colBilling")}
+                  </th>
+                  <th className="w-12 px-2 py-3" aria-hidden />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {invoices.map((inv) => {
+                  const disp = getInvoiceDisplayStatus(inv);
+                  const st = INVOICE_STATUS_UI[disp];
+                  const cash = isCashInvoice(inv);
+                  const cancelled = disp === "cancelled";
+                  const paid = disp === "paid";
+                  const so = inv.expand?.sales_order;
+                  const customer = resolveInvoiceCustomerName(inv);
+                  const storeName = resolveInvoiceStoreName(inv, stores);
+                  const related = relatedDocs.get(inv.id);
+                  return (
+                    <tr
+                      key={inv.id}
+                      className={`align-top transition-colors hover:bg-slate-50/80 ${cancelled ? "opacity-60" : ""}`}
+                    >
+                      <td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-slate-500">
+                        {fmtDate(inv.issue_date)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <Link
+                          href={`/bisnis/penjualan/buat?edit=${inv.id}`}
+                          className="block truncate font-semibold text-slate-900 hover:text-indigo-700 hover:underline"
+                          title={inv.invoice_no}
+                        >
+                          {inv.invoice_no}
+                        </Link>
                         {so?.order_no ? (
                           <Link
                             href={`/bisnis/penjualan/buat?so=${so.id}`}
-                            className="truncate font-mono text-sm text-slate-600 hover:text-indigo-600 hover:underline"
+                            className="mt-0.5 block truncate text-xs text-slate-500 hover:text-indigo-600 hover:underline"
                             title={so.order_no}
                           >
-                            {so.order_no}
+                            {t("sales.list.soPrefix")} {so.order_no}
                           </Link>
                         ) : null}
-                        <span className={`${pill} bg-slate-100 text-slate-700 ring-slate-200`}>{meta.channelLabel}</span>
-                        <span className={`${pill} ${meta.badgeCls}`}>{meta.badgeLabel}</span>
-                        <SalesRelatedDocIndicators indicators={relatedDocs.get(inv.id)} />
-                      </div>
-                    </td>
-                    <td className="truncate px-3 py-2.5 text-slate-800" title={resolveInvoiceCustomerName(inv)}>
-                      {resolveInvoiceCustomerName(inv)}
-                    </td>
-                    {stores.length > 1 ? (
-                      <td className="truncate px-3 py-2.5 text-slate-600" title={resolveInvoiceStoreName(inv, stores)}>
-                        {resolveInvoiceStoreName(inv, stores)}
+                        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+                          <InvoiceListMetaBadges invoice={inv} salesOrder={so} compact />
+                          <SalesRelatedDocIndicators indicators={related} />
+                        </div>
                       </td>
-                    ) : null}
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>
-                        {t(INVOICE_STATUS_KEY[disp] ?? st.label)}
-                      </span>
-                      {!paid && !cancelled ? (
-                        <p className="mt-1 truncate text-sm tabular-nums text-slate-500">
-                          {cash ? t("sales.list.cashPaid") : fmtDate(inv.due_date)}
+                      <td className="max-w-[10rem] px-4 py-3.5">
+                        <p className="truncate font-medium text-slate-800" title={customer}>
+                          {customer}
                         </p>
+                      </td>
+                      {stores.length > 1 ? (
+                        <td className="max-w-[8rem] px-4 py-3.5">
+                          <p className="truncate text-slate-600" title={storeName}>
+                            {storeName}
+                          </p>
+                        </td>
                       ) : null}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">
-                      <p className={`font-semibold ${cancelled ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                        {cancelled ? "—" : fmt(inv.total ?? 0)}
-                      </p>
-                      {!cancelled && (inv.remaining ?? 0) > 0 ? (
-                        <p className="mt-0.5 truncate text-sm font-medium text-amber-700" title={fmt(inv.remaining ?? 0)}>
-                          Sisa {fmt(inv.remaining ?? 0)}
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}
+                        >
+                          {t(INVOICE_STATUS_KEY[disp] ?? st.label)}
+                        </span>
+                        {!paid && !cancelled ? (
+                          <p className="mt-1.5 text-xs tabular-nums text-slate-500">
+                            {cash
+                              ? t("sales.list.cashPaid")
+                              : `${t("sales.list.duePrefix")} ${fmtDate(inv.due_date)}`}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3.5 text-right tabular-nums">
+                        <p
+                          className={`text-sm font-semibold ${
+                            cancelled ? "text-slate-400 line-through" : "text-slate-900"
+                          }`}
+                        >
+                          {cancelled ? "—" : fmt(inv.total ?? 0)}
                         </p>
-                      ) : null}
-                    </td>
-                    <td className="px-1 py-2.5 text-center sm:pr-3">
-                      <InvoiceShareMenu
-                        invoice={inv}
-                        store={resolveStoreForInvoice(inv, stores)}
-                        iconOnly
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 sm:px-6">
-            <p className="text-xs text-slate-500">{t("sales.list.pageOf", { page, total: totalPages, count: invTotal })}</p>
-            <div className="flex gap-1">
-              <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-md p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-              <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded-md p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-            </div>
+                        {!cancelled && (inv.remaining ?? 0) > 0 ? (
+                          <p
+                            className="mt-1 text-xs font-medium text-amber-700"
+                            title={fmt(inv.remaining ?? 0)}
+                          >
+                            {t("sales.list.remainingPrefix")} {fmt(inv.remaining ?? 0)}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-2 py-3.5 text-center">
+                        <InvoiceShareMenu
+                          invoice={inv}
+                          store={resolveStoreForInvoice(inv, stores)}
+                          iconOnly
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
+
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 sm:px-5">
+            <p className="text-xs text-slate-500">
+              {t("sales.list.pageOf", { page, total: totalPages, count: invTotal })}
+            </p>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                className="rounded-md p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-md p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );

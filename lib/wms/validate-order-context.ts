@@ -1,7 +1,7 @@
 import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS, type SalesOrder } from "@/lib/bisnis/types";
 import { parseNotesWithShipping } from "@/lib/bisnis/shipping-notes";
-import { INV_COLLECTIONS } from "@/lib/inventory/types";
+import { formatShippingCostId } from "@/lib/bisnis/shipping-wms-gate";
 import { parseOutboundWorkflow } from "./outbound-workflow";
 import { getPackageIdentityView } from "./package-identity";
 import { getPkFromSo } from "./pk-identity";
@@ -12,12 +12,32 @@ export type ValidateOrderContext = {
   pkNo: string;
   packageCode: string;
   packageCodeType: "awb" | "internal";
-  warehouseName: string;
+  storeName: string;
   courier: string;
+  shippingService: string;
+  recipientAddress: string;
+  shippingCost: string;
   marketplace: string;
 };
 
+function marketplaceFromSerbaMpNotes(notes: string): string | null {
+  for (const line of notes.split(/\r?\n/)) {
+    const m = line.match(/^Marketplace:\s*(.+)$/i);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return null;
+}
+
 export function resolveMarketplaceLabel(so: SalesOrder): string {
+  const platform = so.platform_source?.trim();
+  if (platform) return platform;
+
+  const fromMp = marketplaceFromSerbaMpNotes(so.notes ?? "");
+  if (fromMp) return fromMp;
+
+  const storeName = so.expand?.store?.name?.trim();
+  if (storeName) return storeName;
+
   const notes = (so.notes ?? "").toLowerCase();
   if (notes.includes("shopee")) return "Shopee";
   if (notes.includes("tokopedia") || notes.includes("tokped")) return "Tokopedia";
@@ -26,42 +46,35 @@ export function resolveMarketplaceLabel(so: SalesOrder): string {
   if (notes.includes("blibli")) return "Blibli";
   if (notes.includes("bukalapak")) return "Bukalapak";
   if (notes.includes("marketplace") || notes.includes("penjualan online")) return "Marketplace";
-  const { shipping } = parseNotesWithShipping(so.notes ?? "");
-  if (shipping.tracking_no?.trim() && shipping.courier?.trim()) {
-    return shipping.courier.trim();
-  }
+
   return "Toko / Manual";
 }
 
-/** Isi expand gudang/pelanggan jika hilang setelah update PB (tanpa expand). */
+/** Isi expand pelanggan/toko jika hilang setelah update PB (tanpa expand). */
 export async function hydrateSalesOrderDisplay(so: SalesOrder): Promise<SalesOrder> {
   const wf = parseOutboundWorkflow(so.outbound_workflow_json);
   const meta = wf.order_meta;
-  const hasWh = !!(meta?.warehouse_name?.trim() || so.expand?.warehouse?.name?.trim());
   const hasCust = !!(meta?.customer_name?.trim() || so.expand?.customer?.name?.trim());
-  if (hasWh && hasCust) return so;
+  const hasStore = !!(meta?.store_name?.trim() || so.expand?.store?.name?.trim());
+  if (hasCust && hasStore) return so;
 
   const expand = { ...so.expand };
-  if (!hasWh && so.warehouse) {
-    try {
-      const w = await pb.collection(INV_COLLECTIONS.warehouses).getOne(so.warehouse, {
-        requestKey: null,
-      });
-      expand.warehouse = {
-        id: w.id,
-        code: String((w as { code?: string }).code ?? ""),
-        name: String((w as { name?: string }).name ?? "—"),
-      };
-    } catch {
-      /* optional */
-    }
-  }
   if (!hasCust && so.customer) {
     try {
       const c = await pb.collection(BISNIS_COLLECTIONS.customers).getOne(so.customer, {
         requestKey: null,
       });
       expand.customer = c as unknown as NonNullable<SalesOrder["expand"]>["customer"];
+    } catch {
+      /* optional */
+    }
+  }
+  if (!hasStore && so.store) {
+    try {
+      const st = await pb.collection(BISNIS_COLLECTIONS.stores).getOne(so.store, {
+        requestKey: null,
+      });
+      expand.store = st as unknown as NonNullable<SalesOrder["expand"]>["store"];
     } catch {
       /* optional */
     }
@@ -75,14 +88,25 @@ export function buildValidateOrderContext(so: SalesOrder): ValidateOrderContext 
   const pkg = getPackageIdentityView(so, wf);
   const pkNo = getPkFromSo(so) ?? "—";
   const { shipping } = parseNotesWithShipping(so.notes ?? "");
+  const courier = meta?.courier?.trim() || shipping.courier?.trim() || "—";
+  const shippingService =
+    meta?.shipping_service?.trim() || shipping.shipping_service?.trim() || "—";
+  const recipientAddress =
+    meta?.recipient_address?.trim() || shipping.recipient_address?.trim() || "—";
+  const cost = meta?.shipping_cost ?? shipping.shipping_cost ?? 0;
+  const storeName =
+    meta?.store_name?.trim() || so.expand?.store?.name?.trim() || "—";
   return {
     orderNo: so.order_no,
     customerName: meta?.customer_name?.trim() || so.expand?.customer?.name?.trim() || "—",
     pkNo,
     packageCode: pkNo !== "—" ? pkNo : pkg.code,
     packageCodeType: pkNo !== "—" ? "internal" : pkg.type,
-    warehouseName: meta?.warehouse_name?.trim() || so.expand?.warehouse?.name?.trim() || "—",
-    courier: meta?.courier?.trim() || shipping.courier?.trim() || "—",
+    storeName,
+    courier,
+    shippingService,
+    recipientAddress,
+    shippingCost: formatShippingCostId(Number(cost) || 0),
     marketplace: resolveMarketplaceLabel(so),
   };
 }

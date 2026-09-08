@@ -3,14 +3,16 @@ import { Redirect } from "expo-router";
 import { useAuth } from "@/context/auth";
 import { PWA } from "@/constants/pwaTheme";
 import { getNativeHomeHref } from "@/lib/work-dashboard-menu";
+import { useMobileLocale } from "@/lib/i18n";
 
 export default function Index() {
   const { hydrated, user } = useAuth();
+  const { t } = useMobileLocale();
   if (!hydrated) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={PWA.indigo} size="large" />
-        <Text style={styles.hint}>Memuat sesi…</Text>
+        <Text style={styles.hint}>{t("common.sessionLoading")}</Text>
       </View>
     );
   }

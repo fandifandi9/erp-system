@@ -1,16 +1,18 @@
 "use client";
 
-import { FileEdit, RotateCcw, X } from "lucide-react";
+import { Eye, FileEdit, RotateCcw, X } from "lucide-react";
 
 type Props = {
   open: boolean;
   docNo: string;
   docKind: string;
   canRetur?: boolean;
+  viewReturId?: string;
   loading?: boolean;
   onClose: () => void;
   onEdit: () => void;
   onRetur?: () => void;
+  onViewRetur?: () => void;
 };
 
 export function DocOpenChoiceModal({
@@ -18,10 +20,12 @@ export function DocOpenChoiceModal({
   docNo,
   docKind,
   canRetur = false,
+  viewReturId,
   loading = false,
   onClose,
   onEdit,
   onRetur,
+  onViewRetur,
 }: Props) {
   if (!open) return null;
 
@@ -51,7 +55,17 @@ export function DocOpenChoiceModal({
             <FileEdit className="h-4 w-4" />
             Edit dokumen
           </button>
-          {canRetur && onRetur ? (
+          {viewReturId && onViewRetur ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onViewRetur}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+            >
+              <Eye className="h-4 w-4" />
+              Lihat retur
+            </button>
+          ) : canRetur && onRetur ? (
             <button
               type="button"
               disabled={loading}

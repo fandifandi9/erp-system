@@ -13,7 +13,6 @@ import {
   QrCode,
   Boxes,
   ArrowLeftRight,
-  ScanLine,
   Printer,
   Package,
   Tags,
@@ -53,8 +52,11 @@ import {
   Landmark,
   ArrowDownUp,
   UserCircle,
+  Star,
+
   FileSpreadsheet,
   TrendingUp,
+  Network,
 } from "lucide-react";
 
 export type InventoryModule = "erp" | "wms";
@@ -91,28 +93,32 @@ export const PENJUALAN_NAV_ITEMS: NavItem[] = [
 /** 📥 Pembelian — satu halaman utama + tab Tagihan / PO */
 export const PEMBELIAN_NAV_ITEMS: NavItem[] = [
   { href: "/bisnis/pembelian", label: "Pembelian", icon: Receipt },
-  { href: "/bisnis/supplier", label: "Supplier", icon: Building2 },
+  { href: "/bisnis/supplier", label: "Pemasok", icon: Building2 },
+];
+
+/** ↩️ Retur — modul mandiri (bukan bagian penjualan/pembelian) */
+export const RETUR_NAV_ITEMS: NavItem[] = [
+  { href: "/bisnis/retur", label: "Retur", icon: RotateCcw },
 ];
 
 /** 🏭 Manajemen Gudang */
 export const GUDANG_NAV_ITEMS: NavItem[] = [
-  { href: "/gudang", label: "Dashboard Gudang", icon: LayoutDashboard, exact: true },
-  { href: "/gudang/stok", label: "Inventory", icon: Boxes },
+  { href: "/gudang", label: "Dasbor Gudang", icon: LayoutDashboard, exact: true },
+  { href: "/gudang/stok", label: "Stok per gudang", icon: Boxes },
   { href: "/gudang/daftar", label: "Gudang", icon: Warehouse, masterOnly: true },
   { href: "/gudang/penerimaan", label: "Penerimaan Barang", icon: PackageOpen },
   { href: "/gudang/mutasi", label: "Mutasi Stok", icon: ArrowLeftRight },
-  { href: "/gudang/opname", label: "Stock Opname", icon: ClipboardCheck },
-  { href: "/gudang/qc", label: "QC Barang", icon: ShieldCheck },
+  { href: "/gudang/opname", label: "Stok Opname", icon: ClipboardCheck },
   { href: "/gudang/sortir", label: "Sortir & Disposisi", icon: PackageOpen },
   { href: "/gudang/servis-rusak", label: "Servis Gudang Rusak", icon: AlertTriangle },
   { href: "/wms/permintaan-barang/picking", label: "Picking", icon: ShoppingCart },
   { href: "/wms/permintaan-barang/validasi", label: "Packing + QC", icon: ShieldCheck },
-  { href: "/wms/permintaan-barang/pickup", label: "Ready To Pickup", icon: PackageCheck },
-  { href: "/wms/permintaan-barang/selesai", label: "History", icon: CheckCircle2 },
+  { href: "/wms/meja-validator", label: "Meja Validator", icon: QrCode },
+  { href: "/wms/permintaan-barang/pickup", label: "Siap ambil", icon: PackageCheck },
+  { href: "/wms/permintaan-barang/selesai", label: "Riwayat", icon: CheckCircle2 },
   { href: "/gudang/transfer", label: "Transfer Gudang", icon: ArrowDownUp },
   { href: "/gudang/zona", label: "Zona & QR", icon: QrCode },
   { href: "/gudang/aktivitas", label: "Aktivitas Gudang", icon: Activity },
-  { href: "/gudang/scanner", label: "Monitoring Scanner", icon: ScanLine },
   { href: "/gudang/audit", label: "Audit Gudang", icon: ScrollText, masterOnly: true },
 ];
 
@@ -121,9 +127,8 @@ export const POS_NAV_ITEMS: NavItem[] = [
   { href: "/pos", label: "Kasir POS", icon: Monitor, exact: true },
 ];
 
-/** 👥 SDM */
-export const SDM_NAV_ITEMS: NavItem[] = [
-  { href: "/staff", label: "Indeks SDM", icon: LayoutDashboard, exact: true },
+/** Operasional karyawan — tanpa Rating dan tanpa Laporan & Temuan (alias /staff → /hr). */
+export const SDM_OPERATIONAL_NAV_ITEMS: NavItem[] = [
   { href: "/staff/karyawan", label: "Karyawan", icon: UserCheck },
   { href: "/staff/absensi", label: "Absensi", icon: Clock },
   { href: "/staff/jadwal", label: "Jadwal", icon: CalendarDays },
@@ -132,17 +137,53 @@ export const SDM_NAV_ITEMS: NavItem[] = [
   { href: "/staff/lapangan", label: "Aktivitas Lapangan", icon: Briefcase },
   { href: "/staff/mencurigakan", label: "Aktivitas Mencurigakan", icon: AlertTriangle },
   { href: "/staff/gps", label: "Pengaturan GPS", icon: MapPin },
-  { href: "/staff/payroll", label: "Payroll", icon: Banknote },
+  { href: "/staff/payroll", label: "Penggajian", icon: Banknote },
+];
+
+/** SDM operasional langsung ke rute /hr (legacy HR + Staff+modul HR). */
+export const SDM_HR_OPERATIONAL_NAV_ITEMS: NavItem[] = [
+  { href: "/hr/employees", label: "Karyawan", icon: UserCheck },
+  { href: "/hr/attendance", label: "Absensi", icon: Clock },
+  { href: "/hr/work-calendar", label: "Jadwal", icon: CalendarDays },
+  { href: "/hr/leave", label: "Cuti", icon: CalendarDays },
+  { href: "/hr/overtime", label: "Lembur", icon: Clock },
+  { href: "/hr/field-activity", label: "Aktivitas Lapangan", icon: Briefcase },
+  { href: "/hr/izin-off", label: "Off", icon: CalendarDays },
+  { href: "/hr/attendance/suspicious", label: "Aktivitas Mencurigakan", icon: AlertTriangle },
+  { href: "/hr/offices", label: "Pengaturan GPS", icon: MapPin },
+  { href: "/hr/payroll", label: "Penggajian", icon: Banknote },
+];
+
+/** 👥 SDM — Owner/indeks memakai hub /staff. */
+export const SDM_NAV_ITEMS: NavItem[] = [
+  { href: "/staff", label: "Indeks SDM", icon: LayoutDashboard, exact: true },
+  ...SDM_OPERATIONAL_NAV_ITEMS,
+];
+
+/** SDM untuk HR operasional: dashboard /hr + tautan langsung /hr/* (bukan alias /staff). */
+export const SDM_NAV_ITEMS_HR: NavItem[] = [
+  { href: "/hr", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  ...SDM_HR_OPERATIONAL_NAV_ITEMS,
+];
+
+/** Modul kinerja — terpisah dari Laporan & Temuan. */
+export const KINERJA_NAV_ITEMS: NavItem[] = [
+  { href: "/hr/rating", label: "Penilaian / Rating", icon: Star },
+];
+
+/** Satu pintu kasus staf + temuan HR. */
+export const LAPORAN_TEMUAN_NAV_ITEMS: NavItem[] = [
+  { href: "/hr/reports", label: "Laporan & Temuan", icon: ClipboardCheck },
 ];
 
 /** 💰 Keuangan */
 export const KEUANGAN_NAV_ITEMS: NavItem[] = [
-  { href: "/keuangan", label: "Dashboard Keuangan", icon: PieChart, exact: true },
+  { href: "/keuangan", label: "Dasbor Keuangan", icon: PieChart, exact: true },
   { href: "/keuangan/kas-bank", label: "Kas & Bank", icon: Landmark },
   { href: "/keuangan/pemasukan", label: "Pemasukan", icon: TrendingUp },
   { href: "/bisnis/biaya", label: "Pengeluaran", icon: Wallet },
   { href: "/keuangan/transfer", label: "Transfer Antar Akun", icon: ArrowLeftRight },
-  { href: "/keuangan/hutang", label: "Hutang Supplier", icon: CreditCard },
+  { href: "/keuangan/hutang", label: "Hutang Pemasok", icon: CreditCard },
   { href: "/keuangan/piutang", label: "Piutang Pelanggan", icon: Receipt },
   { href: "/keuangan/rekonsiliasi", label: "Rekonsiliasi", icon: FileCheck },
   { href: "/keuangan/arus-kas", label: "Arus Kas", icon: ArrowDownUp },
@@ -155,7 +196,7 @@ export const LAPORAN_NAV_ITEMS: NavItem[] = [
   { href: "/bisnis/laporan-penjualan", label: "Penjualan", icon: BarChart3 },
   { href: "/bisnis/laporan-pembelian", label: "Pembelian", icon: Clipboard },
   { href: "/bisnis/laba-rugi", label: "Keuangan", icon: PieChart },
-  { href: "/laporan/inventory", label: "Inventory", icon: Boxes },
+  { href: "/laporan/inventory", label: "Inventaris", icon: Boxes },
   { href: "/laporan/gudang", label: "Gudang", icon: Activity },
   { href: "/laporan/marketplace", label: "Marketplace", icon: LineChart },
   { href: "/laporan/sdm", label: "SDM", icon: UserCheck },
@@ -164,21 +205,38 @@ export const LAPORAN_NAV_ITEMS: NavItem[] = [
 /** Subset laporan untuk role HR (tanpa modul bisnis penuh). */
 export const LAPORAN_NAV_ITEMS_HR: NavItem[] = [
   { href: "/laporan", label: "Indeks Laporan", icon: LayoutDashboard, exact: true },
-  { href: "/laporan/sdm", label: "SDM", icon: UserCheck },
+  { href: "/laporan/sdm", label: "Laporan SDM", icon: UserCheck },
 ];
 
-/** Subset pengaturan untuk role HR. */
+/** Master Data — system-level shared reference (Phase 34C). */
+export const MASTER_DATA_NAV_ITEMS: NavItem[] = [
+  { href: "/pengaturan/perusahaan", label: "Entitas Administratif", icon: Building2, masterOnly: true },
+  { href: "/pengaturan/entitas-administratif", label: "Entitas Administratif", icon: Building2 },
+  { href: "/hr/offices", label: "Kantor / Lokasi", icon: MapPin },
+];
+
+/** Subset pengaturan untuk role HR (tanpa indeks Owner). */
 export const PENGATURAN_NAV_ITEMS_HR: NavItem[] = [
-  { href: "/pengaturan", label: "Indeks Pengaturan", icon: Settings, exact: true },
-  { href: "/pengaturan/role", label: "Role & Permission", icon: ShieldCheck },
+  { href: "/pengaturan/entitas-administratif", label: "Entitas Administratif", icon: Building2 },
+  { href: "/pengaturan/persetujuan-rekening", label: "Persetujuan Rekening", icon: Landmark },
+  { href: "/pengaturan/role", label: "Peran & Izin", icon: ShieldCheck },
   { href: "/pengaturan/notifikasi", label: "Notifikasi", icon: AlertTriangle },
 ];
 
 /** ⚙️ Pengaturan */
 export const PENGATURAN_NAV_ITEMS: NavItem[] = [
   { href: "/pengaturan", label: "Indeks Pengaturan", icon: Settings, exact: true },
-  { href: "/pengaturan/perusahaan", label: "Perusahaan", icon: Building2 },
+  { href: "/pengaturan/perusahaan", label: "Entitas Administratif", icon: Building2 },
+  {
+    href: "/pengaturan/manajemen",
+    label: "Struktur Bisnis & Operasional",
+    icon: Layers,
+    masterOnly: true,
+  },
+  { href: "/pengaturan/organisasi", label: "Struktur Organisasi", icon: Network },
+  { href: "/hr/offices", label: "Kantor / Lokasi", icon: MapPin },
   { href: "/pengaturan/akses-entitas", label: "Akses Entitas", icon: ShieldCheck },
+  { href: "/pengaturan/akses-modul", label: "Akses Modul", icon: Layers, masterOnly: true },
   { href: "/bisnis/store", label: "Toko", icon: Store },
   { href: "/bisnis/pos-registers", label: "Master POS", icon: Monitor },
   { href: "/system/register", label: "Pengguna", icon: UserCircle, masterOnly: true },
@@ -189,6 +247,7 @@ export const PENGATURAN_NAV_ITEMS: NavItem[] = [
   { href: "/bisnis/metode-bayar", label: "Metode Pembayaran", icon: CreditCard },
   { href: "/bisnis/penjualan-online/template", label: "Template Fee MP", icon: FileText },
   { href: "/pengaturan/role", label: "Role & Permission", icon: ShieldCheck },
+  { href: "/pengaturan/persetujuan-rekening", label: "Persetujuan Rekening", icon: Landmark },
   { href: "/pengaturan/notifikasi", label: "Notifikasi", icon: AlertTriangle },
   { href: "/pengaturan/integrasi", label: "Integrasi", icon: Link2 },
   { href: "/pengaturan/audit-log", label: "Audit Log", icon: ScrollText, masterOnly: true },
@@ -223,16 +282,15 @@ export const WMS_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Operasi",
     items: [
-      { href: "/wms", label: "Dashboard WMS", icon: LayoutDashboard, exact: true },
+      { href: "/wms", label: "Dasbor WMS", icon: LayoutDashboard, exact: true },
       { href: "/gudang/penerimaan", label: "Penerimaan", icon: PackageOpen },
-      { href: "/gudang/qc", label: "QC", icon: ShieldCheck },
       { href: "/gudang/sortir", label: "Sortir", icon: PackageOpen },
       { href: "/gudang/servis-rusak", label: "Servis Rusak", icon: AlertTriangle },
       {
         href: "/wms/permintaan-barang",
         label: "Permintaan Barang",
         icon: ShoppingCart,
-        description: "Picking → Validasi & QC → Ready Pickup → Selesai",
+        description: "Picking → Validasi & QC → Siap ambil → Selesai",
       },
       { href: "/wms/requests", label: "Permintaan gudang", icon: FileStack },
       {
@@ -293,7 +351,6 @@ const PENJUALAN_PATH_PREFIXES = [
   "/bisnis/penjualan",
   "/bisnis/invoice",
   "/bisnis/customer",
-  "/bisnis/retur",
   "/bisnis/kalkulasi-harga-jual",
 ] as const;
 
@@ -304,6 +361,8 @@ const PEMBELIAN_PATH_PREFIXES = [
   "/bisnis/pembelian",
   "/gudang/penerimaan",
 ] as const;
+
+const RETUR_PATH_PREFIXES = ["/bisnis/retur"] as const;
 
 const GUDANG_PATH_PREFIXES = [
   "/gudang",
@@ -321,7 +380,23 @@ const GUDANG_PATH_PREFIXES = [
 
 const POS_PATH_PREFIXES = ["/pos"] as const;
 
-const SDM_PATH_PREFIXES = ["/staff", "/hr"] as const;
+const SDM_PATH_PREFIXES = [
+  "/staff",
+  "/hr/employees",
+  "/hr/attendance",
+  "/hr/leave",
+  "/hr/overtime",
+  "/hr/field-activity",
+  "/hr/offices",
+  "/hr/payroll",
+  "/hr/work-calendar",
+  "/hr/compensation",
+  "/hr/profile",
+] as const;
+
+const KINERJA_PATH_PREFIXES = ["/hr/rating"] as const;
+
+const LAPORAN_TEMUAN_PATH_PREFIXES = ["/hr/reports", "/hr/findings"] as const;
 
 const KEUANGAN_PATH_PREFIXES = ["/keuangan", "/bisnis/laba-rugi", "/bisnis/biaya"] as const;
 
@@ -342,6 +417,11 @@ const LAPORAN_PATH_PREFIXES = [
 const PENGATURAN_PATH_PREFIXES = [
   "/pengaturan",
   "/pengaturan/perusahaan",
+  "/pengaturan/manajemen",
+  "/pengaturan/organisasi",
+  "/pengaturan/struktur-organisasi",
+  "/pengaturan/akses-modul",
+  "/pengaturan/persetujuan-rekening",
   "/pengaturan/role",
   "/pengaturan/notifikasi",
   "/pengaturan/integrasi",
@@ -398,6 +478,10 @@ export function isPembelianSidebarPath(pathname: string): boolean {
   return matchesPathPrefix(pathname, PEMBELIAN_PATH_PREFIXES);
 }
 
+export function isReturSidebarPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, RETUR_PATH_PREFIXES);
+}
+
 export function isGudangSidebarPath(pathname: string): boolean {
   if (isKatalogSidebarPath(pathname)) return false;
   if (pathname.startsWith("/gudang") || pathname.startsWith("/wms")) return true;
@@ -420,7 +504,21 @@ export function isPosSidebarPath(pathname: string): boolean {
 }
 
 export function isSdmSidebarPath(pathname: string): boolean {
+  if (pathname === "/hr") return true;
+  if (isKinerjaSidebarPath(pathname) || isLaporanTemuanSidebarPath(pathname)) return false;
   return matchesPathPrefix(pathname, SDM_PATH_PREFIXES);
+}
+
+export function isKinerjaSidebarPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, KINERJA_PATH_PREFIXES);
+}
+
+export function isLaporanTemuanSidebarPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, LAPORAN_TEMUAN_PATH_PREFIXES);
+}
+
+export function isLaporanSdmPath(pathname: string): boolean {
+  return pathname === "/laporan/sdm" || pathname.startsWith("/laporan/sdm/");
 }
 
 export function isKeuanganSidebarPath(pathname: string): boolean {
@@ -477,7 +575,7 @@ export const WMS_FLOW_STEPS = [
 ] as const;
 
 export const WMS_OUTBOUND_FLOW = [
-  { key: "sales", label: "Sales order", color: "bg-slate-500" },
+  { key: "sales", label: "Pesanan penjualan", color: "bg-slate-500" },
   { key: "picking", label: "Picking", color: "bg-violet-500" },
   { key: "packing", label: "Kemasan", color: "bg-pink-500" },
   { key: "shipping", label: "Pengiriman", color: "bg-orange-500" },
@@ -487,6 +585,6 @@ export const WMS_OUTBOUND_FLOW = [
 export const WMS_OUTBOUND_FLOW_STEPS = [
   { key: "picking", label: "Picking", color: "bg-violet-500" },
   { key: "validate_pack", label: "Validasi & Packing", color: "bg-amber-500" },
-  { key: "ready_pickup", label: "Ready To Pickup", color: "bg-cyan-500" },
-  { key: "completed", label: "Completed", color: "bg-emerald-500" },
+  { key: "ready_pickup", label: "Siap ambil", color: "bg-cyan-500" },
+  { key: "completed", label: "Selesai", color: "bg-emerald-500" },
 ] as const;

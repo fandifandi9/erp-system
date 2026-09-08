@@ -60,7 +60,7 @@ export function getWorkDashboardAccessSummary(
 
   const personalRow: WorkDashboardStatusRow = {
     id: "personal",
-    label: "Menu personal",
+    label: "Menu pribadi",
     state: "always",
     headline: "Selalu terbuka",
     detail: "Cuti, lembur, luar kantor — tab Absensi. Slip gaji — tab Profil.",
@@ -75,7 +75,7 @@ export function getWorkDashboardAccessSummary(
       headline: "Selalu terbuka",
       detail:
         auth.accountType === "owner" || auth.roleCode === "hr"
-          ? "Antrean HR tidak dibatasi check-in."
+          ? "Antrean HR tidak dibatasi absen masuk."
           : "Modul meja kerja tidak dibatasi untuk peran ini.",
     };
   } else if (!workSectionLocked) {
@@ -86,7 +86,7 @@ export function getWorkDashboardAccessSummary(
       state: "open",
       headline: "Terbuka",
       detail: lastIn
-        ? `Aktif setelah check-in (${lastIn}). Tertutup lagi setelah check-out.`
+        ? `Aktif setelah absen masuk (${lastIn}). Tertutup lagi setelah absen pulang.`
         : "Sesi operasional aktif — meja kerja terbuka.",
     };
   } else {
@@ -96,8 +96,8 @@ export function getWorkDashboardAccessSummary(
       state: "locked",
       headline: "Terkunci",
       detail: checkedIn
-        ? "Check-in ada tetapi sesi belum aktif — tarik layar untuk refresh, atau check-in ulang."
-        : "Check-in dulu di tab Absensi untuk membuka meja kerja.",
+        ? "Absen masuk ada tetapi sesi belum aktif — tarik layar untuk muat ulang, atau absen masuk ulang."
+        : "Absen masuk dulu di tab Absensi untuk membuka meja kerja.",
     };
   }
 
@@ -105,8 +105,8 @@ export function getWorkDashboardAccessSummary(
     id: "attendance",
     label: "Absensi hari ini",
     state: checkedIn ? "open" : "locked",
-    headline: checkedIn ? "Sudah check-in" : "Belum check-in",
-    detail: "Check-in/out hanya dari tab Absensi — tidak mengunci menu personal.",
+    headline: checkedIn ? "Sudah absen masuk" : "Belum absen masuk",
+    detail: "Absen masuk/pulang hanya dari tab Absensi — tidak mengunci menu pribadi.",
   };
 
   let overallLabel: string;
@@ -135,15 +135,15 @@ export function getWorkDashboardAccessSummary(
 
 export const WORK_DASHBOARD_GUIDE = [
   {
-    title: "Menu personal",
+    title: "Menu pribadi",
     body: "Cuti, lembur, luar kantor — tab Absensi. Slip gaji — tab Profil.",
   },
   {
     title: "Meja kerja (staf)",
-    body: "Tertutup sampai check-in di tab Absensi; terbuka lagi setelah check-out. Owner/HR selalu bisa buka antrean.",
+    body: "Tertutup sampai absen masuk di tab Absensi; terbuka lagi setelah absen pulang. Owner/HR selalu bisa buka antrean.",
   },
   {
-    title: "Check-in / check-out",
+    title: "Absen masuk / Absen pulang",
     body: "Hanya meja kerja yang mengikuti sesi absensi (kecuali Owner & HR). Absensi & profil tidak ikut tertutup.",
   },
   {

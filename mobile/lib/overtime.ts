@@ -149,12 +149,11 @@ export function normalizeOvertimeFromPb(items: unknown[]): OvertimeRequest[] {
 }
 
 export async function fetchOvertimeForHr(): Promise<OvertimeRequest[]> {
-  const result = await pb.collection(COLLECTION).getFullList({
-    sort: "-created",
-    expand: "user",
-    requestKey: null,
-  });
-  return normalizeOvertimeFromPb(result as unknown[]);
+  // FLEX-ORG-05-FIX — use scoped server API (no unscoped getFullList).
+  const { mobileFetchOvertimeQueue } = await import("@/lib/hr-queue-api");
+  const res = await mobileFetchOvertimeQueue();
+  if (!res.ok) throw new Error(res.error || "Gagal memuat antrian lembur.");
+  return normalizeOvertimeFromPb(res.items);
 }
 
 export async function fetchOvertimeForUser(userId: string): Promise<OvertimeRequest[]> {
@@ -201,7 +200,7 @@ export async function createHrAssignment(input: {
       hr_note: (input.hr_note ?? "").trim(),
       created_by: String(uid),
     });
-    return { success: true, message: "Penunjukan lembur terkirim. Staff dapat menerima atau menolak." };
+    return { success: true, message: "Penunjukan lembur terkirim. Staf dapat menerima atau menolak." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyimpan penunjukan lembur.") };
   }
@@ -225,17 +224,15 @@ export async function createStaffOvertimeRequest(input: {
   if (hours <= 0) return { success: false, message: "Rentang jam tidak valid." };
 
   try {
-    await pb.collection(COLLECTION).create({
-      user: uid,
+    const { mobileSubmitOvertime } = await import("@/lib/hr-overtime-api");
+    const res = await mobileSubmitOvertime({
       work_date: input.work_date.trim(),
       start_time: input.start_time.trim(),
       end_time: input.end_time.trim(),
       hours,
-      source: "staff_request",
-      status: "waiting_hr",
       reason,
-      created_by: String(uid),
     });
+    if (!res.success) return res;
     return { success: true, message: "Pengajuan lembur terkirim. Menunggu persetujuan HR." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal mengirim pengajuan lembur.") };
@@ -291,15 +288,9 @@ export async function staffDeclineAssignment(
 
 export async function hrApproveStaffRequest(requestId: string): Promise<{ success: boolean; message: string }> {
   try {
-    const rec = await pb.collection(COLLECTION).getOne(requestId);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.source) !== "staff_request" || String(raw.status) !== "waiting_hr") {
-      return { success: false, message: "Hanya pengajuan staff yang menunggu HR yang dapat disetujui." };
-    }
-    await pb.collection(COLLECTION).update(requestId, {
-      status: "hr_approved",
-      ...hrActionPayload(),
-    });
+    const { mobileApproveOvertime } = await import("@/lib/hr-overtime-api");
+    const res = await mobileApproveOvertime(requestId);
+    if (!res.success) return res;
     return { success: true, message: "Pengajuan lembur disetujui." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyetujui.") };
@@ -313,27 +304,20 @@ export async function hrRejectStaffRequest(
   const r = String(reason ?? "").trim();
   if (r.length < 5) return { success: false, message: "Alasan penolakan minimal 5 karakter." };
   try {
-    const rec = await pb.collection(COLLECTION).getOne(requestId);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.source) !== "staff_request" || String(raw.status) !== "waiting_hr") {
-      return { success: false, message: "Hanya pengajuan staff yang menunggu HR yang dapat ditolak." };
-    }
-    await pb.collection(COLLECTION).update(requestId, {
-      status: "hr_rejected",
-      rejection_reason: r,
-      ...hrActionPayload(),
-    });
-    return { success: true, message: "Pengajuan ditolak. Staff dapat melihat alasan." };
+    const { mobileRejectOvertime } = await import("@/lib/hr-overtime-api");
+    const res = await mobileRejectOvertime(requestId, r);
+    if (!res.success) return res;
+    return { success: true, message: "Pengajuan ditolak. Staf dapat melihat alasan." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menolak.") };
   }
 }
 
 export const OVERTIME_STATUS_LABEL: Record<OvertimeStatus, string> = {
-  waiting_staff: "Menunggu respons staff",
-  waiting_hr: "Menunggu ACC HR",
-  staff_accepted: "Staff terima",
-  staff_declined: "Staff tolak",
+  waiting_staff: "Menunggu respons staf",
+  waiting_hr: "Menunggu persetujuan HR",
+  staff_accepted: "Staf terima",
+  staff_declined: "Staf tolak",
   hr_approved: "Disetujui HR",
   hr_rejected: "Ditolak HR",
 };

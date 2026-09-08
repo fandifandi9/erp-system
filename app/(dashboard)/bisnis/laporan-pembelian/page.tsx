@@ -113,7 +113,7 @@ export default function LaporanPembelianPage() {
         }))
       );
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Gagal export Excel");
+      alert(e instanceof Error ? e.message : "Gagal ekspor Excel");
     } finally {
       setExporting(false);
     }
@@ -132,8 +132,8 @@ export default function LaporanPembelianPage() {
   const stats = [
     { label: "Pembelian Tahun Ini", value: currency(totalSpend), icon: TrendingDown, color: "bg-blue-50 text-blue-600" },
     { label: "Total PO", value: String(totalPOs), icon: Clipboard, color: "bg-slate-100 text-slate-600" },
-    { label: "Supplier Aktif", value: String(supplierCount), icon: Building2, color: "bg-green-50 text-green-600" },
-    { label: "PO Diterima", value: String(receivedCount), icon: Package, color: "bg-purple-50 text-purple-600" },
+    { label: "Pemasok aktif", value: String(supplierCount), icon: Building2, color: "bg-green-50 text-green-600" },
+    { label: "PO diterima", value: String(receivedCount), icon: Package, color: "bg-purple-50 text-purple-600" },
   ];
 
   return (
@@ -142,7 +142,7 @@ export default function LaporanPembelianPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Laporan Pembelian</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Analisis pembelian dan tren supplier
+            Analisis pembelian dan tren pemasok
             {dimSummary ? ` · ${dimSummary}` : ""}
           </p>
         </div>
@@ -153,7 +153,7 @@ export default function LaporanPembelianPage() {
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 transition disabled:opacity-50"
         >
           {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Export Excel
+          Ekspor Excel
         </button>
       </div>
 
@@ -204,7 +204,7 @@ export default function LaporanPembelianPage() {
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-semibold text-slate-800">Top Supplier</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Pemasok teratas</h2>
         </div>
         {topSuppliers.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">Belum ada data</div>
@@ -217,7 +217,7 @@ export default function LaporanPembelianPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800 truncate">{s.name}</p>
-                  <p className="text-xs text-slate-500">{s.count} purchase order</p>
+                  <p className="text-xs text-slate-500">{s.count} pesanan pembelian</p>
                 </div>
                 <span className="text-sm font-semibold text-slate-900">{currency(s.total)}</span>
               </div>

@@ -39,10 +39,8 @@ import {
   type PaymentCondition,
   type PaymentMethodSetting,
 } from "./types";
-import { filterStoresForSales, filterSalesStoresByCompany, entityPlaceholderStoreNames } from "./store-filters";
-import { fetchCompanyProfiles } from "./company-client";
+import { filterStoresForSales } from "./store-filters";
 import { shouldSyncCashInvoice } from "./invoice-status";
-import { INV_COLLECTIONS } from "@/lib/inventory/types";
 
 /** Coba expand penuh dulu; jika field relation belum ada di PB, fallback ke expand minimal. */
 async function getOneWithExpandFallback<T>(
@@ -309,7 +307,8 @@ export async function fetchInvoices(opts?: ListOptions) {
 
 export async function fetchInvoice(id: string) {
   return getOneWithExpandFallback<Invoice>(BISNIS_COLLECTIONS.invoices, id, [
-    "customer,sales_order,created_by,sales_channel,store_channel_account",
+    "customer,sales_order,created_by,sales_channel,store_channel_account,store",
+    "customer,sales_order,created_by,store",
     "customer,sales_order,created_by",
     "customer,sales_order",
     "customer",
@@ -349,11 +348,24 @@ export async function cancelInvoice(invoice: Invoice, cancelReason?: string) {
       `Batal penjualan ${invoice.invoice_no}`,
     );
     if (voided === 0 && lines.length > 0 && so.warehouse) {
-      const { resolveMovementLinesFromSale } = await import("@/lib/catalog/sale-stock-lines");
-      const stockLines = await resolveMovementLinesFromSale(
-        pb,
-        lines.map((l) => ({ product: l.product, qty: l.qty, sales_order_line_id: l.id })),
-      );
+      const expandRes = await fetch("/api/catalog/expand-sale-lines", {
+        method: "POST",
+        headers: bizStockAuthHeaders(),
+        body: JSON.stringify({
+          lines: lines.map((l) => ({
+            product: l.product,
+            qty: l.qty,
+            sales_order_line_id: l.id,
+          })),
+        }),
+      });
+      const expandJson = await readApiJsonSafe(expandRes);
+      if (!expandRes.ok) {
+        throw new Error(String(expandJson.error || "") || "Gagal expand bundle untuk batal stok.");
+      }
+      const stockLines = Array.isArray(expandJson.lines)
+        ? (expandJson.lines as { product: string; qty: number }[])
+        : [];
       await createAutoStockMovement({
         type: "PURCHASE",
         warehouse: so.warehouse,
@@ -558,10 +570,12 @@ export async function fetchOpenRetursBySalesOrderIds(soIds: string[]) {
 }
 
 export async function fetchRetur(id: string) {
-  return pb.collection(BISNIS_COLLECTIONS.returs).getOne<Retur>(id, {
-    expand: "customer,supplier,warehouse,created_by",
-    requestKey: null,
-  });
+  return getOneWithExpandFallback<Retur>(BISNIS_COLLECTIONS.returs, id, [
+    "customer,supplier,warehouse,damaged_warehouse,invoice,created_by",
+    "customer,supplier,warehouse,damaged_warehouse,created_by",
+    "customer,supplier,warehouse,created_by",
+    "customer,warehouse,created_by",
+  ]);
 }
 
 export async function createRetur(data: Partial<Retur>) {
@@ -751,6 +765,29 @@ export async function createPurchaseReturFromOrderApi(purchaseOrderId: string) {
   return data.data as { retur: Retur; lines: ReturLine[] };
 }
 
+/** Hub retur mandiri: from_so | from_po | standalone. */
+export async function createReturHubApi(
+  body:
+    | {
+        mode: "from_so";
+        sales_order_id: string;
+        input?: import("@/lib/bisnis/sales-retur-expected").CreateSalesReturInput;
+      }
+    | { mode: "from_po"; purchase_order_id: string; reason?: string }
+    | ({ mode: "standalone" } & import("@/lib/bisnis/standalone-retur-create").CreateStandaloneReturInput),
+) {
+  const res = await fetch("/api/bisnis/returs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal membuat retur"));
+  }
+  return data.data as { retur: Retur; lines: ReturLine[] };
+}
+
 /** Selesaikan retur (penjualan / pembelian). */
 export async function completeReturApi(returId: string) {
   const res = await fetch(`/api/bisnis/returs/${returId}/complete`, {
@@ -768,6 +805,7 @@ export async function completeReturApi(returId: string) {
 export const completeSalesReturApi = completeReturApi;
 
 export type WmsReceiveReturBody = {
+  action?: "start" | "receive";
   unboxing_video_path?: string;
   received_lines?: {
     line_id?: string;
@@ -776,6 +814,8 @@ export type WmsReceiveReturBody = {
     condition?: "good" | "damaged";
   }[];
   wms_note?: string;
+  claim_decision?: "agree" | "disagree";
+  dispute_note?: string;
 };
 
 export async function confirmSalesReturnWmsReceiveApi(
@@ -794,6 +834,38 @@ export async function confirmSalesReturnWmsReceiveApi(
   return data.data as Retur;
 }
 
+/** Catat mulai proses WMS. */
+export async function startSalesReturnWmsProcessApi(returId: string) {
+  return confirmSalesReturnWmsReceiveApi(returId, { action: "start" });
+}
+
+/** @deprecated — bantah claim kini lewat confirm dengan claim_decision=disagree */
+export async function disputeSalesReturnClaimApi(
+  returId: string,
+  body: { dispute_note: string; unboxing_video_path?: string; received_lines?: WmsReceiveReturBody["received_lines"]; wms_note?: string },
+) {
+  return confirmSalesReturnWmsReceiveApi(returId, {
+    claim_decision: "disagree",
+    dispute_note: body.dispute_note,
+    unboxing_video_path: body.unboxing_video_path,
+    received_lines: body.received_lines,
+    wms_note: body.wms_note,
+  });
+}
+
+/** Bisnis tanggapi sanggahan — kirim ulang antrean WMS. */
+export async function reopenReturForWmsApi(returId: string) {
+  const res = await fetch(`/api/bisnis/returs/${returId}/reopen-wms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal kirim ulang ke WMS"));
+  }
+  return data.data as Retur;
+}
+
 /** Posting settlement finance setelah stok retur sudah diposting. */
 export async function settleSalesReturApi(returId: string) {
   const res = await fetch(`/api/bisnis/returs/${returId}/settle`, {
@@ -805,6 +877,33 @@ export async function settleSalesReturApi(returId: string) {
     throw new Error(String(data.error || "Gagal settlement retur"));
   }
   return data.data;
+}
+
+/** Putusan bisnis setelah WMS bantah: terima klarifikasi atau kirim kembali. */
+export async function resolveSalesReturApi(
+  returId: string,
+  body: {
+    action: "accept_wms" | "resend";
+    method?: "pickup" | "ship";
+    shipping?: {
+      courier?: string;
+      shipping_service?: string;
+      recipient_address?: string;
+      shipping_cost?: number;
+      shipping_payer?: "seller" | "customer";
+    };
+  },
+) {
+  const res = await fetch(`/api/bisnis/returs/${returId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(String(data.error || "Gagal menyimpan putusan retur"));
+  }
+  return data.data as { retur: Retur };
 }
 
 /** Selesaikan klarifikasi penerimaan PO (stok transit → disposition + tagihan). */
@@ -1033,6 +1132,7 @@ export {
 export {
   sendPurchaseOrderToWarehouse,
   updateWarehouseProcess,
+  updateWarehouseProcessApi,
   canSendPurchaseOrderToWarehouse,
   canCreateBillFromPurchaseOrder,
   billBlockedReason,
@@ -1046,6 +1146,7 @@ export {
 export {
   cancelSalesOrderWithoutInvoice,
   createInvoiceFromSalesOrder,
+  ensureInvoiceAndStockFromSalesOrder,
   fetchInvoiceBySalesOrder,
   canEditSalesOrder,
 } from "./sales-from-so";
@@ -1255,8 +1356,18 @@ export async function applySalesStockOnly(
     lines: { product: string; qty: number; sales_order_line_id?: string }[];
   },
 ) {
-  const { resolveMovementLinesFromSale } = await import("@/lib/catalog/sale-stock-lines");
-  const lines = await resolveMovementLinesFromSale(pb, movement.lines);
+  const expandRes = await fetch("/api/catalog/expand-sale-lines", {
+    method: "POST",
+    headers: bizStockAuthHeaders(),
+    body: JSON.stringify({ lines: movement.lines }),
+  });
+  const expandJson = await readApiJsonSafe(expandRes);
+  if (!expandRes.ok) {
+    throw new Error(String(expandJson.error || "") || "Gagal expand bundle untuk stok.");
+  }
+  const lines = Array.isArray(expandJson.lines)
+    ? (expandJson.lines as { product: string; qty: number }[])
+    : [];
   await createAutoStockMovement({
     type: "SALE",
     warehouse: movement.warehouse,
@@ -1345,23 +1456,10 @@ export async function fetchStores(activeOnly = true, companyId?: string) {
   return res;
 }
 
-/** Toko penjualan aktif — bukan placeholder entitas; legacy tanpa field company tetap muncul. */
-export async function fetchSalesStores(companyId?: string) {
-  const [storesAll, warehouses, profiles] = await Promise.all([
-    fetchStores(true),
-    pb.collection(INV_COLLECTIONS.warehouses).getFullList<{
-      id: string;
-      store?: string;
-      warehouse_role?: string;
-    }>({
-      fields: "id,store,warehouse_role",
-      requestKey: null,
-    }),
-    fetchCompanyProfiles(true).catch(() => [] as { company_name: string }[]),
-  ]);
-  const entityNames = entityPlaceholderStoreNames(profiles);
-  const scoped = filterSalesStoresByCompany(storesAll, companyId);
-  return filterStoresForSales(scoped, warehouses, entityNames).sort((a, b) =>
+/** Toko penjualan = semua toko aktif (penjualan berbasis toko, bukan entitas). */
+export async function fetchSalesStores() {
+  const stores = await fetchStores(true);
+  return filterStoresForSales(stores).sort((a, b) =>
     a.name.localeCompare(b.name, "id"),
   );
 }

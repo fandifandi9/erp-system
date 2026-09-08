@@ -4,29 +4,29 @@ import { pb } from "@/lib/pocketbase";
 import {
   getMaxBookingsPerMonth,
   PROFILE_LEAVE_BOOKINGS_QUOTA_FIELD,
-  leaveBookingsQuotaFromProfileRecord,
 } from "@/lib/leave";
 import { formatIntegerId } from "@/lib/format-number";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/LocaleProvider";
-
-type PbUserRow = {
-  id: string;
-  name?: string;
-  email?: string;
-  role?: string;
-  role_code?: string;
-  status?: string;
-};
+import { isOwnerAccount } from "@/lib/auth-model";
+import { hasEmployeeCapability } from "@/lib/capabilities/employee";
+import { canAccessEmployeeCreate, canAccessEmployeeManagement } from "@/lib/capabilities/web-access";
+import {
+  hrApiActivateEmployee,
+  hrApiDeactivateEmployee,
+  hrApiAuthHeaders,
+  hrApiListEmployees,
+} from "@/lib/hr/hr-api-client";
 
 type EmployeeProfile = {
   id: string;
   userId: string | null;
   name: string;
+  /** Nama jabatan dari struktur organisasi; kosong jika belum di-link. */
   position: string;
   email: string;
-  role: string;
+  dashboardAccess: boolean;
   status: string;
   /** Maks. pengajuan cuti (pending + disetujui) per bulan kalender; dari profil atau default. */
   leaveBookingsQuota: number;
@@ -34,65 +34,38 @@ type EmployeeProfile = {
   requireCheckinSelfie: boolean;
 };
 
-function escapePbFilterString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function profileRequiresSelfie(raw: Record<string, unknown>): boolean {
-  const v = raw.require_checkin_selfie;
-  return (
-    v === true ||
-    String(v).toLowerCase() === "true" ||
-    Number(v) === 1
-  );
-}
-
-function profileUserId(raw: { user?: unknown }): string | null {
-  const u = raw.user;
-  if (typeof u === "string" && u.trim()) return u.trim();
-  if (u && typeof u === "object" && "id" in u && typeof (u as { id: unknown }).id === "string") {
-    return String((u as { id: string }).id).trim() || null;
-  }
-  return null;
-}
-
-async function fetchUsersByIds(ids: string[]): Promise<Map<string, PbUserRow>> {
-  const map = new Map<string, PbUserRow>();
-  const unique = [...new Set(ids.filter(Boolean))];
-  const chunkSize = 25;
-  for (let i = 0; i < unique.length; i += chunkSize) {
-    const chunk = unique.slice(i, i + chunkSize);
-    const filter = chunk.map((id) => `id="${escapePbFilterString(id)}"`).join("||");
-    try {
-      const rows = await pb.collection("users").getFullList({
-        filter: `(${filter})`,
-        fields: "id,email,name,role,role_code,status",
-        requestKey: null,
-      });
-      for (const row of rows) {
-        const r = row as unknown as PbUserRow;
-        if (r.id) map.set(r.id, r);
-      }
-    } catch (err) {
-      console.error("[hr/employees] fetch users chunk:", err);
-    }
-  }
-  return map;
-}
+type EntityOpt = { id: string; company_name: string };
 
 export default function EmployeesPage() {
   const { t } = useLocale();
   const router = useRouter();
   const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [entities, setEntities] = useState<EntityOpt[]>([]);
+  /** Owner filter: "" = semua entitas */
+  const [ownerEntityFilter, setOwnerEntityFilter] = useState("");
 
   const currentUser = pb.authStore.model;
-  const role = currentUser?.role;
-  const hasAccess = role === "owner" || role === "hr";
+  const hasAccess = canAccessEmployeeManagement(currentUser as Record<string, unknown> | null);
+  const isOwnerUser = isOwnerAccount(currentUser as Record<string, unknown> | null);
+  const canActivate = hasEmployeeCapability(
+    currentUser as Record<string, unknown> | null,
+    "employee.activate",
+  );
+  const canDeactivate = hasEmployeeCapability(
+    currentUser as Record<string, unknown> | null,
+    "employee.deactivate",
+  );
 
   // ================= TOGGLE STATUS =================
   const toggleStatus = async (profile: EmployeeProfile) => {
-    if (currentUser?.role !== "owner") {
+    const activating = profile.status !== "active";
+    if (activating && !canActivate) {
+      alert(t("hr.common.ownerOnlyStatus"));
+      return;
+    }
+    if (!activating && !canDeactivate) {
       alert(t("hr.common.ownerOnlyStatus"));
       return;
     }
@@ -103,30 +76,55 @@ export default function EmployeesPage() {
     }
 
     try {
-      const newStatus =
-        profile.status === "active" ? "inactive" : "active";
+      if (activating) {
+        await hrApiActivateEmployee(profile.userId);
+      } else {
+        await hrApiDeactivateEmployee(profile.userId);
+      }
 
-      await pb.collection("users").update(profile.userId, {
-        status: newStatus,
-      });
-
-      // update UI
       setProfiles((prev) =>
         prev.map((p) =>
           p.userId === profile.userId
-            ? { ...p, status: newStatus }
+            ? { ...p, status: activating ? "active" : "inactive" }
             : p
         )
       );
-
-      alert(t("hr.common.statusChanged"));
     } catch (err) {
-      console.error("TOGGLE ERROR:", err);
-      alert(t("hr.common.statusChangeFailed"));
+      console.error("[hr/employees] toggle status:", err);
+      alert(err instanceof Error ? err.message : t("hr.common.saveFailed"));
     }
   };
 
   // ================= FETCH DATA =================
+  const loadEntities = useCallback(async () => {
+    if (!isOwnerUser) return;
+    try {
+      const res = await fetch("/api/master-data/legal-entities", {
+        credentials: "include",
+        headers: hrApiAuthHeaders(),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        items?: Array<{ id?: string; company_name?: string; name?: string }>;
+        data?: Array<{ id?: string; company_name?: string; name?: string }>;
+      };
+      const rows = Array.isArray(json.items)
+        ? json.items
+        : Array.isArray(json.data)
+          ? json.data
+          : [];
+      setEntities(
+        rows
+          .map((r) => ({
+            id: String(r.id || "").trim(),
+            company_name: String(r.company_name || r.name || "").trim() || String(r.id || ""),
+          }))
+          .filter((r) => r.id),
+      );
+    } catch {
+      setEntities([]);
+    }
+  }, [isOwnerUser]);
+
   useEffect(() => {
     if (!hasAccess) {
       setLoading(false);
@@ -134,75 +132,46 @@ export default function EmployeesPage() {
     }
 
     let isMounted = true;
+    void loadEntities();
 
     const fetchProfiles = async () => {
+      setLoading(true);
+      setListError(null);
       try {
-        const res = await pb.collection("profiles").getFullList({
-          sort: "-updated",
-          requestKey: null,
-        });
-
+        const items = await hrApiListEmployees(
+          isOwnerUser ? { companyId: ownerEntityFilter || "all" } : undefined,
+        );
         if (!isMounted) return;
 
-        /** Satu baris per user — profil terbaru (hindari duplikat tampil kuota lama). */
-        const latestProfileByUser = new Map<string, (typeof res)[0]>();
-        for (const profile of res) {
-          const uid = profileUserId(profile as { user?: unknown });
-          if (!uid) continue;
-          const existing = latestProfileByUser.get(uid);
-          if (!existing) {
-            latestProfileByUser.set(uid, profile);
-            continue;
-          }
-          const tNew = new Date(String(profile.updated || profile.created || 0)).getTime();
-          const tOld = new Date(String(existing.updated || existing.created || 0)).getTime();
-          if (tNew >= tOld) latestProfileByUser.set(uid, profile);
-        }
-
-        const deduped = [...latestProfileByUser.values()];
-        const userIds = deduped.map((p) => profileUserId(p as { user?: unknown })).filter(Boolean) as string[];
-        const usersById = await fetchUsersByIds(userIds);
-        const defaultQuota = getMaxBookingsPerMonth();
-
-        const combinedData = deduped.map((profile) => {
-          const uid = profileUserId(profile as { user?: unknown });
-          const u = uid ? usersById.get(uid) : undefined;
-
-          const emailFromProfile = (profile.email as string | undefined)?.trim();
-          const emailFromUser = u?.email?.trim();
-          const email = emailFromProfile || emailFromUser || "-";
-
-          const pr = profile as Record<string, unknown>;
-          const leaveBookingsQuota =
-            leaveBookingsQuotaFromProfileRecord(pr) ?? defaultQuota;
-
-          return {
-            id: profile.id,
-            userId: uid,
-            name: (profile.name as string) || u?.name || "-",
-            position: (profile.position as string) || "-",
-            email,
-            role: ((u?.role_code || u?.role || "-") as string).toString(),
-            status: u?.status || "inactive",
-            leaveBookingsQuota,
-            requireCheckinSelfie: profileRequiresSelfie(pr),
-          };
-        });
-
-        setProfiles(combinedData);
+        setProfiles(
+          items.map((item) => ({
+            id: item.id,
+            userId: item.userId || null,
+            name: item.name || "-",
+            position: String(item.position ?? "").trim(),
+            email: item.email || "-",
+            dashboardAccess: Boolean(item.dashboardAccess),
+            status: item.status || "inactive",
+            leaveBookingsQuota: Number(item.leaveBookingsQuota) || getMaxBookingsPerMonth(),
+            requireCheckinSelfie: Boolean(item.requireCheckinSelfie),
+          })),
+        );
       } catch (err) {
         console.error("FETCH ERROR:", err);
+        if (!isMounted) return;
+        setProfiles([]);
+        setListError(err instanceof Error ? err.message : "Gagal memuat daftar karyawan.");
       } finally {
         if (isMounted) setLoading(false);
       }
     };
 
-    fetchProfiles();
+    void fetchProfiles();
 
     return () => {
       isMounted = false;
     };
-  }, [hasAccess]);
+  }, [hasAccess, t, isOwnerUser, ownerEntityFilter, loadEntities]);
 
   // 🔒 GUARD
   if (!hasAccess) {
@@ -214,7 +183,7 @@ export default function EmployeesPage() {
   }
 
   // ================= LOADING =================
-  if (loading) {
+  if (loading && profiles.length === 0) {
     return (
       <div className="p-6 text-slate-500">
         {t("hr.employees.loading")}
@@ -233,21 +202,46 @@ export default function EmployeesPage() {
             {t("hr.employees.title")}
           </h1>
           <p className="text-sm text-slate-500">
-            {role === "owner"
-              ? t("hr.employees.subtitleOwner")
+            {isOwnerUser
+              ? "Daftar mengikuti keanggotaan entitas (bukan pohon struktur organisasi). Filter satu entitas untuk melihat anggota di entitas itu saja."
               : t("hr.employees.subtitleHr")}
           </p>
         </div>
 
-        {role === "owner" && (
-          <button
-            onClick={() => router.push("/hr/employees/new")}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-indigo-700 transition"
-          >
-            {t("hr.employees.add")}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {isOwnerUser ? (
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Entitas
+              <select
+                value={ownerEntityFilter}
+                onChange={(e) => setOwnerEntityFilter(e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Semua entitas</option>
+                {entities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.company_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {hasAccess && canAccessEmployeeCreate(currentUser as Record<string, unknown> | null) && (
+            <button
+              onClick={() => router.push("/hr/employees/new")}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-indigo-700 transition"
+            >
+              {t("hr.employees.add")}
+            </button>
+          )}
+        </div>
       </div>
+
+      {listError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {listError}
+        </div>
+      ) : null}
 
       {/* TABLE */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -259,7 +253,7 @@ export default function EmployeesPage() {
               <th className="px-6 py-3 text-left">{t("hr.employees.colPosition")}</th>
               <th className="px-6 py-3 text-center">{t("hr.employees.colSelfie")}</th>
               <th className="px-6 py-3 text-left">{t("hr.employees.colLeaveQuota")}</th>
-              <th className="px-6 py-3 text-left">{t("hr.employees.colRole")}</th>
+              <th className="px-6 py-3 text-center">{t("hr.employees.colDashboard")}</th>
               <th className="px-6 py-3 text-left">{t("hr.employees.colStatus")}</th>
               <th className="px-6 py-3 text-right">{t("hr.employees.colActions")}</th>
             </tr>
@@ -267,7 +261,7 @@ export default function EmployeesPage() {
 
           <tbody>
             {profiles.map((profile) => {
-              const isOwner = currentUser?.role === "owner";
+              const canToggleStatus = canActivate || canDeactivate;
 
               return (
                 <tr
@@ -283,7 +277,7 @@ export default function EmployeesPage() {
                   </td>
 
                   <td className="px-6 py-4 text-slate-800">
-                    {profile.position}
+                    {profile.position || ""}
                   </td>
 
                   <td className="px-6 py-4 text-center">
@@ -305,30 +299,28 @@ export default function EmployeesPage() {
                     <span className="block text-xs text-slate-500">{t("hr.employees.bookingPerMonth")}</span>
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 text-center">
                     <span
-                      className={`px-2 py-1 rounded-lg text-xs ${
-                        profile.role === "owner"
-                          ? "bg-purple-100 text-purple-700"
-                          : profile.role === "hr"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-green-100 text-green-700"
+                      className={`inline-block rounded-lg px-2 py-1 text-xs font-semibold ${
+                        profile.dashboardAccess
+                          ? "bg-indigo-100 text-indigo-800"
+                          : "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      {profile.role}
+                      {profile.dashboardAccess ? t("hr.common.yes") : t("hr.common.no")}
                     </span>
                   </td>
 
                   <td className="px-6 py-4">
                     <button
-                      disabled={!isOwner || !profile.userId}
+                      disabled={!canToggleStatus || !profile.userId}
                       onClick={() => toggleStatus(profile)}
                       className={`px-3 py-1 rounded-lg text-xs ${
                         profile.status === "active"
                           ? "bg-green-100 text-green-700"
                           : "bg-red-100 text-red-700"
                       } ${
-                        !isOwner || !profile.userId
+                        !canToggleStatus || !profile.userId
                           ? "opacity-50 cursor-not-allowed"
                           : ""
                       }`}
@@ -359,11 +351,26 @@ export default function EmployeesPage() {
           </tbody>
         </table>
 
-        {profiles.length === 0 && (
-          <div className="py-12 text-center text-sm font-medium text-slate-600">
-            {t("hr.employees.empty")}
+        {profiles.length === 0 && !loading ? (
+          <div className="space-y-1 px-6 py-12 text-center text-sm text-slate-600">
+            <p className="font-medium">
+              {listError
+                ? "Daftar tidak dapat dimuat."
+                : ownerEntityFilter
+                  ? `Tidak ada karyawan dengan keanggotaan di ${
+                      entities.find((e) => e.id === ownerEntityFilter)?.company_name ||
+                      "entitas ini"
+                    }.`
+                  : t("hr.employees.empty")}
+            </p>
+            {isOwnerUser && ownerEntityFilter && !listError ? (
+              <p className="text-xs text-slate-500">
+                Struktur organisasi terpisah dari keanggotaan. Karyawan di entitas lain tidak
+                otomatis muncul di sini — tambahkan keanggotaan / onboard ke entitas ini.
+              </p>
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
 
       <p className="text-xs text-slate-500">

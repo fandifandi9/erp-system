@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useAuth } from "@/context/auth";
-import { getPocketBaseUrl } from "@/lib/env";
+import { getPocketBaseUrl, getMobileEnvHostDiagnostics, isMobileServerConfigured, isStagingOrProductionMobileUrl } from "@/lib/env";
 import { getErrorMessage, pocketBaseUnreachableMessage } from "@/lib/errors";
 import { consumePendingLoginMessage } from "@/lib/auth-lifecycle";
 import { getNativeHomeHref } from "@/lib/work-dashboard-menu";
@@ -27,12 +27,14 @@ import {
   SYSTEM_LOGO_WIDE_ASPECT,
 } from "@/lib/branding";
 import { getAppVersionDisplay } from "@/lib/app-version";
+import { useMobileLocale } from "@/lib/i18n";
 import { PWA } from "@/constants/pwaTheme";
 
 type Step = "password" | "otp";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { t } = useMobileLocale();
   const { hydrated, user, signInWithPassword, signInWithOtp } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +46,9 @@ export default function LoginScreen() {
   const [mfaId, setMfaId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const baseUrl = getPocketBaseUrl();
-  const showConfigWarn = !baseUrl;
+  const showConfigWarn = !isMobileServerConfigured();
+  const envDiag = getMobileEnvHostDiagnostics();
+  const showStagingWarn = __DEV__ && isStagingOrProductionMobileUrl();
 
   useEffect(() => {
     const pending = consumePendingLoginMessage();
@@ -56,7 +60,7 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.bootCenter}>
           <ActivityIndicator color={PWA.indigo} size="large" />
-          <Text style={styles.bootHint}>Memuat sesi…</Text>
+          <Text style={styles.bootHint}>{t("common.sessionLoading")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -84,7 +88,7 @@ export default function LoginScreen() {
       setStep("otp");
       setOtpCode("");
     } catch (e: unknown) {
-      setErr(pocketBaseUnreachableMessage(e, baseUrl) ?? getErrorMessage(e, "Login gagal"));
+      setErr(pocketBaseUnreachableMessage(e, baseUrl) ?? getErrorMessage(e, "Gagal masuk"));
     } finally {
       Keyboard.dismiss();
       setLoading(false);
@@ -117,12 +121,14 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <ScrollView
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             bounces={false}
           >
             <View style={styles.hero}>
@@ -145,10 +151,25 @@ export default function LoginScreen() {
               {showConfigWarn ? (
                 <View style={styles.bannerWarn}>
                   <Text style={styles.bannerWarnTxt}>
-                    Server belum dikonfigurasi di build ini. Hubungi IT atau build ulang
-                    dengan env PocketBase.
+                    {t("common.serverUrlMissing")}
                   </Text>
                 </View>
+              ) : null}
+
+              {showStagingWarn ? (
+                <View style={styles.bannerWarn}>
+                  <Text style={styles.bannerWarnTxt}>
+                    Konfigurasi masih mengarah ke staging/production. Untuk UAT lokal, set
+                    EXPO_PUBLIC_ERP_WEB_URL dan EXPO_PUBLIC_POCKETBASE_URL ke IP LAN PC di mobile/.env
+                    lalu jalankan ulang Expo dengan --clear.
+                  </Text>
+                </View>
+              ) : null}
+
+              {__DEV__ && envDiag.configured ? (
+                <Text style={styles.devEnvHint}>
+                  Dev: PB {envDiag.pocketBaseHost} · ERP {envDiag.erpWebHost}
+                </Text>
               ) : null}
 
               {err ? (
@@ -173,7 +194,7 @@ export default function LoginScreen() {
                   <View style={styles.passwordWrap}>
                     <TextInput
                       style={styles.inputPassword}
-                      placeholder="Password"
+                      placeholder="Kata sandi"
                       placeholderTextColor={PWA.textMuted}
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
@@ -188,7 +209,7 @@ export default function LoginScreen() {
                       onPress={() => setShowPassword((v) => !v)}
                       hitSlop={12}
                       accessibilityRole="button"
-                      accessibilityLabel={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+                      accessibilityLabel={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
                     >
                       <Ionicons
                         name={showPassword ? "eye-off-outline" : "eye-outline"}
@@ -222,7 +243,18 @@ export default function LoginScreen() {
                     value={otpCode}
                     onChangeText={setOtpCode}
                   />
-                  <View style={styles.row}>
+                  <View style={styles.otpActions}>
+                    <Pressable
+                      style={[styles.btn, (loading || !otpCode.trim()) && styles.btnDisabled]}
+                      onPress={onOtpSubmit}
+                      disabled={loading || !otpCode.trim()}
+                    >
+                      {loading ? (
+                        <ActivityIndicator color="#ffffff" />
+                      ) : (
+                        <Text style={styles.btnText}>Verifikasi</Text>
+                      )}
+                    </Pressable>
                     <Pressable
                       style={styles.secondary}
                       onPress={() => {
@@ -234,17 +266,6 @@ export default function LoginScreen() {
                       }}
                     >
                       <Text style={styles.secondaryText}>Kembali</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.btn, styles.btnFlex, (loading || !otpCode.trim()) && styles.btnDisabled]}
-                      onPress={onOtpSubmit}
-                      disabled={loading || !otpCode.trim()}
-                    >
-                      {loading ? (
-                        <ActivityIndicator color="#ffffff" />
-                      ) : (
-                        <Text style={styles.btnText}>Verifikasi</Text>
-                      )}
                     </Pressable>
                   </View>
                 </>
@@ -277,7 +298,7 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 48,
   },
   hero: {
     alignItems: "center",
@@ -335,6 +356,12 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   bannerWarnTxt: { color: PWA.amber900, fontSize: 13, lineHeight: 18 },
+  devEnvHint: {
+    fontSize: 11,
+    color: PWA.textMuted,
+    lineHeight: 16,
+    marginBottom: 4,
+  },
   bannerErr: {
     backgroundColor: PWA.red50,
     borderRadius: 12,
@@ -374,25 +401,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  otpHint: { color: PWA.textMuted, fontSize: 13 },
-  row: { flexDirection: "row", gap: 10, marginTop: 4 },
+  otpHint: { color: PWA.textMuted, fontSize: 13, lineHeight: 18 },
+  otpActions: { gap: 10, marginTop: 4 },
   btn: {
     backgroundColor: PWA.indigo,
     borderRadius: 12,
     paddingVertical: 14,
+    minHeight: 52,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
-  btnFlex: { flex: 1, marginTop: 0 },
   btnDisabled: { opacity: 0.55 },
   btnText: { color: "#ffffff", fontWeight: "700", fontSize: 16 },
   secondary: {
-    flex: 1,
     borderWidth: 1,
     borderColor: PWA.border,
     backgroundColor: PWA.surface,
     borderRadius: 12,
     paddingVertical: 14,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
   },

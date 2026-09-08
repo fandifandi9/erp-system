@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cachedFetch } from "@/lib/catalog/stock-cache";
 import { jsonError, requireInventoryAccess } from "@/lib/inventory/api-auth";
 import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import {
@@ -15,31 +16,34 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const companyId = url.searchParams.get("company")?.trim() || undefined;
     const warehouseId = url.searchParams.get("warehouse")?.trim() || undefined;
+    const cacheKey = `damaged-stock:${companyId ?? "all"}:${warehouseId ?? "all"}`;
 
-    const pb = await getInventoryAdminPb();
-    const [warehouses, items, retailByCompany] = await Promise.all([
-      listDamagedWarehouses(pb),
-      listDamagedWarehouseStock(pb, { companyId, warehouseId }),
-      listRetailWarehousesByCompany(pb),
-    ]);
+    const payload = await cachedFetch(
+      cacheKey,
+      async () => {
+        const pb = await getInventoryAdminPb();
+        const [warehouses, items, retailByCompany] = await Promise.all([
+          listDamagedWarehouses(pb),
+          listDamagedWarehouseStock(pb, { companyId, warehouseId }),
+          listRetailWarehousesByCompany(pb),
+        ]);
 
-    const whIds = [...new Set(items.map((i) => i.warehouseId))];
-    const productIds = [...new Set(items.map((i) => i.productId))];
-    const intakeMap = await loadDamagedIntakeRefs(pb, whIds, productIds);
+        const whIds = [...new Set(items.map((i) => i.warehouseId))];
+        const productIds = [...new Set(items.map((i) => i.productId))];
+        const intakeMap = await loadDamagedIntakeRefs(pb, whIds, productIds);
 
-    const intakeRefs: Record<string, DamagedIntakeRef[]> = {};
-    for (const item of items) {
-      const key = damagedStockRowKey(item.warehouseId, item.productId);
-      intakeRefs[key] = intakeMap[key] ?? [];
-    }
+        const intakeRefs: Record<string, DamagedIntakeRef[]> = {};
+        for (const item of items) {
+          const key = damagedStockRowKey(item.warehouseId, item.productId);
+          intakeRefs[key] = intakeMap[key] ?? [];
+        }
 
-    return NextResponse.json({
-      ok: true,
-      warehouses,
-      items,
-      intakeRefs,
-      retailByCompany,
-    });
+        return { warehouses, items, intakeRefs, retailByCompany };
+      },
+      30_000,
+    );
+
+    return NextResponse.json({ ok: true, ...payload });
   } catch (err) {
     return jsonError(err, "Gagal memuat stok gudang rusak.");
   }

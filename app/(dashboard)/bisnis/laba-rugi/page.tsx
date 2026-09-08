@@ -303,7 +303,7 @@ export default function LabaRugiPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Laporan Laba Rugi</h1>
             <p className="text-sm text-slate-500">
-              Profit & Loss Statement — {range.label}
+              Ringkasan laba rugi — {range.label}
               {dimSummary ? ` · ${dimSummary}` : stores.length > 1 ? " · Semua toko" : ""}
             </p>
           </div>
@@ -337,7 +337,7 @@ export default function LabaRugiPage() {
               <option value="3_bulan">3 Bulan Terakhir</option>
               <option value="6_bulan">6 Bulan Terakhir</option>
               <option value="tahun_ini">Tahun Ini</option>
-              <option value="custom">Custom</option>
+              <option value="custom">Kustom</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           </div>
@@ -373,8 +373,8 @@ export default function LabaRugiPage() {
         <>
           {/* Summary Cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard label="Pendapatan Bersih" value={fmt(plData.pendapatan.bersih)} sub={`${plData.pendapatan.penjualanCount} invoice${plData.pendapatan.retur > 0 ? ` − retur ${fmt(plData.pendapatan.retur)}` : ""}`} icon={TrendingUp} color="emerald" />
-            <SummaryCard label="HPP (Barang Terjual)" value={fmt(plData.hpp.total)} sub={`${plData.hpp.qty} pcs terjual`} icon={TrendingDown} color="blue" />
+            <SummaryCard label="Pendapatan Bersih" value={fmt(plData.pendapatan.bersih)} sub={`${plData.pendapatan.penjualanCount} faktur${plData.pendapatan.retur > 0 ? ` − retur ${fmt(plData.pendapatan.retur)}` : ""}`} icon={TrendingUp} color="emerald" />
+            <SummaryCard label="HPP (barang terjual)" value={fmt(plData.hpp.total)} sub={`${plData.hpp.qty} pcs terjual`} icon={TrendingDown} color="blue" />
             <SummaryCard label="Total Biaya" value={fmt(plData.biayaOperasional.total)} sub={`${plData.biayaOperasional.count} pencatatan`} icon={DollarSign} color="red" />
             <SummaryCard
               label="Laba Bersih"
@@ -398,7 +398,7 @@ export default function LabaRugiPage() {
               <div className="px-6 py-4">
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-emerald-700">Pendapatan</h3>
                 <div className="space-y-2">
-                  <PLRow label="Penjualan (invoice terbit)" value={plData.pendapatan.penjualan} count={plData.pendapatan.penjualanCount} color="emerald" />
+                  <PLRow label="Penjualan (faktur terbit)" value={plData.pendapatan.penjualan} count={plData.pendapatan.penjualanCount} color="emerald" />
                   {plData.pendapatan.retur > 0 && (
                     <PLRow label="Retur Penjualan (nota kredit)" value={-plData.pendapatan.retur} count={plData.pendapatan.returCount} color="red" />
                   )}
@@ -455,7 +455,7 @@ export default function LabaRugiPage() {
                 <div className="px-6 py-4">
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-emerald-700">Pendapatan Lain-lain</h3>
                   <div className="space-y-2">
-                    <PLRow label="Fee / denda pelunasan" value={plData.pendapatanLain.total} count={plData.pendapatanLain.count} color="emerald" />
+                    <PLRow label="Biaya / denda pelunasan" value={plData.pendapatanLain.total} count={plData.pendapatanLain.count} color="emerald" />
                   </div>
                   <PLTotalRow label="Total Pendapatan Lain-lain" value={plData.pendapatanLain.total} color="emerald" />
                 </div>
@@ -468,7 +468,7 @@ export default function LabaRugiPage() {
                     <span className="text-base font-bold text-slate-900">LABA / (RUGI) BERSIH</span>
                     {plData.pendapatan.bersih > 0 && (
                       <p className="mt-0.5 text-xs text-slate-600">
-                        Net Margin: {fmtPct(plData.margin)}
+                        Margin bersih: {fmtPct(plData.margin)}
                       </p>
                     )}
                   </div>

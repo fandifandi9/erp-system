@@ -118,8 +118,8 @@ export async function completeWmsPosSale(
   await assertOrderNoUniqueForStore(pb, session.storeId, session.storeName, orderNo);
   const pickupCode = await resolvePickupCodeForPosOrder(pb, orderNo, !!externalOrderNo);
   const mpOrderNo = externalOrderNo || `POS-${orderNo}`;
-  const courierLabel = viaCourier ? checkout.courier.trim() : "Pickup toko";
-  const serviceLabel = viaCourier ? checkout.shippingService.trim() : "Pickup langsung";
+  const courierLabel = viaCourier ? checkout.courier.trim() : "";
+  const serviceLabel = viaCourier ? checkout.shippingService.trim() : "";
 
   const notes = buildNotesWithShipping(
     buildPosNotes(
@@ -137,33 +137,54 @@ export async function completeWmsPosSale(
         buyer_phone: checkout.buyerPhone.trim(),
         channel_account_id: session.channelAccountId,
         pickup_code: pickupCode,
-        shipping: {
-          address: checkout.shippingAddress.trim(),
-          courier: courierLabel,
-          service: serviceLabel,
-          awb,
-          mp_order_no: mpOrderNo,
-        },
+        shipping: viaCourier
+          ? {
+              address: checkout.shippingAddress.trim(),
+              courier: courierLabel,
+              service: serviceLabel,
+              awb,
+              mp_order_no: mpOrderNo,
+            }
+          : {
+              address: "",
+              courier: "",
+              service: "",
+              awb: "",
+              mp_order_no: mpOrderNo,
+            },
       },
       [
-        viaCourier ? `Kirim via ekspedisi` : `Pickup langsung di toko`,
-        `Kurir: ${courierLabel}`,
-        `Layanan: ${serviceLabel}`,
-        awb ? `AWB: ${awb}` : "AWB: (nomor pickup otomatis)",
-        checkout.shippingAddress.trim()
-          ? `Alamat: ${checkout.shippingAddress.trim()}`
-          : "Alamat: (pickup di toko)",
+        viaCourier ? `Kirim via ekspedisi` : `Ambil sendiri di toko (WMS)`,
+        ...(viaCourier
+          ? [
+              `Kurir: ${courierLabel}`,
+              `Layanan: ${serviceLabel}`,
+              awb ? `AWB: ${awb}` : "AWB: (nomor pickup otomatis)",
+              checkout.shippingAddress.trim()
+                ? `Alamat: ${checkout.shippingAddress.trim()}`
+                : "Alamat: —",
+            ]
+          : [`Kode PK: ${pickupCode}`]),
         `Pembayaran: tempo ${WMS_PAYMENT_TERM_DAYS} hari (jatuh tempo ${dueDate})`,
       ].join("\n"),
     ),
-    {
-      enabled: viaCourier,
-      courier: courierLabel,
-      shipping_service: serviceLabel,
-      tracking_no: awb,
-      shipping_cost: shipping,
-      recipient_address: checkout.shippingAddress.trim(),
-    },
+    viaCourier
+      ? {
+          enabled: true,
+          courier: courierLabel,
+          shipping_service: serviceLabel,
+          tracking_no: awb,
+          shipping_cost: shipping,
+          recipient_address: checkout.shippingAddress.trim(),
+        }
+      : {
+          enabled: false,
+          courier: "",
+          shipping_service: "",
+          tracking_no: "",
+          shipping_cost: 0,
+          recipient_address: "",
+        },
   );
 
   const whRow = await pb
@@ -243,11 +264,13 @@ export async function completeWmsPosSale(
     lewat_wms: true,
     mp_order_no: mpOrderNo,
     pembeli_mp: checkout.buyerName.trim(),
-    ekspedisi: courierLabel,
+    ekspedisi: viaCourier ? courierLabel : "Ambil sendiri",
     no_resi: awb,
     alamat_kirim: checkout.shippingAddress.trim(),
     ongkir: shipping,
-    pesan: `Layanan: ${serviceLabel} · WA: ${checkout.buyerPhone.trim()}`,
+    pesan: viaCourier
+      ? `Layanan: ${serviceLabel} · WA: ${checkout.buyerPhone.trim()}`
+      : `Ambil sendiri · PK: ${pickupCode} · WA: ${checkout.buyerPhone.trim()}`,
     memo: `POS ${session.registerName}`,
   };
 

@@ -106,7 +106,7 @@ export function WorkDashboardStatusCard({ user, refreshing, onRefresh }: Props) 
         <Link href="/(tabs)/attendance" asChild>
           <Pressable style={styles.cta}>
             <Ionicons name="today" size={16} color="#fff" />
-            <Text style={styles.ctaTxt}>Check-in untuk buka pekerjaan operasional</Text>
+            <Text style={styles.ctaTxt}>Absen masuk untuk buka pekerjaan operasional</Text>
           </Pressable>
         </Link>
       ) : null}

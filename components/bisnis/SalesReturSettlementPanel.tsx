@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { settleSalesReturApi } from "@/lib/bisnis/client";
-import { settlementSummaryLines } from "@/lib/bisnis/sales-retur-settlement";
+import {
+  SETTLEMENT_OUTGOING_LABELS,
+  parseSettlementEstimateJson,
+} from "@/lib/bisnis/sales-retur-expected";
+import {
+  settlementSummaryLines,
+  settlementTotals,
+} from "@/lib/bisnis/sales-retur-settlement";
 import type { Retur } from "@/lib/bisnis/types";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -15,11 +22,89 @@ type Props = {
   onSettled?: () => void | Promise<void>;
 };
 
+function SettlementBreakdown({ retur }: { retur: Retur }) {
+  const estimate = parseSettlementEstimateJson(retur.settlement_estimate_json);
+  const lines = settlementSummaryLines(retur);
+  const totals = settlementTotals(estimate);
+  const mpClaim = Number(retur.mp_claim_amount) || 0;
+  const shippingReimb = Number(retur.shipping_reimb_amount) || 0;
+  const hasLines = lines.length > 0;
+  const hasLegacy = mpClaim > 0 || shippingReimb > 0;
+
+  if (!hasLines && !hasLegacy) {
+    return (
+      <p className="mt-2 text-xs text-slate-600">
+        Tidak ada beban / kompensasi tambahan — hanya nilai barang retur.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {hasLines ? (
+        <ul className="space-y-1 text-xs">
+          {lines.map((l) => {
+            const isOut = l.type in SETTLEMENT_OUTGOING_LABELS;
+            return (
+              <li key={l.type} className="flex justify-between gap-4">
+                <span className={isOut ? "text-rose-800" : "text-emerald-800"}>
+                  {isOut ? "− " : "+ "}
+                  {l.label}
+                </span>
+                <span className="font-mono tabular-nums">{fmt(l.amount)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {!hasLines && hasLegacy ? (
+        <ul className="space-y-1 text-xs">
+          {mpClaim > 0 ? (
+            <li className="flex justify-between gap-4 text-emerald-800">
+              <span>+ Kompensasi MP</span>
+              <span className="font-mono tabular-nums">{fmt(mpClaim)}</span>
+            </li>
+          ) : null}
+          {shippingReimb > 0 ? (
+            <li className="flex justify-between gap-4 text-rose-800">
+              <span>− Reimburse ongkir</span>
+              <span className="font-mono tabular-nums">{fmt(shippingReimb)}</span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      {(totals.outgoingTotal > 0 || totals.incomingTotal > 0) && (
+        <div className="flex flex-wrap gap-3 border-t border-slate-200/80 pt-2 text-xs font-semibold">
+          {totals.outgoingTotal > 0 ? (
+            <span className="text-rose-700">Total beban {fmt(totals.outgoingTotal)}</span>
+          ) : null}
+          {totals.incomingTotal > 0 ? (
+            <span className="text-emerald-700">Total kompensasi {fmt(totals.incomingTotal)}</span>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SalesReturSettlementPanel({ retur, onSettled }: Props) {
   const [settling, setSettling] = useState(false);
-  const open = retur.workflow_phase === "awaiting_settlement" && retur.status !== "completed";
+  const awaiting = retur.workflow_phase === "awaiting_settlement" && retur.status !== "completed";
+  const completed = retur.status === "completed" || retur.workflow_phase === "completed";
 
-  if (!open) return null;
+  if (!awaiting && !completed) return null;
+
+  if (completed) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">
+        <p className="font-semibold">Riwayat settlement</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Beban & kompensasi yang tercatat saat retur diselesaikan (terpisah dari total barang).
+        </p>
+        <SettlementBreakdown retur={retur} />
+      </div>
+    );
+  }
 
   const lines = settlementSummaryLines(retur);
 
@@ -37,7 +122,7 @@ export function SalesReturSettlementPanel({ retur, onSettled }: Props) {
   };
 
   return (
-    <div className="mb-4 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+    <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="font-semibold">Settlement retur — {retur.retur_no}</p>
@@ -45,16 +130,11 @@ export function SalesReturSettlementPanel({ retur, onSettled }: Props) {
             Stok sudah diposting. Konfirmasi pembukuan beban & recovery di bawah.
           </p>
           {lines.length > 0 ? (
-            <ul className="mt-2 space-y-1 text-xs">
-              {lines.map((l) => (
-                <li key={l.type} className="flex justify-between gap-4">
-                  <span>{l.label}</span>
-                  <span className="font-mono">{fmt(l.amount)}</span>
-                </li>
-              ))}
-            </ul>
+            <SettlementBreakdown retur={retur} />
           ) : (
-            <p className="mt-2 text-xs text-violet-800">Tidak ada estimasi settlement — akan diposting refund standar.</p>
+            <p className="mt-2 text-xs text-violet-800">
+              Tidak ada estimasi settlement — akan diposting refund standar.
+            </p>
           )}
         </div>
         <button

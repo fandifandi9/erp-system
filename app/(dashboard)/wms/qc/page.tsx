@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
@@ -9,8 +8,10 @@ import { WmsBadge, WmsCard, WmsNavTile, WmsSectionTitle, WmsLoading } from "@/co
 import { fetchZones, fetchWarehouses } from "@/lib/inventory/client";
 import { formatZoneLabel } from "@/lib/inventory/display";
 import type { InvZone, InvWarehouse } from "@/lib/inventory/types";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function WmsQcPage() {
+  const { t } = useLocale();
   const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [zones, setZones] = useState<InvZone[]>([]);
@@ -33,7 +34,7 @@ export default function WmsQcPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Quality Control" subtitle="Inspeksi barang setelah penerimaan — sebelum stok tersedia." module="wms">
+      <InventoryShell title={t("inventory.qc.title")} subtitle={t("inventory.qc.subtitle")} module="wms">
         <div className="grid gap-4 sm:grid-cols-2">
           <WmsNavTile
             href="/gudang/penerimaan"
@@ -68,11 +69,7 @@ export default function WmsQcPage() {
             <WmsLoading />
           ) : zones.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">
-              Belum ada zona QC. Buat di{" "}
-              <Link href="/inventory/zones" className="text-indigo-600 hover:underline">
-                Master zona
-              </Link>
-              .
+              {t("inventory.qc.emptyZones")}
             </p>
           ) : (
             <ul className="mt-4 space-y-2">

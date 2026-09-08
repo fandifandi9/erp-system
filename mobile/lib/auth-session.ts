@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import type PocketBase from "pocketbase";
+import { registerMobileSessionViaApi } from "@/lib/session-api";
 
 const MOBILE_SESSION_NONCE_KEY = "erp_pb_session_nonce";
 
@@ -32,20 +33,27 @@ export async function registerMobileSessionAfterAuth(
 ): Promise<void> {
   const id = pb.authStore.model?.id;
   if (!id) return;
+
+  const apiNonce = await registerMobileSessionViaApi().catch(() => null);
+  if (apiNonce) {
+    await setMobileSessionNonce(apiNonce);
+    return;
+  }
+
   const nonce =
     typeof globalThis !== "undefined" &&
     globalThis.crypto &&
     "randomUUID" in globalThis.crypto
       ? globalThis.crypto.randomUUID()
       : newNonce();
-  await pb.collection("users").update(id, { session_nonce: nonce });
+  await pb.collection("users").update(id, { mobile_session_nonce: nonce });
   await setMobileSessionNonce(nonce);
 }
 
 export async function shouldLogoutMobileSessionMismatch(fresh: {
-  session_nonce?: unknown;
+  mobile_session_nonce?: unknown;
 }): Promise<boolean> {
-  const server = String(fresh.session_nonce ?? "").trim();
+  const server = String(fresh.mobile_session_nonce ?? "").trim();
   if (!server) return false;
   const local = (await getMobileSessionNonce())?.trim() ?? "";
   /** Tanpa nonce lokal jangan langsung logout — bisa race setelah login / SecureStore lambat. */
@@ -62,7 +70,7 @@ export async function ensureMobileSessionNonceSynced(pb: PocketBase): Promise<vo
   try {
     const fresh = await pb.collection("users").getOne(id, { requestKey: null });
     const server = String(
-      (fresh as { session_nonce?: unknown }).session_nonce ?? ""
+      (fresh as { mobile_session_nonce?: unknown }).mobile_session_nonce ?? ""
     ).trim();
     if (!server) {
       await registerMobileSessionAfterAuth(pb);

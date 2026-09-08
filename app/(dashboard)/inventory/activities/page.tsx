@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { pb } from "@/lib/pocketbase";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
-import { fetchStaffActivities, fetchWarehouses } from "@/lib/inventory/client";
+import { useWorkContext } from "@/components/WorkContextProvider";
+import { fetchStaffActivities } from "@/lib/inventory/client";
 import {
   formatStaffDisplayName,
   formatWarehouseLabel,
@@ -12,16 +13,18 @@ import {
 } from "@/lib/inventory/display";
 import { canViewAllStaffActivities } from "@/lib/inventory/access";
 import { getErrorMessage } from "@/lib/errors";
-import type { InvStaffActivity, InvWarehouse } from "@/lib/inventory/types";
+import type { InvStaffActivity } from "@/lib/inventory/types";
 import { ACTIVITY_TYPE_LABELS } from "@/lib/inventory/labels";
 import { Loader2 } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function InventoryActivitiesPage() {
+  const { t } = useLocale();
   const user = pb.authStore.model as Record<string, unknown> | null;
   const userId = typeof user?.id === "string" ? user.id : "";
   const viewAll = Boolean(user && canViewAllStaffActivities(user));
+  const { warehouses } = useWorkContext();
   const [items, setItems] = useState<InvStaffActivity[]>([]);
-  const [warehouses, setWarehouses] = useState<InvWarehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,10 +47,6 @@ export default function InventoryActivitiesPage() {
   };
 
   useEffect(() => {
-    void fetchWarehouses().then(setWarehouses);
-  }, []);
-
-  useEffect(() => {
     if (!userId && !viewAll) return;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -56,12 +55,8 @@ export default function InventoryActivitiesPage() {
   return (
     <InventoryGate>
       <InventoryShell
-        title="Aktivitas staff"
-        subtitle={
-          viewAll
-            ? "Log masuk zona dan aktivitas gudang (supervisor+)."
-            : "Riwayat aktivitas Anda di gudang."
-        }
+        title={t("inventory.activities.title")}
+        subtitle={t("inventory.activities.subtitle")}
       >
         {error ? (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -72,7 +67,7 @@ export default function InventoryActivitiesPage() {
           value={warehouseId}
           onChange={(e) => setWarehouseId(e.target.value)}
         >
-          <option value="">Semua gudang</option>
+          <option value="">{t("inventory.common.all")}</option>
           {warehouses.map((w) => (
             <option key={w.id} value={w.id}>
               {w.code} — {w.name}
@@ -88,7 +83,7 @@ export default function InventoryActivitiesPage() {
                 {viewAll ? <th className="px-4 py-3">Staff</th> : null}
                 <th className="px-4 py-3">Aktivitas</th>
                 <th className="px-4 py-3">Zona / tempat</th>
-                <th className="px-4 py-3">Gudang</th>
+                <th className="px-4 py-3">{t("inventory.common.warehouse")}</th>
               </tr>
             </thead>
             <tbody>
@@ -101,7 +96,7 @@ export default function InventoryActivitiesPage() {
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={viewAll ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
-                    Belum ada aktivitas tercatat.
+                    {t("inventory.activities.empty")}
                   </td>
                 </tr>
               ) : (

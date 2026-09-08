@@ -1,0 +1,18 @@
+{
+  "at": "2026-08-29T04:21:02.216Z",
+  "url": "https://pb.serba.space",
+  "counts": {
+    "users": 23,
+    "profiles": 23,
+    "leave_requests": 34,
+    "notifications": null,
+    "push_tokens": null,
+    "hr_rating_periods": 0,
+    "hr_rating_assignments": 0,
+    "hr_rating_results": 0,
+    "hr_staff_reports": 0,
+    "hr_findings": 0,
+    "hr_case_attachments": 0
+  },
+  "schema": {}
+}

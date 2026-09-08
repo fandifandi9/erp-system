@@ -11,6 +11,8 @@ export const laporanEn: MessageTree = {
   sdm: {
     title: "HR Reports",
     subtitle: "Attendance summary and HR report access",
+    titleHr: "Reports & Findings Summary",
+    subtitleHr: "Today's numbers and shortcuts to HR operations",
     statEmployees: "Employees",
     statPresent: "Present today",
     statLate: "Late",

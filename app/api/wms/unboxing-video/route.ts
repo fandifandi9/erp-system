@@ -1,11 +1,97 @@
+import { createReadStream } from "fs";
+import { stat } from "fs/promises";
+import path from "path";
 import { NextResponse } from "next/server";
+import { Readable } from "stream";
 import { getApiAuthUser } from "@/lib/inventory/api-auth";
+import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import {
   saveUnboxingPhotoLocal,
   saveUnboxingVideoLocal,
+  resolveSafeUnboxingFilePath,
   type UnboxingEntityKind,
 } from "@/lib/wms/unboxing-media-storage";
-import { serializeUnboxingMedia } from "@/lib/wms/unboxing-media";
+import { parseUnboxingMedia, serializeUnboxingMedia } from "@/lib/wms/unboxing-media";
+import { BISNIS_COLLECTIONS, type Retur } from "@/lib/bisnis/types";
+
+function contentTypeFor(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case ".mp4":
+      return "video/mp4";
+    case ".webm":
+      return "video/webm";
+    case ".mov":
+      return "video/quicktime";
+    case ".mkv":
+      return "video/x-matroska";
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    case ".heic":
+    case ".heif":
+      return "image/heic";
+    case ".jpg":
+    case ".jpeg":
+    default:
+      return "image/jpeg";
+  }
+}
+
+/** Tampilkan bukti unboxing retur (auth wajib). */
+export async function GET(req: Request) {
+  try {
+    const ctx = await getApiAuthUser(req);
+    if (!ctx) return NextResponse.json({ error: "Login diperlukan" }, { status: 401 });
+
+    const url = new URL(req.url);
+    const returId = url.searchParams.get("retur_id")?.trim() || "";
+    const kind = url.searchParams.get("kind")?.trim() || "video";
+    const index = Math.max(0, Number(url.searchParams.get("index") || 0) || 0);
+
+    if (!returId) {
+      return NextResponse.json({ error: "retur_id wajib" }, { status: 400 });
+    }
+    if (kind !== "video" && kind !== "photo") {
+      return NextResponse.json({ error: "kind tidak valid" }, { status: 400 });
+    }
+
+    const adminPb = await getInventoryAdminPb();
+    const retur = await adminPb.collection(BISNIS_COLLECTIONS.returs).getOne<Retur>(returId);
+    const media = parseUnboxingMedia(retur.unboxing_video_path);
+    const stored =
+      kind === "video" ? media.video : (media.photos ?? [])[index];
+    if (!stored) {
+      return NextResponse.json({ error: "Bukti tidak ditemukan" }, { status: 404 });
+    }
+
+    const safePath = resolveSafeUnboxingFilePath(stored);
+    if (!safePath) {
+      return NextResponse.json({ error: "Path bukti tidak valid" }, { status: 400 });
+    }
+
+    const info = await stat(safePath);
+    if (!info.isFile()) {
+      return NextResponse.json({ error: "File bukti tidak ditemukan" }, { status: 404 });
+    }
+
+    const nodeStream = createReadStream(safePath);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
+    return new NextResponse(webStream, {
+      headers: {
+        "Content-Type": contentTypeFor(safePath),
+        "Content-Length": String(info.size),
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Gagal memuat bukti unboxing" },
+      { status: 500 },
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {

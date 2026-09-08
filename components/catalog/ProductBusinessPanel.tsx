@@ -10,10 +10,6 @@ import {
   updateCatalogProduct,
 } from "@/lib/catalog/client";
 import { mergeProductStorePrices, type ProductStorePriceRow } from "@/lib/catalog/product-store-prices";
-import {
-  fetchProductStockByStore,
-  fetchProductsGlobalStock,
-} from "@/lib/catalog/product-stock";
 import { isProductLowStock } from "@/lib/catalog/product-last-sale";
 import { fetchSalesStores } from "@/lib/bisnis/client";
 import type { CatalogProduct } from "@/lib/catalog/types";
@@ -34,12 +30,16 @@ export function ProductBusinessPanel({
   product,
   canEditPrices,
   showBuyPrice,
+  globalStock: globalStockProp,
+  stockByStore: stockByStoreProp,
   onSaved,
   onEditWholesale,
 }: {
   product: CatalogProduct;
   canEditPrices: boolean;
   showBuyPrice: boolean;
+  globalStock?: number;
+  stockByStore?: Record<string, number>;
   onSaved: () => void | Promise<void>;
   onEditWholesale?: () => void;
 }) {
@@ -67,19 +67,18 @@ export function ProductBusinessPanel({
         setBuyPrice(product.buy_price ?? 0);
         return;
       }
-      const [stores, priceRes, globalMap, stockByStore] = await Promise.all([
+      const [stores, priceRes] = await Promise.all([
         fetchSalesStores(),
         fetchProductStorePrices(product.id),
-        fetchProductsGlobalStock([product.id]),
-        fetchProductStockByStore(product.id),
       ]);
       const retail = mergeProductStorePrices(stores, priceRes.items ?? []);
+      const stockByStore = stockByStoreProp ?? {};
       const rows: StoreRow[] = retail.map((r) => ({
         ...r,
         stock: stockByStore[r.storeId] ?? 0,
       }));
       setStoreRows(rows);
-      setGlobalStock(globalMap[product.id] ?? 0);
+      setGlobalStock(globalStockProp ?? 0);
       setSellPrice(product.sell_price ?? 0);
       setBuyPrice(product.buy_price ?? 0);
       const drafts: Record<string, number> = {};
@@ -91,11 +90,20 @@ export function ProductBusinessPanel({
     } finally {
       setLoading(false);
     }
-  }, [product.id, product.sell_price, product.buy_price, isBundle]);
+  }, [product.id, product.sell_price, product.buy_price, isBundle, globalStockProp, stockByStoreProp]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (globalStockProp === undefined) return;
+    setGlobalStock(globalStockProp);
+    if (!stockByStoreProp) return;
+    setStoreRows((prev) =>
+      prev.map((row) => ({ ...row, stock: stockByStoreProp[row.storeId] ?? 0 })),
+    );
+  }, [globalStockProp, stockByStoreProp]);
 
   const lowStock = !isBundle && isProductLowStock(globalStock, product.min_stock);
 

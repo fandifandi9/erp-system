@@ -2,6 +2,25 @@ import { pb } from "@/lib/pocketbase";
 import { BISNIS_COLLECTIONS } from "./types";
 import type { CompanyProfile } from "./types";
 
+function companyApiHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (pb.authStore.token) h.Authorization = `Bearer ${pb.authStore.token}`;
+  return h;
+}
+
+async function parseCompanyApiResponse(res: Response): Promise<CompanyProfile> {
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    data?: CompanyProfile;
+  };
+  if (!res.ok || json.ok === false) {
+    throw new Error(json.error || `HTTP ${res.status}`);
+  }
+  if (!json.data?.id) throw new Error("Respons entitas tidak valid.");
+  return json.data;
+}
+
 /** Semua entitas/perusahaan aktif. */
 export async function fetchCompanyProfiles(activeOnly = true): Promise<CompanyProfile[]> {
   const filter = activeOnly ? "is_active = true" : "";
@@ -25,14 +44,22 @@ export async function fetchCompanyProfile(companyId?: string): Promise<CompanyPr
   return list[0] ?? null;
 }
 
+/** Buat / ubah entitas via server API (Owner) — PB client createRule local sering admin-only. */
 export async function saveCompanyProfile(data: Partial<CompanyProfile>, existingId?: string) {
   if (existingId) {
-    return pb.collection(BISNIS_COLLECTIONS.companyProfile).update<CompanyProfile>(existingId, data);
+    const res = await fetch(`/api/master-data/legal-entities/${encodeURIComponent(existingId)}`, {
+      method: "PATCH",
+      headers: companyApiHeaders(),
+      body: JSON.stringify(data),
+    });
+    return parseCompanyApiResponse(res);
   }
-  return pb.collection(BISNIS_COLLECTIONS.companyProfile).create<CompanyProfile>({
-    is_active: true,
-    ...data,
+  const res = await fetch("/api/master-data/legal-entities", {
+    method: "POST",
+    headers: companyApiHeaders(),
+    body: JSON.stringify({ is_active: true, ...data }),
   });
+  return parseCompanyApiResponse(res);
 }
 
 /** Nonaktifkan entitas (soft delete) — data historis tetap ada. */
@@ -46,9 +73,12 @@ export async function activateCompanyProfile(id: string) {
 }
 
 export async function setCompanyProfileActive(id: string, isActive: boolean) {
-  return pb.collection(BISNIS_COLLECTIONS.companyProfile).update<CompanyProfile>(id, {
-    is_active: isActive,
+  const res = await fetch(`/api/master-data/legal-entities/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: companyApiHeaders(),
+    body: JSON.stringify({ is_active: isActive }),
   });
+  return parseCompanyApiResponse(res);
 }
 
 /** @deprecated — gunakan deactivateCompanyProfile */

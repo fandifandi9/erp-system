@@ -38,8 +38,8 @@ export type SalesReturSettlementEstimate = {
 };
 
 export const SETTLEMENT_OUTGOING_LABELS: Record<SettlementOutgoingType, string> = {
-  refund_customer: "Refund Customer",
-  seller_shipping: "Ongkir Penjual",
+  refund_customer: "Kembalikan dana",
+  seller_shipping: "Ongkir ditanggung penjual",
   voucher: "Voucher",
   cashback: "Cashback",
   goodwill: "Goodwill",
@@ -157,7 +157,18 @@ export function legacyAmountsFromSettlement(estimate?: SalesReturSettlementEstim
 
 export type CreateSalesReturInput = {
   reason?: string;
+  /** Catatan claim / internal bisnis. */
   notes?: string;
+  /** Instruksi ke tim WMS. */
+  notes_for_wms?: string;
+  /** Nomor retur platform (MP) — menggantikan tampilan RET sistem. */
+  platform_retur_no?: string;
+  /** Cara pengembalian barang ke gudang. */
+  return_method?: "dropoff" | "courier";
+  /** Nama ekspedisi (wajib jika return_method = courier). */
+  return_courier?: string;
+  /** Nomor lacak / resi retur (wajib jika via ekspedisi). */
+  return_tracking_no?: string;
   /** @deprecated gunakan settlement_estimate */
   mp_claim_amount?: number;
   /** @deprecated gunakan settlement_estimate */

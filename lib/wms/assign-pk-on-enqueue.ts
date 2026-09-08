@@ -1,11 +1,11 @@
 import type { SalesOrder } from "@/lib/bisnis/types";
 import { parseOutboundWorkflow, serializeOutboundWorkflow } from "./outbound-workflow";
 import { getPkFromSo } from "./pk-identity";
-import { buildPkQrPayload, formatPkDisplay } from "./pk-number";
+import { buildPkQrPayload, pkCodeBody } from "./pk-number";
 
 /**
  * WMS hanya mencerminkan nomor PK yang sudah ditetapkan di SO (dari POS / pembuat order).
- * Tidak membuat nomor PK urut baru.
+ * Tidak membuat nomor PK urut baru. Awalan "PK" tidak disimpan — hanya label UI.
  */
 export function mirrorPkOnOutboundWorkflow(
   so: Pick<SalesOrder, "pk_no" | "order_no" | "outbound_workflow_json">,
@@ -16,7 +16,7 @@ export function mirrorPkOnOutboundWorkflow(
   if (!raw) {
     throw new Error("SO belum punya nomor pesanan / PK — tidak bisa masuk antrean WMS.");
   }
-  const pkNo = formatPkDisplay(raw);
+  const pkNo = pkCodeBody(raw);
   const wf = parseOutboundWorkflow(workflowJson);
   const merged = {
     ...wf,

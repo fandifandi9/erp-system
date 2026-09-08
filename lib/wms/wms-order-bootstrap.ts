@@ -25,9 +25,13 @@ export async function buildInitialOutboundWorkflow(
       invoice_no: invoiceNo ?? undefined,
       warehouse_id: so.warehouse,
       warehouse_name: so.expand?.warehouse?.name,
+      store_id: so.store,
+      store_name: so.expand?.store?.name,
       customer_name: so.expand?.customer?.name,
       courier: shipping.courier || undefined,
+      shipping_service: shipping.shipping_service || undefined,
       recipient_address: shipping.recipient_address || undefined,
+      shipping_cost: shipping.shipping_cost > 0 ? shipping.shipping_cost : 0,
     },
     pick: {
       user_id: opts?.userId ?? "",

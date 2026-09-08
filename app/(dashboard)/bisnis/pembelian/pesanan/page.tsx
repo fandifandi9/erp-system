@@ -13,8 +13,8 @@ import {
   fetchStores,
   getPurchaseOrderDocStatus,
   ORDER_DOC_STATUS_UI,
-  openPurchaseOrdersListFilterToPb,
-  OPEN_ORDER_DOC_STATUS_FILTER,
+  ORDER_DOC_STATUS_FILTER,
+  purchaseOrderFilterToPb,
   WMS_ROUTE_FILTER,
   wmsOrderFilterToPb,
   isWmsSchemaFilterError,
@@ -39,6 +39,7 @@ import { useLocale } from "@/components/LocaleProvider";
 const ORDER_FILTER_KEY: Record<string, string> = {
   all: "purchase.filter.allStatus",
   draft: "purchase.filter.draft",
+  finished: "purchase.filter.finished",
   cancelled: "purchase.filter.cancelled",
 };
 
@@ -53,6 +54,7 @@ const WMS_FILTER_KEY: Record<string, string> = {
 
 const ORDER_STATUS_KEY: Record<string, string> = {
   draft: "purchase.filter.draft",
+  finished: "purchase.filter.finished",
   cancelled: "purchase.filter.cancelled",
 };
 
@@ -85,7 +87,7 @@ export default function PurchaseOrderListPage() {
       const filters: string[] = [];
       const poSearch = buildDocSearchFilter(search, PURCHASE_ORDER_SEARCH_FIELDS);
       if (poSearch) filters.push(poSearch);
-      const statusPb = openPurchaseOrdersListFilterToPb(statusFilter);
+      const statusPb = purchaseOrderFilterToPb(statusFilter);
       if (statusPb) filters.push(statusPb);
       const wmsPb = wmsOrderFilterToPb(wmsFilter);
       if (wmsPb) filters.push(wmsPb);
@@ -166,7 +168,7 @@ export default function PurchaseOrderListPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
           >
-            {OPEN_ORDER_DOC_STATUS_FILTER.map((f) => (
+            {ORDER_DOC_STATUS_FILTER.map((f) => (
               <option key={f.value} value={f.value}>
                 {t(ORDER_FILTER_KEY[f.value] ?? f.value)}
               </option>
@@ -226,9 +228,10 @@ export default function PurchaseOrderListPage() {
                   const doc = getPurchaseOrderDocStatus(po);
                   const st = ORDER_DOC_STATUS_UI[doc];
                   const qcExc = purchaseQcExceptionBadge(po);
-                  const poHref = qcExc
-                    ? `/bisnis/pembelian/${po.id}`
-                    : `/bisnis/pembelian/buat?po=${po.id}`;
+                  const poHref =
+                    doc === "draft"
+                      ? `/bisnis/pembelian/buat?po=${po.id}`
+                      : `/bisnis/pembelian/${po.id}`;
                   return (
                     <tr
                       key={po.id}

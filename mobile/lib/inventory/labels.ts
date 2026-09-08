@@ -16,7 +16,7 @@ export const PACKING_STATUS_LABELS: Record<string, string> = {
 export const OPNAME_STATUS_LABELS: Record<string, string> = {
   draft: "Draf",
   counting: "Menghitung",
-  review: "Review",
+  review: "Ditinjau",
   approved: "Disetujui",
   posted: "Diposting",
   cancelled: "Dibatalkan",

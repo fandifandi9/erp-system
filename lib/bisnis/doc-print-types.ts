@@ -22,6 +22,8 @@ export type BizDocLine = {
   unitPrice: string;
   discount?: string;
   lineTotal: string;
+  /** Nomor seri unit (jika produk pakai serial number). */
+  serials?: string[];
 };
 
 export type BizDocTotalsRow = {
@@ -34,6 +36,7 @@ export type BizDocTotalsRow = {
 /** Info pengiriman terstruktur (display-only, dari blok notes). */
 export type BizDocShippingInfo = {
   courier?: string;
+  service?: string;
   trackingNo?: string;
 };
 

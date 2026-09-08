@@ -17,6 +17,8 @@ export type BarcodeLabelItem = {
   encodeValue: string;
   /** Judul / nama produk */
   title?: string;
+  /** Salinan khusus item ini (mis. qty penerimaan); fallback ke `copiesPerItem` job. */
+  copies?: number;
 };
 
 export type LabelDimensions = {
@@ -195,10 +197,15 @@ async function loadCodeImages(
   return { barcode: await generateBarcodeDataUrl(value, symbology, { barHeight: barH }) };
 }
 
+function copiesForItem(item: BarcodeLabelItem, job: BarcodeLabelJob): number {
+  const raw = item.copies ?? job.copiesPerItem;
+  return Math.min(Math.max(1, Math.floor(raw)), 500);
+}
+
 function expandItems(job: BarcodeLabelJob): BarcodeLabelItem[] {
-  const copies = Math.min(Math.max(1, Math.floor(job.copiesPerItem)), 500);
   const flat: BarcodeLabelItem[] = [];
   for (const item of job.items) {
+    const copies = copiesForItem(item, job);
     for (let c = 0; c < copies; c++) flat.push(item);
   }
   return flat;
@@ -368,6 +375,100 @@ function stickerHtml(s: StickerRender, job: BarcodeLabelJob): string {
   return `<div class="sticker ${symClass}">${lines.join("")}</div>`;
 }
 
+function thermalPrintOrientation(widthMm: number, heightMm: number): string {
+  return widthMm >= heightMm ? "landscape" : "portrait";
+}
+
+const THERMAL_PRINT_MAX_LABELS = 100;
+
+function labelCacheKey(item: BarcodeLabelItem, job: BarcodeLabelJob): string {
+  return [
+    item.encodeValue,
+    item.title ?? "",
+    job.symbology,
+    job.showTitle,
+    job.showCode,
+    job.label.widthMm,
+    job.label.heightMm,
+  ].join("\0");
+}
+
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+/** Bangun HTML stiker termal — ringan, tanpa canvas (hindari freeze browser). */
+async function buildThermalStickerHtml(
+  flat: BarcodeLabelItem[],
+  job: BarcodeLabelJob,
+): Promise<string[]> {
+  const cache = new Map<string, string>();
+  const stickers: string[] = [];
+  for (let i = 0; i < flat.length; i++) {
+    const item = flat[i]!;
+    const key = labelCacheKey(item, job);
+    let chunk = cache.get(key);
+    if (!chunk) {
+      const s = await renderStickerData(item, job);
+      chunk = stickerHtml(s, job);
+      cache.set(key, chunk);
+      await yieldToMain();
+    }
+    stickers.push(chunk);
+    if (i > 0 && i % 5 === 0) await yieldToMain();
+  }
+  return stickers;
+}
+
+async function printThermalLabels(job: BarcodeLabelJob, flat: BarcodeLabelItem[]): Promise<void> {
+  const { widthMm, heightMm } = job.label;
+  const orient = thermalPrintOrientation(widthMm, heightMm);
+
+  const win = window.open("", "_blank", "width=480,height=520");
+  if (!win) throw new Error("Izinkan pop-up untuk mencetak.");
+  win.document.open();
+  win.document.write(
+    `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>Cetak label</title></head><body style="margin:0;font-family:Arial,sans-serif;padding:24px;color:#334155">Menyiapkan ${flat.length} label…</body></html>`,
+  );
+  win.document.close();
+
+  const stickers = await buildThermalStickerHtml(flat, job);
+  const titleSize = heightMm <= 20 ? "6pt" : heightMm <= 30 ? "7pt" : "8pt";
+  const codeSize = heightMm <= 20 ? "6pt" : "7pt";
+
+  const html = `<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8"/><title>Cetak label</title>
+<style>
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; padding: 0; font-family: Arial, sans-serif; color: #000; }
+.sticker {
+  width: ${widthMm}mm; height: ${heightMm}mm; padding: 1mm 1.5mm;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; overflow: hidden; background: #fff;
+  page-break-inside: avoid; break-inside: avoid;
+  page-break-after: always; break-after: page;
+}
+.sticker:last-child { page-break-after: auto; break-after: auto; }
+.title { font-size: ${titleSize}; font-weight: 700; margin: 0 0 0.5mm; line-height: 1.1;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code { font-family: Consolas, monospace; font-size: ${codeSize}; font-weight: 700; margin: 0.3mm 0 0; }
+.codes { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
+.bc { max-width: 96%; max-height: ${Math.round(heightMm * 0.55)}mm; object-fit: contain; }
+.qr { max-width: ${Math.min(widthMm * 0.75, heightMm * 0.65)}mm; max-height: ${Math.min(widthMm * 0.75, heightMm * 0.65)}mm; object-fit: contain; }
+@media print {
+  @page { size: ${widthMm}mm ${heightMm}mm ${orient}; margin: 0; }
+}
+</style></head><body>${stickers.join("")}
+<script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>
+</body></html>`;
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
 export async function printBarcodeLabels(job: BarcodeLabelJob): Promise<void> {
   if (typeof window === "undefined") return;
   const flat = expandItems(job);
@@ -381,23 +482,30 @@ export async function printBarcodeLabels(job: BarcodeLabelJob): Promise<void> {
   const paper = SHEET_PAPERS.find((p) => p.id === job.paper);
   const grid = paper ? sheetGrid(paper, job.label) : null;
 
+  if (thermal) {
+    if (flat.length > THERMAL_PRINT_MAX_LABELS) {
+      alert(
+        `Terlalu banyak label (${flat.length}). Maks. ${THERMAL_PRINT_MAX_LABELS} per cetak — kurangi salinan atau unduh PDF.`,
+      );
+      return;
+    }
+    await printThermalLabels(job, flat);
+    return;
+  }
+
   const rendered: string[] = [];
   for (const item of flat) {
     const s = await renderStickerData(item, job);
     rendered.push(stickerHtml(s, job));
   }
 
-  const pageCss = thermal
-    ? `@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }`
-    : paper
-      ? `@page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 8mm; }`
-      : `@page { margin: 8mm; }`;
+  const pageCss = paper
+    ? `@page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 8mm; }`
+    : `@page { margin: 8mm; }`;
 
-  const gridCss = thermal
-    ? `grid-template-columns: ${widthMm}mm; gap: 0;`
-    : grid
-      ? `grid-template-columns: repeat(${grid.cols}, ${widthMm}mm); gap: 2mm;`
-      : `grid-template-columns: ${widthMm}mm; gap: 2mm;`;
+  const gridCss = grid
+    ? `grid-template-columns: repeat(${grid.cols}, ${widthMm}mm); gap: 2mm;`
+    : `grid-template-columns: ${widthMm}mm; gap: 2mm;`;
 
   const titleSize = heightMm <= 20 ? "6pt" : heightMm <= 30 ? "7pt" : "8pt";
   const codeSize = heightMm <= 20 ? "6pt" : "7pt";
@@ -406,13 +514,13 @@ export async function printBarcodeLabels(job: BarcodeLabelJob): Promise<void> {
 <html lang="id"><head><meta charset="utf-8"/><title>Cetak label</title>
 <style>
 * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body { margin: 0; padding: ${thermal ? "0" : "0"}; font-family: Arial, sans-serif; color: #000; }
+body { margin: 0; padding: 0; font-family: Arial, sans-serif; color: #000; }
 .grid { display: grid; ${gridCss} justify-content: start; }
 .sticker {
   width: ${widthMm}mm; height: ${heightMm}mm; padding: 1mm 1.5mm;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; overflow: hidden; background: #fff;
-  border: ${thermal ? "none" : "1px dashed #ddd"};
+  border: 1px dashed #ddd;
 }
 .title { font-size: ${titleSize}; font-weight: 700; margin: 0 0 0.5mm; line-height: 1.1;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -422,7 +530,6 @@ body { margin: 0; padding: ${thermal ? "0" : "0"}; font-family: Arial, sans-seri
 .qr { max-width: ${Math.min(widthMm * 0.75, heightMm * 0.65)}mm; max-height: ${Math.min(widthMm * 0.75, heightMm * 0.65)}mm; object-fit: contain; }
 @media print {
   .sticker { page-break-inside: avoid; break-inside: avoid; }
-  ${thermal ? ".sticker { page-break-after: always; }" : ""}
   ${pageCss}
 }
 </style></head><body><div class="grid">${rendered.join("")}</div>

@@ -12,7 +12,7 @@ type SalesRowKey = "issue_date" | "invoice_no" | "customer_name" | "status_label
 
 const SALES_COLUMNS: XlsxColumnDef<SalesRowKey>[] = [
   { header: "Tanggal", key: "issue_date", width: 14, type: "date" },
-  { header: "No. Invoice", key: "invoice_no", width: 18, type: "text" },
+  { header: "No. faktur", key: "invoice_no", width: 18, type: "text" },
   { header: "Pelanggan", key: "customer_name", width: 28, type: "text" },
   { header: "Status", key: "status_label", width: 14, type: "text" },
   { header: "Total", key: "total", width: 16, type: "currency_idr" },

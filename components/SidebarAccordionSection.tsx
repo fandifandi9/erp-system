@@ -35,7 +35,7 @@ export function SidebarAccordionSection({
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
         className={
-          "flex w-full items-center justify-between gap-2 rounded-lg px-2 text-left transition " +
+          "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left transition " +
           (compact ? "py-1.5" : "py-2.5") +
           " " +
           (open || active
@@ -47,7 +47,7 @@ export function SidebarAccordionSection({
           className={
             compact
               ? "text-[10px] font-bold uppercase tracking-wider"
-              : "text-xs font-bold uppercase tracking-wide"
+              : "text-xs font-bold uppercase leading-snug tracking-wide"
           }
         >
           {title}

@@ -10,6 +10,8 @@ import {
   PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD,
 } from "./profile";
 import { countScheduledWorkDays, fetchHolidayDatesInRange, fetchWorkCalendarMask } from "./work-calendar";
+import { fetchPrimaryAdministrativeEntityForUser } from "./hr/profile-primary-entity";
+import { resolveDeductionRatesForEmployee } from "./hr/entity-attendance-policy";
 
 export const PAYROLL_SETTINGS_COLLECTION = "payroll_settings";
 export const PAYROLL_PERIODS_COLLECTION = "payroll_periods";
@@ -483,11 +485,19 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
       const fixedAllowance = 0;
       const dailyRate = baseSalary / 30;
       const hourlyRate = dailyRate / 8;
-      const minuteRate = hourlyRate / 60;
       const customLatePerMin = Math.max(0, toNumber(p[PROFILE_LATE_DEDUCTION_PER_MINUTE_FIELD], 0));
       const customAbsencePerDay = Math.max(0, toNumber(p[PROFILE_ABSENCE_DEDUCTION_PER_DAY_FIELD], 0));
-      const effectiveMinuteRate = customLatePerMin > 0 ? customLatePerMin : minuteRate;
-      const effectiveDailyAbsenceRate = customAbsencePerDay > 0 ? customAbsencePerDay : dailyRate;
+
+      const primaryEntity = await fetchPrimaryAdministrativeEntityForUser(pb, uid);
+      const rates = await resolveDeductionRatesForEmployee(pb, {
+        companyId: primaryEntity.company_id,
+        asOfYmd: period.end_date,
+        profileLateOverride: customLatePerMin > 0 ? customLatePerMin : undefined,
+        profileAbsenceOverride: customAbsencePerDay > 0 ? customAbsencePerDay : undefined,
+        baseSalary,
+      });
+      const effectiveMinuteRate = rates.lateEnabled ? rates.latePerMinute : 0;
+      const effectiveDailyAbsenceRate = rates.absenceEnabled ? rates.absencePerDay : 0;
 
       const attendance = await getAttendanceStats(uid, period.start_date, period.end_date);
       const approvedLeaveDays = await getApprovedLeaveDays(uid, period.start_date, period.end_date);
@@ -538,8 +548,16 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
         reason: extraEval.reason,
       };
 
-      const lateDeduction = Math.round(attendance.lateMinutes * effectiveMinuteRate);
-      const absenceDeduction = Math.round(bonusInfo.unexcusedAbsence * effectiveDailyAbsenceRate);
+      const billableLateMinutes = Math.max(
+        0,
+        attendance.lateMinutes - rates.graceMinutes * Math.max(attendance.lateDays, attendance.lateMinutes > 0 ? 1 : 0),
+      );
+      const lateDeduction = rates.lateEnabled
+        ? Math.round(billableLateMinutes * effectiveMinuteRate)
+        : 0;
+      const absenceDeduction = rates.absenceEnabled
+        ? Math.round(bonusInfo.unexcusedAbsence * effectiveDailyAbsenceRate)
+        : 0;
 
       const gross = Math.round(
         baseSalary +
@@ -585,6 +603,16 @@ export async function generatePayrollItems(periodId: string): Promise<{ success:
         extra_bonus_reason: extraBonusInfo.reason,
         late_deduction: lateDeduction,
         absence_deduction: absenceDeduction,
+        attendance_policy_id: rates.policyId || "",
+        attendance_policy_snapshot: rates.policyId
+          ? JSON.stringify({
+              policy_id: rates.policyId,
+              effective_from: rates.effectiveFrom,
+              late_rate_per_minute: rates.latePerMinute,
+              absence_rate_per_day: rates.absencePerDay,
+              grace_minutes: rates.graceMinutes,
+            })
+          : "",
         loan_deduction: 0,
         other_deduction: 0,
         gross_amount: gross,
@@ -755,6 +783,16 @@ export async function updatePayrollPeriodStatus(
       payload.locked_at = new Date().toISOString();
     }
     await pb.collection(PAYROLL_PERIODS_COLLECTION).update(periodId, payload);
+    if (["approved", "paid", "closed"].includes(String(status).toLowerCase())) {
+      try {
+        await fetch(`/api/hr/payroll/periods/${encodeURIComponent(periodId)}/stamp-snapshots`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch {
+        // non-blocking — snapshots may be stamped on first slip view
+      }
+    }
     return { success: true, message: `Status periode diubah ke ${status}.` };
   } catch (e: unknown) {
     return { success: false, message: e instanceof Error ? e.message : "Gagal update status periode." };

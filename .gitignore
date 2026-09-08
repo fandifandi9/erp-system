@@ -54,6 +54,9 @@ storage/
 # Staging deploy local overrides (secrets)
 deploy/staging/*.local
 
+# Local PocketBase binary (downloaded; never production/staging)
+tools/local-pb/
+
 # vercel
 .vercel
 

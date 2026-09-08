@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ArrowLeft, Bell, Mail } from "lucide-react";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useLocale } from "@/components/LocaleProvider";
 
 export default function NotifikasiPage() {
@@ -22,7 +21,12 @@ export default function NotifikasiPage() {
 
       <div className="space-y-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <LanguageSwitcher />
+          <p className="text-sm text-slate-600">
+            {t("pengaturan.notifikasi.languageMoved")}{" "}
+            <Link href="/profile" className="font-semibold text-indigo-600 hover:underline">
+              {t("dashboard.profile")}
+            </Link>
+          </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

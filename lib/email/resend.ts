@@ -24,8 +24,11 @@ export function getAppBaseUrl(req?: Request): string {
   if (env) return env;
   if (req) {
     const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-    const proto = req.headers.get("x-forwarded-proto") ?? "http";
+    const proto = req.headers.get("x-forwarded-proto") ?? "https";
     if (host) return `${proto}://${host}`;
   }
-  return "http://localhost:3000";
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_APP_URL wajib diset di production.");
+  }
+  return "http://127.0.0.1:3000";
 }

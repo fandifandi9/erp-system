@@ -3,6 +3,8 @@
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
 import { PermintaanBarangTabs } from "@/components/wms/PermintaanBarangTabs";
+import { ValidatorWorkstationProvider } from "@/components/wms/ValidatorWorkstationProvider";
+import { PickingModeProvider } from "@/components/wms/PickingModeToolbar";
 import { useLocale } from "@/components/LocaleProvider";
 
 export default function PermintaanBarangLayout({ children }: { children: React.ReactNode }) {
@@ -14,8 +16,12 @@ export default function PermintaanBarangLayout({ children }: { children: React.R
         subtitle={t("wms.permintaan.subtitle")}
         module="wms"
       >
-        <PermintaanBarangTabs />
-        {children}
+        <ValidatorWorkstationProvider>
+          <PickingModeProvider>
+            <PermintaanBarangTabs />
+            {children}
+          </PickingModeProvider>
+        </ValidatorWorkstationProvider>
       </InventoryShell>
     </InventoryGate>
   );

@@ -18,7 +18,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.erp.staff",
       "infoPlist": {
-        "NSCameraUsageDescription": "Kamera dipakai untuk foto absensi dan profil.",
+        "NSCameraUsageDescription": "Kamera dipakai untuk foto absensi, laporan, temuan, dan profil.",
+        "NSPhotoLibraryUsageDescription": "Galeri dipakai untuk lampiran laporan, temuan, dan foto profil.",
+        "NSPhotoLibraryAddUsageDescription": "Galeri dipakai untuk menyimpan atau memilih lampiran laporan dan temuan.",
         "NSLocationWhenInUseUsageDescription": "Lokasi dipakai untuk validasi absensi di zona kantor.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Lokasi dipakai untuk absensi saat aplikasi dibuka.",
         "UIBackgroundModes": [
@@ -59,7 +61,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Izinkan kamera untuk foto absensi.",
+          "cameraPermission": "Izinkan kamera untuk foto absensi, laporan, dan temuan.",
           "microphonePermission": "Izinkan mikrofon jika rekaman diperlukan.",
           "recordAudioAndroid": false
         }
@@ -67,8 +69,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Akses galeri untuk lampiran profil.",
-          "cameraPermission": "Kamera untuk foto profil."
+          "photosPermission": "Akses galeri untuk lampiran laporan, temuan, dan foto profil.",
+          "cameraPermission": "Kamera untuk foto absensi, laporan, temuan, dan profil."
         }
       ],
       [
@@ -85,6 +87,7 @@
         "expo-build-properties",
         {
           "android": {
+            "usesCleartextTraffic": true,
             "gradleProperties": {
               "org.gradle.jvmargs": "-Xmx4096m -XX:MaxMetaspaceSize=1024m"
             }

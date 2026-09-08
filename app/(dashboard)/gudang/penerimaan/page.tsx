@@ -7,19 +7,12 @@ import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
 import { WmsBadge, WmsCard, WmsFlowBar, WmsSectionTitle } from "@/components/wms/ui";
 import { WMS_FLOW_STEPS } from "@/lib/wms/navigation";
+import { fetchInboundQueue } from "@/lib/wms/inbound-queue-client";
 import {
-  fetchPurchaseOrders,
-  fetchReturs,
   getWarehouseProcessStatus,
-  purchaseOrdersReceivingPbFilter,
   WAREHOUSE_PROCESS_STATUS_UI,
 } from "@/lib/bisnis/client";
-import {
-  isReturInWmsInboundQueue,
-  purchaseReturnsReceivingPbFilter,
-  salesReturnsReceivingPbFilter,
-} from "@/lib/bisnis/retur-workflow";
-import { formatSalesReturDocLine, salesReturDocLabels } from "@/lib/bisnis/sales-retur-ui";
+import { returDisplayNo, returHasPlatformNo } from "@/lib/bisnis/retur-display";
 import type { PurchaseOrder, Retur, WarehouseProcessStatus } from "@/lib/bisnis/types";
 import { getErrorMessage } from "@/lib/errors";
 import { useLocale } from "@/components/LocaleProvider";
@@ -43,6 +36,7 @@ export default function GudangPenerimaanPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [salesReturns, setSalesReturns] = useState<Retur[]>([]);
   const [purchaseReturns, setPurchaseReturns] = useState<Retur[]>([]);
+  const [heldSalesReturns, setHeldSalesReturns] = useState<Retur[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -50,37 +44,17 @@ export default function GudangPenerimaanPage() {
     setLoading(true);
     setError("");
     try {
-      const [res, salesRes, purchaseRes] = await Promise.all([
-        fetchPurchaseOrders({
-          page: 1,
-          perPage: 50,
-          filter: purchaseOrdersReceivingPbFilter(),
-          expand: "supplier,warehouse,created_by,warehouse_processed_by",
-          sort: "-send_to_warehouse_at",
-        }),
-        fetchReturs({
-          page: 1,
-          perPage: 50,
-          filter: salesReturnsReceivingPbFilter(),
-          expand: "warehouse,customer,invoice,sales_order",
-          sort: "-created",
-        }),
-        fetchReturs({
-          page: 1,
-          perPage: 50,
-          filter: purchaseReturnsReceivingPbFilter(),
-          expand: "warehouse,supplier",
-          sort: "-created",
-        }),
-      ]);
-      setOrders(res.items);
-      setSalesReturns(salesRes.items.filter(isReturInWmsInboundQueue));
-      setPurchaseReturns(purchaseRes.items.filter(isReturInWmsInboundQueue));
+      const data = await fetchInboundQueue();
+      setOrders(data.orders);
+      setSalesReturns(data.salesReturns);
+      setPurchaseReturns(data.purchaseReturns);
+      setHeldSalesReturns(data.heldSalesReturns ?? []);
     } catch (e: unknown) {
       setError(getErrorMessage(e, t("wms.penerimaan.errLoad")));
       setOrders([]);
       setSalesReturns([]);
       setPurchaseReturns([]);
+      setHeldSalesReturns([]);
     } finally {
       setLoading(false);
     }
@@ -91,7 +65,8 @@ export default function GudangPenerimaanPage() {
   }, [load]);
 
   const pending = orders.filter((o) => getWarehouseProcessStatus(o) === "pending").length;
-  const hold = orders.filter((o) => getWarehouseProcessStatus(o) === "hold").length;
+  const hold =
+    orders.filter((o) => getWarehouseProcessStatus(o) === "hold").length + heldSalesReturns.length;
   const returnQueueTotal = salesReturns.length + purchaseReturns.length;
 
   return (
@@ -144,25 +119,97 @@ export default function GudangPenerimaanPage() {
             <p className="mt-4 text-sm text-slate-500">{t("wms.penerimaan.emptyReturn")}</p>
           ) : (
             <ul className="mt-4 divide-y divide-slate-100">
-              {salesReturns.map((r) => (
-                <li key={r.id}>
-                  <Link
-                    href={`/gudang/penerimaan/retur/${r.id}`}
-                    className="flex flex-wrap items-center gap-3 px-1 py-4 transition hover:bg-slate-50/80"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <span className="font-mono text-sm font-semibold text-amber-700">
-                        {formatSalesReturDocLine(salesReturDocLabels(r))}
-                      </span>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {r.expand?.customer?.name ?? t("wms.penerimaan.customer")} ·{" "}
-                        {t("wms.penerimaan.warehouse", { name: r.expand?.warehouse?.name ?? "—" })}
-                      </p>
-                    </div>
-                    <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
-                  </Link>
-                </li>
-              ))}
+              {salesReturns.map((r) => {
+                const displayNo = returDisplayNo(r);
+                const hasPlatform = returHasPlatformNo(r);
+                const viaCourier = r.return_method === "courier";
+                const courierName = r.return_courier?.trim() || "";
+                const trackingNo = r.return_tracking_no?.trim() || "";
+                return (
+                  <li key={r.id}>
+                    <Link
+                      href={`/gudang/penerimaan/retur/${r.id}`}
+                      className="flex flex-wrap items-center gap-3 px-1 py-4 transition hover:bg-slate-50/80"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-sm font-semibold text-amber-800">{displayNo}</p>
+                        {hasPlatform ? (
+                          <p className="mt-0.5 font-mono text-[11px] text-slate-400">
+                            Sistem: {r.retur_no}
+                          </p>
+                        ) : null}
+                        {viaCourier || courierName || trackingNo ? (
+                          <p className="mt-1 text-xs text-slate-600">
+                            <span className="font-medium text-slate-700">
+                              {courierName || t("wms.penerimaan.returnCourierFallback")}
+                            </span>
+                            {trackingNo ? (
+                              <>
+                                <span className="text-slate-400"> · </span>
+                                <span className="font-mono font-semibold text-indigo-700">
+                                  {trackingNo}
+                                </span>
+                              </>
+                            ) : null}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {t("wms.penerimaan.returnDropoffHint")}
+                          </p>
+                        )}
+                      </div>
+                      <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </WmsCard>
+
+        <WmsCard>
+          <WmsSectionTitle
+            title="Hold retur penjualan"
+            subtitle="WMS sudah terima fisik & bantah claim — stok di gudang sementara. Retur belum ditutup. Putusan final hanya di modul Retur bisnis (Ubah / Setuju / Kirim kembali). Klik baris untuk lihat bukti WMS."
+          />
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+            </div>
+          ) : heldSalesReturns.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">Tidak ada retur hold.</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-slate-100">
+              {heldSalesReturns.map((r) => {
+                const displayNo = returDisplayNo(r);
+                return (
+                  <li key={r.id}>
+                    <Link
+                      href={`/gudang/penerimaan/retur/${r.id}`}
+                      className="flex flex-wrap items-center gap-3 px-1 py-4 transition hover:bg-amber-50/60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-mono text-sm font-semibold text-amber-900">{displayNo}</p>
+                          <WmsBadge tone="amber">Hold</WmsBadge>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {r.expand?.customer?.name ?? "—"} · menunggu putusan bisnis
+                        </p>
+                        {r.wms_dispute_note ? (
+                          <p className="mt-1 line-clamp-2 text-xs text-amber-900/80">
+                            {r.wms_dispute_note}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-[11px] font-medium text-amber-800/90">
+                          Retur belum ditutup — hanya lihat bukti; putusan final di bisnis
+                        </p>
+                      </div>
+                      <ChevronRight className="h-5 w-5 shrink-0 text-amber-700/50" />
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </WmsCard>
@@ -235,7 +282,7 @@ export default function GudangPenerimaanPage() {
                           <span className="font-mono text-sm font-semibold text-indigo-700">
                             {po.po_no}
                           </span>
-                          <WmsBadge tone={WH_BADGE_TONE[whStatus]}>{st.label}</WmsBadge>
+                          <WmsBadge tone={WH_BADGE_TONE[whStatus]}>{t(st.labelKey)}</WmsBadge>
                         </div>
                         <p className="mt-1 text-sm font-medium text-slate-900">
                           {po.expand?.supplier?.name ?? t("wms.penerimaan.supplier")}

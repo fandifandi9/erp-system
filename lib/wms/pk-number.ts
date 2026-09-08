@@ -18,13 +18,38 @@ export function formatPkDisplay(pkNo: string): string {
   if (NEW_PK_RE.test(s)) return s;
   const legacy = s.match(LEGACY_PK_RE);
   if (legacy) return legacy[1]!;
-  if (/[A-Za-z]/.test(s)) return s;
+  if (/[A-Za-z]/.test(s)) return s.toUpperCase();
   if (/^\d{1,5}$/.test(s)) return s.padStart(PK_SEQ_PAD, "0");
   return s;
 }
 
+/**
+ * Badan nomor PK untuk tampilan/scan — tanpa awalan "PK" (PK hanya label UI).
+ * Contoh: PKSA9PY4ZR → SA9PY4ZR; PK 00001 → 00001; SA9PY4ZR tetap.
+ * Tidak memotong kode acak 8 karakter yang kebetulan diawali "PK" (mis. PKMNPQRS).
+ */
+export function pkCodeBody(pkNo: string): string {
+  const s = formatPkDisplay(pkNo);
+  if (!s || s === "—") return s;
+  // Legacy glue: "PK" + body 8 char (kode pickup lama).
+  if (/^PK[A-Z0-9]{8}$/i.test(s)) return s.slice(2).toUpperCase();
+  // "PK" + 5 digit, atau "PK " / "PK-" + sisa.
+  if (/^PK\d{5}$/i.test(s)) return s.slice(2);
+  if (/^PK[\s\-_]+/i.test(s)) {
+    const rest = s.replace(/^PK[\s\-_]+/i, "").trim();
+    if (rest) return rest.toUpperCase();
+  }
+  return s.toUpperCase();
+}
+
+/** Kunci banding scan PK — case-insensitive, awalan PK opsional. */
+export function normalizePkCompareKey(value: string): string {
+  const parsed = parsePkScanPayload(value) ?? value.trim();
+  return pkCodeBody(parsed);
+}
+
 export function buildPkQrPayload(pkNo: string): string {
-  return `serba:pk:${formatPkDisplay(pkNo)}`;
+  return `serba:pk:${pkCodeBody(pkNo)}`;
 }
 
 export function isPkNumber(value: string): boolean {
@@ -87,11 +112,20 @@ export function pkSearchVariants(raw: string): string[] {
   const out = new Set<string>();
   if (!trimmed) return [];
   out.add(trimmed);
+  out.add(trimmed.toUpperCase());
+  out.add(trimmed.toLowerCase());
   const parsed = parsePkScanPayload(trimmed);
-  if (parsed) out.add(parsed);
+  if (parsed) {
+    out.add(parsed);
+    out.add(parsed.toUpperCase());
+  }
+  const body = pkCodeBody(trimmed);
+  if (body && body !== "—") {
+    out.add(body);
+    out.add(`PK${body}`);
+    out.add(`pk${body.toLowerCase()}`);
+  }
   if (/^\d{1,5}$/.test(trimmed)) out.add(trimmed.padStart(PK_SEQ_PAD, "0"));
-  const upper = trimmed.toUpperCase();
-  if (upper !== trimmed) out.add(upper);
   return [...out];
 }
 

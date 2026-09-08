@@ -97,6 +97,60 @@ async function applyDelta(
   });
 }
 
+/** Kurangi stok dari saldo positif yang ada (bin/lokasi) bila lokasi mutasi kosong. */
+async function applyWarehouseProductDelta(
+  pb: PocketBase,
+  warehouseId: string,
+  productId: string,
+  delta: number,
+  locationId: string,
+): Promise<void> {
+  if (delta === 0) return;
+
+  if (delta > 0 || locationId) {
+    await applyDelta(pb, warehouseId, locationId, productId, delta);
+    return;
+  }
+
+  const toRemove = Math.abs(delta);
+  const list = await pb.collection(INV_COLLECTIONS.balances).getFullList<BalanceRow>({
+    filter: `warehouse = "${warehouseId}" && product = "${productId}" && qty_on_hand > 0`,
+    sort: "-qty_on_hand",
+  });
+
+  let remaining = toRemove;
+  for (const bal of list) {
+    const onHand = Number(bal.qty_on_hand) || 0;
+    if (onHand <= 0) continue;
+    const take = Math.min(remaining, onHand);
+    await applyDelta(pb, warehouseId, bal.location || "", productId, -take);
+    remaining -= take;
+    if (remaining <= 0) break;
+  }
+
+  if (remaining > 0) {
+    await applyDelta(pb, warehouseId, "", productId, -remaining);
+  }
+}
+
+async function applyMovementDelta(
+  pb: PocketBase,
+  movementType: MovementType,
+  target: DeltaTarget,
+): Promise<void> {
+  if (movementType === "TRANSFER" && target.delta < 0 && !target.locationId) {
+    await applyWarehouseProductDelta(
+      pb,
+      target.warehouseId,
+      target.productId,
+      target.delta,
+      target.locationId,
+    );
+    return;
+  }
+  await applyDelta(pb, target.warehouseId, target.locationId, target.productId, target.delta);
+}
+
 function buildDeltas(movement: MovementRow, line: LineRow): DeltaTarget[] {
   const qty = Number(line.qty);
   if (!Number.isFinite(qty) || qty === 0) return [];
@@ -206,7 +260,7 @@ export async function postStockMovement(
   }
 
   for (const d of deltas) {
-    await applyDelta(pb, d.warehouseId, d.locationId, d.productId, d.delta);
+    await applyMovementDelta(pb, movement.movement_type, d);
   }
 
   const totalQty = lines.reduce(

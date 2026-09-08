@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { pb } from "@/lib/pocketbase";
 import {
   ACTIVITY_TYPE_LABEL,
   hrApproveFieldActivity,
@@ -64,13 +63,14 @@ export default function HrFieldQueueScreen() {
 
   const load = useCallback(async () => {
     try {
-      const list = await pb.collection("field_activity_requests").getFullList({
-        filter: 'status="pending_hr"',
-        sort: "-created",
-        expand: "user",
-        requestKey: null,
-      });
-      setItems((list as unknown as Record<string, unknown>[]).map(mapRow));
+      const { mobileFetchFieldQueue } = await import("@/lib/hr-queue-api");
+      const res = await mobileFetchFieldQueue();
+      if (!res.ok) {
+        Alert.alert("Gagal memuat", res.error || "Tidak bisa mengambil antrean luar kantor.");
+        setItems([]);
+        return;
+      }
+      setItems(res.items.map(mapRow));
     } catch (e) {
       Alert.alert("Gagal memuat", getErrorMessage(e, "Tidak bisa mengambil antrean luar kantor."));
       setItems([]);
@@ -144,7 +144,7 @@ export default function HrFieldQueueScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={PWA.indigo} />
         }
         ListHeaderComponent={
-          <Text style={styles.lead}>Pengajuan menunggu ACC HR. Setelah disetujui, staf bisa check-in di luar radius pada tanggal tersebut.</Text>
+          <Text style={styles.lead}>Pengajuan menunggu persetujuan HR. Setelah disetujui, staf bisa absen masuk di luar radius pada tanggal tersebut.</Text>
         }
         ListEmptyComponent={
           <View style={styles.empty}>

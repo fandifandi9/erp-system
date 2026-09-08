@@ -40,3 +40,30 @@ export async function requirePembelianApiUser(req?: Request) {
   }
   return ctx;
 }
+
+/** User login + akses pembelian atau WMS/gudang (penerimaan PO). */
+export async function requirePembelianOrWmsApiUser(req?: Request) {
+  const ctx = await getApiAuthUser(req);
+  if (!ctx) throw bisnisApiError("Login diperlukan.", 401);
+  const ok =
+    canAccess(ctx.user, "/bisnis/pembelian") ||
+    canAccess(ctx.user, "/wms") ||
+    canAccess(ctx.user, "/gudang");
+  if (!ok) throw bisnisApiError("Akses ditolak.", 403);
+  return ctx;
+}
+
+/**
+ * Akses modul Retur — terbuka untuk akun penjualan, pembelian, atau keuangan/pelunasan.
+ */
+export async function requireReturApiUser(req?: Request) {
+  const ctx = await getApiAuthUser(req);
+  if (!ctx) throw bisnisApiError("Login diperlukan.", 401);
+  const ok =
+    canAccess(ctx.user, "/bisnis/retur") ||
+    canAccess(ctx.user, "/bisnis/penjualan") ||
+    canAccess(ctx.user, "/bisnis/pembelian") ||
+    canAccess(ctx.user, "/keuangan");
+  if (!ok) throw bisnisApiError("Akses modul retur ditolak.", 403);
+  return ctx;
+}

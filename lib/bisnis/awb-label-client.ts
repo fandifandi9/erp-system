@@ -9,6 +9,7 @@ export type AwbLabelInfo = {
   tracking_no: string | null;
   awb_ready_at: string | null;
   awb_source: AwbSource | null;
+  created?: boolean;
 };
 
 const AWB_CACHE_TTL_MS = 60_000;
@@ -36,6 +37,23 @@ export function prefetchAwbLabelInfo(salesOrderId: string): void {
   void fetchAwbLabelInfo(salesOrderId).catch(() => {});
 }
 
+/** Pastikan file AWB ada — generate hanya jika belum ada (tanpa force). */
+export async function ensureAwbLabelReady(salesOrderId: string): Promise<AwbLabelInfo> {
+  const info = await fetchAwbLabelInfo(salesOrderId);
+  if (info.has_file && info.url) return info;
+  return generateAwbLabel(salesOrderId, { force: false });
+}
+
+/** Regenerate label (layout/data terbaru) — hanya jika user minta eksplisit. */
+export async function regenerateAwbLabel(salesOrderId: string): Promise<AwbLabelInfo> {
+  return generateAwbLabel(salesOrderId, { force: true });
+}
+
+/** Prefetch status AWB saja (GET) — jangan generate di antrean. */
+export function prefetchEnsureAwbLabel(salesOrderId: string): void {
+  void fetchAwbLabelInfo(salesOrderId).catch(() => {});
+}
+
 export async function fetchAwbLabelInfo(salesOrderId: string): Promise<AwbLabelInfo> {
   const hit = awbCache.get(salesOrderId);
   if (hit && Date.now() - hit.at < AWB_CACHE_TTL_MS) return hit.data;
@@ -58,6 +76,23 @@ export async function fetchAwbLabelInfo(salesOrderId: string): Promise<AwbLabelI
     awbInflight.set(salesOrderId, inflight);
   }
   return inflight;
+}
+
+export async function generateAwbLabel(
+  salesOrderId: string,
+  opts?: { force?: boolean },
+): Promise<AwbLabelInfo> {
+  const res = await fetch(`/api/bisnis/sales-orders/${salesOrderId}/awb/generate`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force: opts?.force === true }),
+  });
+  const data = (await res.json()) as AwbLabelInfo & { error?: string; ok?: boolean };
+  if (!res.ok) throw new Error(data.error ?? "Gagal membuat label AWB");
+  invalidateAwbLabelCache(salesOrderId);
+  awbCache.set(salesOrderId, { data, at: Date.now() });
+  return data;
 }
 
 export async function uploadAwbLabel(

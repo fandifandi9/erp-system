@@ -1,17 +1,9 @@
 import { ClientResponseError } from "pocketbase";
 import { pb } from "@/lib/pocketbase";
 import { zoneCheckIn, zoneCheckOut, scanPackingMobile, submitOpnameLineMobile } from "@/lib/inventory/api";
-import {
-  syncOperationalAccessAfterCheckIn,
-  syncOperationalAccessAfterCheckOut,
-} from "@/lib/operational-access-sync";
 import type { OfflineQueueItem } from "./types";
 import { OFFLINE_QUEUE_BASE_BACKOFF_MS, OFFLINE_QUEUE_MAX_RETRIES } from "./types";
 import { loadQueueSnapshot, saveQueueSnapshot } from "./storage";
-
-function pbEsc(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
 
 function nextBackoffMs(retry: number): number {
   const exp = OFFLINE_QUEUE_BASE_BACKOFF_MS * Math.pow(2, Math.min(retry, 8));
@@ -23,52 +15,17 @@ function scheduleNextAttempt(item: OfflineQueueItem): OfflineQueueItem {
   return { ...item, next_attempt_at: at };
 }
 
-async function processAttendanceCheckIn(item: OfflineQueueItem): Promise<void> {
-  const userId = String(item.payload.user_id ?? "");
-  const dateYmd = String(item.payload.date_ymd ?? "");
-  const dataToSave = item.payload.dataToSave as Record<string, unknown> | undefined;
-  if (!userId || !dateYmd || !dataToSave) throw new Error("Payload check-in tidak lengkap");
-
-  const filter = `user="${pbEsc(userId)}" && date="${pbEsc(dateYmd)}"`;
-  const existing = await pb.collection("attendance_logs").getFullList({
-    filter,
-    requestKey: null,
-  });
-  if (existing.some((r) => !!(r as { check_in?: string }).check_in)) {
-    const op = await syncOperationalAccessAfterCheckIn(userId);
-    if (!op.ok) console.warn("[offline-queue] skip dup check-in, sync akses:", op.error);
-    return;
-  }
-
-  await pb.collection("attendance_logs").create(dataToSave, { requestKey: null });
-  const op = await syncOperationalAccessAfterCheckIn(userId);
-  if (!op.ok) console.warn("[offline-queue] check-in synced, akses:", op.error);
+/** Phase 11: offline attendance disabled — never replay to PocketBase. */
+async function processAttendanceCheckIn(_item: OfflineQueueItem): Promise<void> {
+  throw new Error(
+    "Offline absensi dinonaktifkan. Hapus antrean absensi dan absen ulang saat online via API ERP.",
+  );
 }
 
-async function processAttendanceCheckOut(item: OfflineQueueItem): Promise<void> {
-  const userId = String(item.payload.user_id ?? "");
-  const recordId = String(item.payload.record_id ?? "");
-  const checkOut = String(item.payload.check_out ?? "");
-  const workHours = Number(item.payload.work_hours ?? 0);
-  if (!recordId || !checkOut) throw new Error("Payload check-out tidak lengkap");
-
-  try {
-    const rec = await pb.collection("attendance_logs").getOne(recordId, { requestKey: null });
-    if (rec.check_out) return;
-    await pb.collection("attendance_logs").update(
-      recordId,
-      { check_out: checkOut, work_hours: workHours },
-      { requestKey: null }
-    );
-  } catch (e: unknown) {
-    const cr = e as ClientResponseError;
-    if (cr?.status === 404) return;
-    throw e;
-  }
-  if (userId) {
-    const op = await syncOperationalAccessAfterCheckOut(userId);
-    if (!op.ok) console.warn("[offline-queue] check-out synced, akses:", op.error);
-  }
+async function processAttendanceCheckOut(_item: OfflineQueueItem): Promise<void> {
+  throw new Error(
+    "Offline absensi dinonaktifkan. Hapus antrean absensi dan absen ulang saat online via API ERP.",
+  );
 }
 
 async function processZoneCheckIn(item: OfflineQueueItem): Promise<void> {

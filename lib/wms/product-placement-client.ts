@@ -29,6 +29,10 @@ type AssignmentsResponse = {
   error?: string;
 };
 
+function escId(id: string): string {
+  return id.replace(/"/g, '\\"');
+}
+
 async function fillHintsFromPb(
   warehouseId: string,
   productIds: string[],
@@ -37,92 +41,94 @@ async function fillHintsFromPb(
   const missing = productIds.filter((id) => !hints[id]?.hasMasterPlacement);
   if (missing.length === 0) return;
 
+  const whEsc = escId(warehouseId);
   const hasPlacements = await isPlacementsCollectionAvailable(pb);
+  const stillMissing = new Set(missing);
 
-  await Promise.all(
-    missing.map(async (pid) => {
-      try {
-        if (hasPlacements) {
-          try {
-            const placement = await pb
-              .collection(INV_COLLECTIONS.productPlacements)
-              .getFirstListItem(
-                `warehouse = "${warehouseId.replace(/"/g, '\\"')}" && product = "${pid.replace(/"/g, '\\"')}" && is_active != false`,
-                { expand: "location", fields: "id,location", requestKey: null },
-              );
-            const loc = placement.expand?.location as InvLocation | undefined;
-            if (loc?.id && loc.warehouse === warehouseId && loc.is_active !== false) {
-              hints[pid] = {
-                productId: pid,
-                roomLabel: roomLabel(loc),
-                hasMasterPlacement: true,
-              };
-              return;
-            }
-          } catch {
-            /* belum ada penempatan di gudang ini */
-          }
+  if (hasPlacements) {
+    const prodFilter = missing.map((id) => `product = "${escId(id)}"`).join(" || ");
+    const [localPlacements, otherPlacements] = await Promise.all([
+      pb.collection(INV_COLLECTIONS.productPlacements).getFullList({
+        filter: `warehouse = "${whEsc}" && (${prodFilter}) && is_active != false`,
+        expand: "location",
+        fields: "id,product,location",
+        requestKey: null,
+      }),
+      pb.collection(INV_COLLECTIONS.productPlacements).getFullList({
+        filter: `warehouse != "${whEsc}" && (${prodFilter}) && is_active != false`,
+        expand: "location,warehouse",
+        fields: "id,product,warehouse",
+        requestKey: null,
+      }),
+    ]);
 
-          try {
-            const others = await pb.collection(INV_COLLECTIONS.productPlacements).getFullList({
-              filter: `product = "${pid.replace(/"/g, '\\"')}" && warehouse != "${warehouseId.replace(/"/g, '\\"')}" && is_active != false`,
-              expand: "location,warehouse",
-              fields: "id,warehouse",
-              requestKey: null,
-            });
-            if (others.length > 0) {
-              const o = others[0];
-              const loc = o.expand?.location as InvLocation | undefined;
-              const whName =
-                (o.expand as { warehouse?: { name?: string } })?.warehouse?.name ?? "gudang lain";
-              hints[pid] = {
-                productId: pid,
-                roomLabel: loc ? roomLabel(loc) : null,
-                hasMasterPlacement: false,
-                wrongWarehouse: true,
-                otherWarehouseName: whName,
-              };
-              return;
-            }
-          } catch {
-            /* skip */
-          }
-        }
-
-        const row = await pb.collection(INV_COLLECTIONS.products).getOne(pid, {
-          fields: "id,default_location",
-          expand: "default_location,default_location.warehouse",
-          requestKey: null,
-        });
-        const loc = row.expand?.default_location as
-          | (InvLocation & { is_active?: boolean; expand?: { warehouse?: { id: string; name?: string } } })
-          | undefined;
-        if (!loc?.id || loc.is_active === false) return;
-
-        if (loc.warehouse !== warehouseId) {
-          const otherName =
-            loc.expand?.warehouse?.name ??
-            (loc.warehouse ? String(loc.warehouse) : "gudang lain");
-          hints[pid] = {
-            productId: pid,
-            roomLabel: roomLabel(loc),
-            hasMasterPlacement: false,
-            wrongWarehouse: true,
-            otherWarehouseName: otherName,
-          };
-          return;
-        }
-
+    for (const placement of localPlacements) {
+      const pid = String(placement.product);
+      if (!stillMissing.has(pid)) continue;
+      const loc = placement.expand?.location as InvLocation | undefined;
+      if (loc?.id && loc.warehouse === warehouseId && loc.is_active !== false) {
         hints[pid] = {
           productId: pid,
           roomLabel: roomLabel(loc),
           hasMasterPlacement: true,
         };
-      } catch {
-        /* produk tidak bisa dibaca */
+        stillMissing.delete(pid);
       }
-    }),
-  );
+    }
+
+    for (const placement of otherPlacements) {
+      const pid = String(placement.product);
+      if (!stillMissing.has(pid) || hints[pid]?.hasMasterPlacement) continue;
+      const loc = placement.expand?.location as InvLocation | undefined;
+      const whName =
+        (placement.expand as { warehouse?: { name?: string } })?.warehouse?.name ?? "gudang lain";
+      hints[pid] = {
+        productId: pid,
+        roomLabel: loc ? roomLabel(loc) : null,
+        hasMasterPlacement: false,
+        wrongWarehouse: true,
+        otherWarehouseName: whName,
+      };
+      stillMissing.delete(pid);
+    }
+  }
+
+  if (stillMissing.size === 0) return;
+
+  const idFilter = [...stillMissing].map((id) => `id = "${escId(id)}"`).join(" || ");
+  const products = await pb.collection(INV_COLLECTIONS.products).getFullList({
+    filter: idFilter,
+    fields: "id,default_location",
+    expand: "default_location,default_location.warehouse",
+    requestKey: null,
+  });
+
+  for (const row of products) {
+    const pid = String(row.id);
+    if (!stillMissing.has(pid)) continue;
+    const loc = row.expand?.default_location as
+      | (InvLocation & { is_active?: boolean; expand?: { warehouse?: { id: string; name?: string } } })
+      | undefined;
+    if (!loc?.id || loc.is_active === false) continue;
+
+    if (loc.warehouse !== warehouseId) {
+      hints[pid] = {
+        productId: pid,
+        roomLabel: roomLabel(loc),
+        hasMasterPlacement: false,
+        wrongWarehouse: true,
+        otherWarehouseName:
+          loc.expand?.warehouse?.name ?? (loc.warehouse ? String(loc.warehouse) : "gudang lain"),
+      };
+      continue;
+    }
+
+    hints[pid] = {
+      productId: pid,
+      roomLabel: roomLabel(loc),
+      hasMasterPlacement: true,
+    };
+  }
 }
 
 /** Muat penempatan slot per produk di satu gudang (picking / putaway). */

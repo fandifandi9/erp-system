@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { pb } from "@/lib/pocketbase";
-import {
-  getSettings,
-  getProfile,
-  countUserLeaveInMonth,
-  countDivisionLeaveOnDate,
-  isUserAlreadyBooked,
-} from "@/lib/leaves";
+import { submitLeaveRequest } from "@/lib/leave";
 import { useLocale } from "@/components/LocaleProvider";
+import Link from "next/link";
 
+/**
+ * Legacy multi-date leave page.
+ * Wave 2: no longer creates status=approved directly via PocketBase.
+ * Each date is submitted as pending through the server leave API.
+ */
 export default function LeavePage() {
   const { t } = useLocale();
   const [dates, setDates] = useState<string[]>([]);
@@ -37,53 +37,18 @@ export default function LeavePage() {
     setLoading(true);
 
     try {
-      const settings = await getSettings();
-      const profile = await getProfile(user.id);
-
-      const division = profile.division;
-      const month = dates[0].slice(0, 7);
-
-      const used = await countUserLeaveInMonth(user.id, month);
-
       const success: string[] = [];
       const failed: string[] = [];
 
       for (const date of dates) {
-        if (used + success.length >= settings.max_leave_per_month) {
-          failed.push(`${date} ${t("hr.attendance.leaveBooking.failMonthly")}`);
-          continue;
-        }
-
-        const already = await isUserAlreadyBooked(user.id, date);
-        if (already) {
-          failed.push(`${date} ${t("hr.attendance.leaveBooking.failDuplicate")}`);
-          continue;
-        }
-
-        const total = await countDivisionLeaveOnDate(division, date);
-        if (total >= settings.max_people_per_day) {
-          failed.push(`${date} ${t("hr.attendance.leaveBooking.failQuota")}`);
-          continue;
-        }
-
-        const divisionVal =
-          (profile as { division?: string }).division ||
-          (profile as { devision?: string }).devision ||
-          "-";
-        const positionVal = (profile as { position?: string }).position || "-";
-
-        await pb.collection("leave_requests").create({
-          user: user.id,
+        const result = await submitLeaveRequest({
+          userId: String(user.id),
           start_date: date,
           end_date: date,
-          reason: "Cuti (booking HR — multi tanggal)",
-          status: "approved",
-          division: divisionVal,
-          position: positionVal,
-          booking_date: new Date().toISOString(),
+          reason: "Cuti (booking — menunggu ACC HR)",
         });
-
-        success.push(date);
+        if (result.success) success.push(date);
+        else failed.push(`${date}: ${result.message}`);
       }
 
       alert(
@@ -105,7 +70,14 @@ export default function LeavePage() {
 
   return (
     <div className="max-w-lg p-6">
-      <h1 className="mb-4 text-xl font-semibold">{t("hr.attendance.leaveBooking.title")}</h1>
+      <h1 className="mb-2 text-xl font-semibold">{t("hr.attendance.leaveBooking.title")}</h1>
+      <p className="mb-4 text-sm text-slate-600">
+        Pengajuan masuk sebagai <strong>pending</strong> dan perlu disetujui di{" "}
+        <Link href="/hr/leave" className="text-indigo-600 underline">
+          /hr/leave
+        </Link>
+        . (Wave 2: tidak lagi auto-approved.)
+      </p>
 
       <input
         type="date"
@@ -118,7 +90,7 @@ export default function LeavePage() {
           <div key={d} className="mb-1 flex justify-between bg-slate-100 p-2">
             <span>{d}</span>
             <button type="button" onClick={() => removeDate(d)}>
-              ❌
+              ×
             </button>
           </div>
         ))}
@@ -126,11 +98,11 @@ export default function LeavePage() {
 
       <button
         type="button"
-        onClick={submit}
         disabled={loading}
-        className="rounded bg-blue-600 px-4 py-2 text-white"
+        onClick={() => void submit()}
+        className="rounded bg-indigo-600 px-4 py-2 text-white disabled:opacity-50"
       >
-        {loading ? t("hr.attendance.leaveBooking.processing") : t("hr.attendance.leaveBooking.submit")}
+        {loading ? "..." : t("hr.attendance.leaveBooking.submit")}
       </button>
     </div>
   );

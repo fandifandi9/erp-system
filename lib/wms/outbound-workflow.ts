@@ -54,9 +54,13 @@ export type OutboundOrderMeta = {
   package_code?: string;
   warehouse_id?: string;
   warehouse_name?: string;
+  store_id?: string;
+  store_name?: string;
   customer_name?: string;
   courier?: string;
+  shipping_service?: string;
   recipient_address?: string;
+  shipping_cost?: number;
 };
 
 export type OutboundWorkflow = {
@@ -65,10 +69,32 @@ export type OutboundWorkflow = {
   stage_entered_at?: string;
   /** Gate serah terima kurir saat stage ready_pickup */
   pickup_gate?: "menunggu_awb" | "siap_serah";
+  /**
+   * Permintaan dari meja tablet depan gudang (ambil sendiri / ojol).
+   * Gudang siapkan PK lalu serahkan di multi-scan / meja.
+   */
+  desk_request?: {
+    status: "pending" | "fulfilled";
+    at: string;
+    requester_name: string;
+    requester_phone?: string;
+    photo_file_ids?: string[];
+    pk_no?: string;
+    user_id?: string;
+  };
   /** Nomor picking kit — 5 digit (00001) */
   pk_no?: string;
   pk_qr_payload?: string;
   pk_assigned_at?: string;
+  /** Notifikasi email nomor PK ke pelanggan (ambil sendiri). */
+  pk_email?: {
+    last_sent_at?: string;
+    send_count?: number;
+    last_to?: string;
+    last_error?: string;
+  };
+  /** Waktu slip PK dicetak (auto/manual) — untuk indikator "sudah dicetak". */
+  pk_printed_at?: string;
   entry_mode?: "manual" | "tracking_scan";
   /** @deprecated — identitas aktif di package_code */
   tracking_code?: string;
@@ -109,6 +135,7 @@ export type OutboundWorkflow = {
     workstation_session_id?: string;
     package_code_verified?: boolean;
     package_code_verified_at?: string;
+  packing_started_at?: string;
     packing?: {
       weight_kg?: number;
       length_cm?: number;
@@ -158,6 +185,17 @@ export type OutboundWorkflow = {
     /** Serah terima multi-paket — satu kurir, satu waktu */
     batch_id?: string;
     batch_size?: number;
+    /** Nomor tanda terima (TT) — satu nomor untuk seluruh batch */
+    tt_no?: string;
+    /** Snapshot baris paket di TT (untuk cetak ulang bukti) */
+    tt_lines?: {
+      so_id: string;
+      order_no: string;
+      awb: string;
+      pk_no?: string;
+      store_name?: string;
+      customer_name?: string;
+    }[];
     /** Daftar AWB yang discan saat serah terima batch */
     recorded_awbs?: string[];
   };
@@ -192,13 +230,13 @@ export function normalizeWmsStage(raw?: string | null): WmsOrderStage {
 }
 
 export const WMS_STAGE_UI: Record<WmsOrderStage, { label: string; cls: string }> = {
-  new_order: { label: "New Order", cls: "bg-slate-100 text-slate-700" },
+  new_order: { label: "Pesanan baru", cls: "bg-slate-100 text-slate-700" },
   picking: { label: "Picking", cls: "bg-violet-100 text-violet-800" },
-  validate_pack: { label: "Validation & Packing", cls: "bg-amber-100 text-amber-900" },
-  ready_pickup: { label: "Ready To Pickup", cls: "bg-cyan-100 text-cyan-800" },
-  completed: { label: "Completed", cls: "bg-emerald-100 text-emerald-800" },
-  cancelled: { label: "Cancelled", cls: "bg-red-100 text-red-800" },
-  validation_failed: { label: "Validation Failed", cls: "bg-orange-100 text-orange-900" },
+  validate_pack: { label: "Validasi & Packing", cls: "bg-amber-100 text-amber-900" },
+  ready_pickup: { label: "Siap ambil", cls: "bg-cyan-100 text-cyan-800" },
+  completed: { label: "Selesai", cls: "bg-emerald-100 text-emerald-800" },
+  cancelled: { label: "Dibatalkan", cls: "bg-red-100 text-red-800" },
+  validation_failed: { label: "Validasi gagal", cls: "bg-orange-100 text-orange-900" },
 };
 
 /** @deprecated */

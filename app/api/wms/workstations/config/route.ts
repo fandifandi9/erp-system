@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getApiAuthUser } from "@/lib/inventory/api-auth";
 import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
 import { buildWorkstationQrPayload } from "@/lib/wms/workstation-qr";
 import {
@@ -9,7 +10,12 @@ import {
 } from "@/lib/wms/workstation-config";
 import { DEFAULT_WMS_WORKSTATIONS, workstationFromRow } from "@/lib/wms/workstations";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await getApiAuthUser(req);
+  if (!auth) {
+    return NextResponse.json({ error: "Login diperlukan" }, { status: 401 });
+  }
+
   const summary = getWorkstationConfigSummary();
   let desks = DEFAULT_WMS_WORKSTATIONS;
 
@@ -34,6 +40,7 @@ export async function GET() {
     data: {
       ...summary,
       desks: desks.map((d) => ({
+        id: d.id,
         code: d.code,
         name: d.name,
         location: d.location,

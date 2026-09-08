@@ -1,6 +1,6 @@
 import PocketBase, { AsyncAuthStore } from "pocketbase";
 import * as SecureStore from "expo-secure-store";
-import { getPocketBaseUrl } from "./env";
+import { getPocketBaseUrl, isLoopbackUrl, ERP_URL_NOT_CONFIGURED } from "./env";
 import { authLog } from "./auth-log";
 
 const AUTH_KEY = "pb_auth";
@@ -45,7 +45,20 @@ const authStore = new AsyncAuthStore({
   initial: loadInitialAuthFromSecureStore(),
 });
 
-export const pb = new PocketBase(getPocketBaseUrl() || "http://127.0.0.1:8090", authStore);
+function resolvePocketBaseUrl(): string {
+  const u = getPocketBaseUrl();
+  if (!u) {
+    console.error(ERP_URL_NOT_CONFIGURED);
+    return "https://unconfigured.invalid";
+  }
+  if (isLoopbackUrl(u) && typeof __DEV__ !== "undefined" && !__DEV__) {
+    console.error(ERP_URL_NOT_CONFIGURED);
+    return "https://unconfigured.invalid";
+  }
+  return u;
+}
+
+export const pb = new PocketBase(resolvePocketBaseUrl(), authStore);
 
 pb.autoCancellation(false);
 

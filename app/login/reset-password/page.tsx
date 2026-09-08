@@ -99,7 +99,7 @@ function ResetPasswordContent() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Image
             src={SYSTEM_LOGO_WIDE_PATH}
-            alt="SDI"
+            alt={APP_DISPLAY_NAME}
             width={220}
             height={Math.round(220 / SYSTEM_LOGO_WIDE_ASPECT)}
             className="mb-4 object-contain"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
@@ -21,6 +21,7 @@ import { Loader2 } from "lucide-react";
 
 export default function InventoryMovementDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = String(params.id || "");
   const user = pb.authStore.model;
   const canPost = user && canPostInventoryMovement(user);
@@ -57,6 +58,12 @@ export default function InventoryMovementDetailPage() {
   useEffect(() => {
     if (id) void load();
   }, [id]);
+
+  useEffect(() => {
+    if (searchParams.get("posted") === "1") {
+      setMsg("Mutasi diposting — stok gudang sudah diperbarui. Refresh halaman katalog produk untuk melihat perubahan per gudang.");
+    }
+  }, [searchParams]);
 
   const handlePost = async () => {
     setPosting(true);
@@ -113,6 +120,13 @@ export default function InventoryMovementDetailPage() {
           <>
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
             {msg ? <p className="text-sm text-emerald-700">{msg}</p> : null}
+
+            {movement.status === "draft" ? (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <strong>Status: Draft</strong> — stok belum berubah di katalog/gudang. Klik{" "}
+                <strong>Posting mutasi</strong> di bawah agar saldo GD-01, CUBUS, dll. terupdate.
+              </div>
+            ) : null}
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
               <p>

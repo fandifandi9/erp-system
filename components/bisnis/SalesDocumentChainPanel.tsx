@@ -5,13 +5,13 @@ import { FileText, Link2 } from "lucide-react";
 import type { SalesChainDocument } from "@/lib/bisnis/sales-document-chain";
 
 const KIND_LABEL: Record<SalesChainDocument["kind"], string> = {
-  sales_order: "Sales Order",
-  invoice: "Invoice",
-  sales_return: "Sales Return",
-  credit_note: "Credit Note",
-  refund: "Refund",
-  recovery: "Recovery",
-  expense: "Settlement",
+  sales_order: "Pesanan penjualan",
+  invoice: "Faktur",
+  sales_return: "Retur penjualan",
+  credit_note: "Nota kredit",
+  refund: "Pengembalian",
+  recovery: "Pemulihan",
+  expense: "Pelunasan",
 };
 
 const KIND_BADGE: Record<SalesChainDocument["kind"], string> = {
@@ -44,7 +44,7 @@ export function SalesDocumentChainPanel({ documents, loading }: Props) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-900">Related Documents</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Dokumen terkait</h2>
         </div>
         <div className="px-5 py-8 text-center text-sm text-slate-400">Memuat…</div>
       </section>
@@ -55,7 +55,7 @@ export function SalesDocumentChainPanel({ documents, loading }: Props) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-900">Related Documents</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Dokumen terkait</h2>
           <p className="mt-0.5 text-xs text-slate-500">Rangkaian dokumen terkait transaksi ini</p>
         </div>
         <div className="px-5 py-6 text-sm text-slate-500">Belum ada dokumen terkait.</div>
@@ -68,7 +68,7 @@ export function SalesDocumentChainPanel({ documents, loading }: Props) {
       <div className="border-b border-slate-100 px-5 py-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <Link2 className="h-4 w-4 text-slate-400" />
-          Related Documents
+          Dokumen terkait
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">{documents.length} dokumen dalam rantai transaksi</p>
       </div>

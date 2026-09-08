@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { pb } from "@/lib/pocketbase";
 import {
   approveLeaveRequestByHr,
   rejectLeaveRequestByHr,
@@ -27,10 +26,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { canAccess } from "@/lib/rbac";
 import { useLocale } from "@/components/LocaleProvider";
-import {
-  formatIdr,
-  fetchApprovedLeavesOnDate,
-} from "@/lib/hr-compensation";
+import { formatIdr } from "@/lib/hr-compensation";
+import { hrApiAuthHeaders } from "@/lib/hr/hr-api-client";
+import { pb } from "@/lib/pocketbase";
 
 type HrLeaveRow = LeaveRequestRow & {
   expand?: {
@@ -60,7 +58,17 @@ export default function LeaveMonitoringPage() {
   const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1);
   const [dateFilter, setDateFilter] = useState("");
   const [onDateLeaves, setOnDateLeaves] = useState<
-    Awaited<ReturnType<typeof fetchApprovedLeavesOnDate>>
+    Array<{
+      id: string;
+      user: string;
+      userName: string;
+      division: string;
+      start_date: string;
+      end_date: string;
+      daily_rate: number;
+      compensation_amount: number;
+      reason: string;
+    }>
   >([]);
   const [onDateLoading, setOnDateLoading] = useState(false);
 
@@ -77,30 +85,23 @@ export default function LeaveMonitoringPage() {
     setFetchError(null);
     try {
       /**
-       * Jangan filter `status` di server — tab HR (Menunggu/Disetujui/…) hanya di klien.
-       * Kalau filter status di API, batch hanya berisi satu status → kartu ringkasan lain selalu 0.
+       * FLEX-ORG-05-FIX — scoped server list (FOM ∩ membership). No client PB getList.
+       * Tab filters (Menunggu/Disetujui/…) remain client-side on the full scoped set.
        */
-      const common = { requestKey: null as null };
-
-      let result;
-      try {
-        result = await pb.collection("leave_requests").getList(1, 500, {
-          ...common,
-          sort: "-created",
-          expand: "user",
-        });
-      } catch (inner) {
-        console.warn(
-          "leave_requests: getList (created + expand) gagal, coba tanpa expand:",
-          inner
-        );
-        result = await pb.collection("leave_requests").getList(1, 500, {
-          ...common,
-          sort: "-created",
-        });
+      const res = await fetch("/api/hr/leave?forHrMonitor=1", {
+        credentials: "include",
+        headers: hrApiAuthHeaders(),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        items?: unknown[];
+      };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || t("hr.leave.fetchError"));
       }
 
-      const mapped = normalizeLeaveRequestsFromPb(result.items as unknown[]);
+      const mapped = normalizeLeaveRequestsFromPb(json.items ?? []);
       const leaveData = (mapped as HrLeaveRow[]).slice().sort((a, b) => {
         const ta = new Date(a.booking_date || a.created).getTime();
         const tb = new Date(b.booking_date || b.created).getTime();
@@ -126,7 +127,7 @@ export default function LeaveMonitoringPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!hasAccess) {
@@ -141,19 +142,32 @@ export default function LeaveMonitoringPage() {
       setOnDateLeaves([]);
       return;
     }
-    let ok = true;
     setOnDateLoading(true);
-    void (async () => {
-      const rows = await fetchApprovedLeavesOnDate(dateFilter);
-      if (ok) {
-        setOnDateLeaves(rows);
-        setOnDateLoading(false);
-      }
-    })();
-    return () => {
-      ok = false;
-    };
-  }, [hasAccess, dateFilter]);
+    const d = String(dateFilter).slice(0, 10);
+    const rows = leaves
+      .filter((l) => {
+        if (String(l.status ?? "").toLowerCase() !== "approved") return false;
+        const s = coerceLeaveYmd(l.start_date || l.booking_date);
+        const e = coerceLeaveYmd(l.end_date || l.start_date || l.booking_date);
+        return Boolean(s && e && s <= d && e >= d);
+      })
+      .map((l) => ({
+        id: l.id,
+        user: String(l.user ?? ""),
+        userName:
+          (l as HrLeaveRow).expand?.user?.name ||
+          (l as HrLeaveRow).expand?.user?.email ||
+          String(l.user ?? "-"),
+        division: String(l.division || (l as { devision?: string }).devision || "-"),
+        start_date: coerceLeaveYmd(l.start_date || l.booking_date),
+        end_date: coerceLeaveYmd(l.end_date || l.start_date || l.booking_date),
+        daily_rate: Number((l as { daily_compensation_rate?: number }).daily_compensation_rate) || 0,
+        compensation_amount: Number((l as { compensation_amount?: number }).compensation_amount) || 0,
+        reason: String(l.reason ?? "").trim(),
+      }));
+    setOnDateLeaves(rows);
+    setOnDateLoading(false);
+  }, [hasAccess, dateFilter, leaves]);
 
   const runApprove = async (id: string) => {
     setActingId(id);

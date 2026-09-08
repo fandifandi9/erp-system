@@ -146,7 +146,7 @@ function statusBadge(status: FieldActivityRequest["status"]): {
   label: string;
 } {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    pending_hr: { bg: "#fef3c7", fg: "#92400e", label: "Menunggu ACC HR" },
+    pending_hr: { bg: "#fef3c7", fg: "#92400e", label: "Menunggu persetujuan HR" },
     approved: { bg: "#dcfce7", fg: "#166534", label: "Disetujui" },
     rejected: { bg: "#fee2e2", fg: "#991b1b", label: "Ditolak" },
     cancelled: { bg: "#f1f5f9", fg: "#475569", label: "Dibatalkan" },
@@ -351,7 +351,7 @@ export function FieldStaffPanel({ embedded = false }: { embedded?: boolean }) {
         <View style={styles.hero}>
           <Text style={styles.h1}>Aktivitas luar kantor</Text>
           <Text style={styles.heroBody}>
-            Ajukan <Text style={{ fontWeight: "800" }}>sebelum</Text> tanggal tugas. Setelah HR menyetujui, check-in di
+            Ajukan <Text style={{ fontWeight: "800" }}>sebelum</Text> tanggal tugas. Setelah HR menyetujui, absen masuk di
             hari itu boleh di luar radius kantor (GPS tetap dipakai untuk audit).
           </Text>
           <Link href="/(tabs)/attendance" asChild>

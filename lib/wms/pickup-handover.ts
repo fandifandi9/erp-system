@@ -16,14 +16,19 @@ export function matchHandoverScanToOrder(so: SalesOrder, rawScan: string): boole
   return orderMatchesScanRef(so, rawScan);
 }
 
+/** Siap serah terima: cukup AWB sudah discan (checklist fisik tidak dipakai). */
 export function isPhysicalHandoverReady(
-  checks: PhysicalCheckState,
+  _checks: PhysicalCheckState | undefined,
   scanMatched: boolean,
 ): boolean {
-  return (
-    scanMatched &&
-    checks.package_count_ok &&
-    checks.label_readable &&
-    checks.seal_intact
-  );
+  return scanMatched;
+}
+
+/** Checklist otomatis lulus — disimpan di payload untuk kompatibilitas audit. */
+export function autoPhysicalChecks(): PhysicalCheckState {
+  return {
+    package_count_ok: true,
+    label_readable: true,
+    seal_intact: true,
+  };
 }

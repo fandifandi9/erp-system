@@ -1,0 +1,35 @@
+# EXAMPLE ONLY — do not apply to live Nginx without explicit approval.
+# Does not include real certificate paths or secrets.
+#
+# Planned:
+#   https://pb-staging.serba.space  →  http://127.0.0.1:8092
+#
+# Production pb.serba.space / port 8091 must remain unchanged.
+
+# server {
+#   listen 80;
+#   server_name pb-staging.serba.space;
+#   return 301 https://$host$request_uri;
+# }
+
+server {
+  listen 443 ssl http2;
+  server_name pb-staging.serba.space;
+
+  # ssl_certificate     /path/to/fullchain.pem;   # set on server — not in Git
+  # ssl_certificate_key /path/to/privkey.pem;     # set on server — not in Git
+
+  client_max_body_size 32m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8092;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 120s;
+  }
+}

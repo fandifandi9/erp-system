@@ -23,7 +23,7 @@ export async function cancelRetur(
           .join("\n"),
       });
     }
-    return cancelDraftSalesRetur(pb, returId, reason);
+    return cancelDraftSalesRetur(pb, returId, reason, userId);
   }
 
   if (retur.status === "completed") {

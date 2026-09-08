@@ -43,7 +43,7 @@ export function SidebarNavLinks({ items, subMenuClass, onNavigate }: Props) {
             >
               <span className="flex items-center gap-2">
                 <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                <span className="truncate">{label}</span>
+                <span className="leading-snug">{label}</span>
               </span>
             </Link>
           </li>

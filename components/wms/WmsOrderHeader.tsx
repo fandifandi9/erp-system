@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { SalesOrder } from "@/lib/bisnis/types";
-import { buildWmsOrderHeader } from "@/lib/wms/wms-order-display";
+import { buildWmsOrderHeader, resolveInvoiceNoForSo } from "@/lib/wms/wms-order-display";
 import { WMS_STAGE_UI, getOutboundStageFromSo } from "@/lib/wms/outbound-workflow";
 import { getPkIdentityView } from "@/lib/wms/pk-identity";
 import {
@@ -28,34 +28,58 @@ export function WmsOrderHeader({
   const stage = getOutboundStageFromSo(so);
   const ui = WMS_STAGE_UI[stage];
   const pathname = usePathname();
+  /** Di picking invoice belum jadi — selalu tampilkan SO sebagai referensi. */
+  const preferSoRef = pathname.includes("/picking");
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [resolvedInvoiceNo, setResolvedInvoiceNo] = useState<string | null>(h.invoiceNo);
 
   useEffect(() => {
     setNowMs(Date.now());
   }, [pathname, so.id]);
 
+  useEffect(() => {
+    setResolvedInvoiceNo(h.invoiceNo);
+    if (preferSoRef || h.invoiceNo) return;
+    let cancelled = false;
+    void resolveInvoiceNoForSo(so).then((n) => {
+      const no = n.trim();
+      if (!cancelled && no && no !== "—") setResolvedInvoiceNo(no);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [so, h.invoiceNo, preferSoRef]);
+
   const mode = timeMode ?? (stage === "completed" || stage === "cancelled" ? "history" : "active");
   const waitLine = formatWmsStageWaitLineLocalized(t, locale, so, { nowMs, mode });
   const waitMin =
     mode === "active" ? getWmsStageWaitMinutes(getWmsStageSinceIso(so), nowMs) : null;
+  const invoiceNo = resolvedInvoiceNo?.trim() || null;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           {pk.pkNo !== "—" ? (
-            <p className="font-mono text-2xl font-bold tracking-wide text-indigo-700">PK {pk.pkNo}</p>
+            <p className="flex items-baseline gap-1.5 font-mono text-2xl font-bold tracking-wide text-indigo-700">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">PK</span>
+              <span>{pk.pkNo}</span>
+            </p>
           ) : (
             <p className="text-sm font-medium text-amber-800">{t("wms.order.pkNotCreated")}</p>
           )}
           <p className="mt-1 text-[11px] text-slate-500">
-            {t("wms.order.soLabel")} <span className="font-mono">{h.orderNo}</span>
-            {h.invoiceNo ? (
+            {!preferSoRef && invoiceNo ? (
               <>
+                {t("wms.order.invoiceLabel")} <span className="font-mono">{invoiceNo}</span>
                 {" · "}
-                {t("wms.order.invoiceLabel")} <span className="font-mono">{h.invoiceNo}</span>
+                {t("wms.order.soLabel")} <span className="font-mono">{h.orderNo}</span>
               </>
-            ) : null}
+            ) : (
+              <>
+                {t("wms.order.soLabel")} <span className="font-mono">{h.orderNo}</span>
+              </>
+            )}
           </p>
           {h.packageCode !== "—" && pk.pkNo === "—" ? (
             <p className="mt-1 text-xs text-slate-600">

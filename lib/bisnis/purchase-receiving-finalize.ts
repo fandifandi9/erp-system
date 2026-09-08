@@ -1,4 +1,5 @@
-import { pb } from "@/lib/pocketbase";
+import { getInventoryAdminPb } from "@/lib/inventory/pb-server";
+import { postAutoStockMovementServer } from "@/lib/inventory/auto-stock-server";
 import { analyzePurchaseQcWorkflow } from "@/lib/core/expected-actual";
 import {
   exceptionStatusForMatch,
@@ -12,19 +13,25 @@ import {
   createBillFromPurchaseOrder,
   fetchPurchaseBillByPurchaseOrder,
 } from "@/lib/bisnis/purchase-from-po";
-import {
-  fetchPurchaseOrderLines,
-  applyPurchaseStockOnly,
-  updatePurchaseOrder,
-} from "@/lib/bisnis/client";
-import { BISNIS_COLLECTIONS, type PurchaseOrder } from "@/lib/bisnis/types";
+import { updatePurchaseOrder } from "@/lib/bisnis/client";
+import { BISNIS_COLLECTIONS, type PurchaseOrder, type PurchaseOrderLine } from "@/lib/bisnis/types";
 import { reminderDueAtIso } from "@/lib/bisnis/retur-workflow";
+
+async function loadPoLinesServer(poId: string): Promise<PurchaseOrderLine[]> {
+  const pb = await getInventoryAdminPb();
+  return pb.collection(BISNIS_COLLECTIONS.purchaseOrderLines).getFullList<PurchaseOrderLine>({
+    filter: `purchase_order = "${poId.replace(/"/g, '\\"')}"`,
+    expand: "product",
+    sort: "created",
+    requestKey: null,
+  });
+}
 
 async function autoFinalizePurchaseReceiving(
   po: PurchaseOrder,
   userId: string,
 ): Promise<{ po: PurchaseOrder; billId?: string }> {
-  const lines = await fetchPurchaseOrderLines(po.id);
+  const lines = await loadPoLinesServer(po.id);
   await applyReceivingDisposition(po, lines, userId);
 
   let billId: string | undefined;
@@ -36,6 +43,7 @@ async function autoFinalizePurchaseReceiving(
     billId = bill.id;
   }
 
+  const pb = await getInventoryAdminPb();
   const now = new Date().toISOString();
   const updated = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).update<PurchaseOrder>(
     po.id,
@@ -60,23 +68,28 @@ export async function postWmsPurchaseReceivingToTransit(
   poId: string,
   userId: string,
 ): Promise<PurchaseOrder> {
+  const pb = await getInventoryAdminPb();
   const po = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getOne<PurchaseOrder>(poId);
   if (!po.send_to_warehouse_at) {
     throw new Error("PO tidak lewat WMS.");
   }
 
-  const lines = await fetchPurchaseOrderLines(poId);
+  const lines = await loadPoLinesServer(poId);
   const poFresh = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getOne<PurchaseOrder>(poId);
   const analysis = analyzePurchaseQcWorkflow(lines, poFresh.receiving_workflow_json);
   if (!analysis.stockLines.length) {
     throw new Error("Tidak ada qty untuk diposting ke gudang sementara.");
   }
 
-  const transitId = await resolvePurchaseStockWarehouse(po);
-  await applyPurchaseStockOnly(po.id, {
+  const transitId = await resolvePurchaseStockWarehouse(po, pb);
+  await postAutoStockMovementServer({
+    type: "PURCHASE",
     warehouse: transitId,
+    reference_type: "PURCHASE_ORDER",
+    reference_id: po.id,
     reference_no: po.po_no,
     lines: analysis.stockLines,
+    userId,
   });
 
   if (analysis.match) {
@@ -128,6 +141,7 @@ export async function finalizePurchaseReceiving(
   poId: string,
   userId: string,
 ): Promise<{ po: PurchaseOrder; billId?: string }> {
+  const pb = await getInventoryAdminPb();
   const po = await pb.collection(BISNIS_COLLECTIONS.purchaseOrders).getOne<PurchaseOrder>(poId);
   if (po.receiving_business_status !== "awaiting_business") {
     throw new Error("PO tidak menunggu keputusan bisnis.");
@@ -146,7 +160,7 @@ export async function finalizePurchaseReceiving(
     return { po: { ...po, receiving_business_status: "resolved" }, billId: existing.id };
   }
 
-  const lines = await fetchPurchaseOrderLines(poId);
+  const lines = await loadPoLinesServer(poId);
   await applyReceivingDisposition(po, lines, userId);
 
   const bill = await createBillFromPurchaseOrder(poId, userId, { skipStockPosting: true });

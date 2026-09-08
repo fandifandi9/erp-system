@@ -1,52 +1,68 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Loader2,
   Scan,
   CheckCircle2,
 } from "lucide-react";
-import { ValidatePackPhotoCapture } from "@/components/wms/ValidatePackPhotoCapture";
+import { ValidatePackFlowModal } from "@/components/wms/ValidatePackFlowModal";
+import { InvoiceAccessGuidePanel } from "@/components/wms/InvoiceAccessGuidePanel";
 import { AwbLabelPrintActions } from "@/components/wms/AwbLabelPrintActions";
-import { InvoicePackQrPanel } from "@/components/wms/InvoicePackQrPanel";
+import { PkLabelPrintActions } from "@/components/wms/PkLabelPrintActions";
 import { pb } from "@/lib/pocketbase";
 import { WmsCard, WmsPrimaryButton, WmsSectionTitle } from "@/components/wms/ui";
-import { PERMINTAAN_BARANG } from "@/lib/wms/permintaan-barang-routes";
-import { OutboundFlowBar } from "@/components/wms/OutboundFlowBar";
 import { OutboundOrderQueue } from "@/components/wms/OutboundOrderQueue";
-import { ValidatorWorkstationSessionBar } from "@/components/wms/ValidatorWorkstationSessionBar";
 import { ValidateOrderSummary } from "@/components/wms/ValidateOrderSummary";
-import { BISNIS_COLLECTIONS, type SalesOrder, type SalesOrderLine } from "@/lib/bisnis/types";
+import { BISNIS_COLLECTIONS, type SalesOrder } from "@/lib/bisnis/types";
 import { loadValidateQueue, isSoAwaitingValidation } from "@/lib/wms/outbound-queues";
 import {
   parseOutboundWorkflow,
   serializeOutboundWorkflow,
   isValidateComplete,
+  type OutboundWorkflow,
 } from "@/lib/wms/outbound-workflow";
-import { mergeOutboundLinesFromSoExpanded } from "@/lib/wms/outbound-bundle-expand";
+import { mergeOutboundWorkflowForOrder } from "@/lib/wms/merge-outbound-workflow-client";
 import { updateSalesWarehouseProcess } from "@/lib/wms/sales-warehouse-process";
 import { validateBarcodeScan } from "@/lib/wms/validations";
 import { getErrorMessage } from "@/lib/errors";
 import { findSalesOrderByScanRef, orderMatchesScanRef } from "@/lib/wms/outbound-order-lookup";
-import { getPackageIdentityView } from "@/lib/wms/package-identity";
-import { fetchWarehouseSlotAssignments } from "@/lib/inventory/client";
 import { buildWmsLineViewsFromPickLines } from "@/lib/wms/wms-order-display";
-import { INV_COLLECTIONS, type InvLocation, type InvProduct } from "@/lib/inventory/types";
+import { INV_COLLECTIONS, type InvProduct } from "@/lib/inventory/types";
 import {
   buildValidateOrderContext,
   hydrateSalesOrderDisplay,
 } from "@/lib/wms/validate-order-context";
 import {
   ensureValidatePackSession,
+  resetValidationScanProgress,
   validationProgress,
 } from "@/lib/wms/validate-pack-session";
-import type { WmsWorkstation } from "@/lib/wms/workstations";
 import { assertSessionAllowsValidation } from "@/lib/wms/workstation-session";
+import { useValidatorWorkstationApi } from "@/components/wms/ValidatorWorkstationProvider";
+import { useOutboundOrderFromQuery } from "@/lib/wms/use-outbound-order-from-query";
 import { WMS_PACK_PHOTO_MAX } from "@/lib/wms/wms-media-limits";
 import { orderMatchesPkScan } from "@/lib/wms/pk-identity";
-import type { WorkstationSessionDto } from "@/lib/wms/workstation-session-client";
+import { prefetchEnsureAwbLabel } from "@/lib/bisnis/awb-label-client";
+import { getWmsFulfillmentMode, isWmsShipFulfillment } from "@/lib/wms/fulfillment-mode";
 import { useLocale } from "@/components/LocaleProvider";
+import type { ValidatePackFlowStep } from "@/components/wms/ValidatePackFlowModal";
+
+function prefetchEnsurePackingInvoice(soId: string): void {
+  const token = pb.authStore.token;
+  if (!token) return;
+  void fetch(`/api/wms/sales-orders/${soId}/ensure-invoice`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "include",
+    body: JSON.stringify({ wmsPickComplete: true }),
+  }).catch(() => {
+    /* prefetch — jangan ganggu UI packing */
+  });
+}
 
 async function uploadPackPhotos(soId: string, warehouse: string, files: File[], uploadErr: string) {
   if (!files.length) return [] as string[];
@@ -72,25 +88,38 @@ const emptyPacking = () => ({
   colli_count: "1",
 });
 
+function pickLinesLookExpanded(wf: OutboundWorkflow): boolean {
+  const lines = Object.values(wf.pick?.lines ?? {});
+  if (lines.length === 0) return false;
+  return lines.every((l) => !!(l.sku?.trim() || l.name?.trim()));
+}
+
 export default function WmsValidasiPage() {
   const { t } = useLocale();
-  const router = useRouter();
   const [queue, setQueue] = useState<SalesOrder[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [so, setSo] = useState<SalesOrder | null>(null);
-  const [workstation, setWorkstation] = useState<WmsWorkstation | null>(null);
-  const [deskSession, setDeskSession] = useState<WorkstationSessionDto | null>(null);
+  const deskApi = useValidatorWorkstationApi();
+  const workstation = deskApi.workstation;
+  const deskSession = deskApi.session;
   const [scanQueue, setScanQueue] = useState("");
   const [scanProduct, setScanProduct] = useState("");
   const [scanPackage, setScanPackage] = useState("");
   const [packageVerified, setPackageVerified] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [openingOrderId, setOpeningOrderId] = useState<string | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [saving, setSaving] = useState(false);
   const [lineViews, setLineViews] = useState<ReturnType<typeof buildWmsLineViewsFromPickLines>>([]);
   const [uploadedPhotoIds, setUploadedPhotoIds] = useState<string[]>([]);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [packing, setPacking] = useState(emptyPacking());
+  const [flowModalOpen, setFlowModalOpen] = useState(false);
+  const [flowModalStep, setFlowModalStep] = useState<ValidatePackFlowStep>("awb");
+  const [awbLabelAttached, setAwbLabelAttached] = useState(false);
+  /** Langkah 1: QR invoice + packing list sudah dicetak/dikonfirmasi. */
+  const [invoiceQrReady, setInvoiceQrReady] = useState(false);
   const autoFinishForSoRef = useRef<string | null>(null);
 
   const refreshQueue = useCallback(async () => {
@@ -109,6 +138,15 @@ export default function WmsValidasiPage() {
     void refreshQueue();
   }, [refreshQueue]);
 
+  /** Pre-warm status AWB (GET saja) — jangan generate / ensure-invoice massal di antrean. */
+  useEffect(() => {
+    if (queueLoading || queue.length === 0) return;
+    const slice = queue.slice(0, 6);
+    for (const o of slice) {
+      if (isWmsShipFulfillment(o)) prefetchEnsureAwbLabel(o.id);
+    }
+  }, [queue, queueLoading]);
+
   const validatorAudit = useCallback(() => {
     const user = pb.authStore.model;
     const userId = user?.id ?? "";
@@ -121,6 +159,30 @@ export default function WmsValidasiPage() {
     };
   }, [workstation, deskSession]);
 
+  const requireValidationSession = useCallback((): boolean => {
+    const userId = pb.authStore.model?.id ?? "";
+    try {
+      assertSessionAllowsValidation(
+        deskSession && workstation
+          ? {
+              id: deskSession.id,
+              userId: deskSession.userId,
+              workstation,
+              channel: deskSession.channel,
+              bonusEligible: deskSession.bonusEligible,
+              checkInAt: deskSession.checkInAt,
+              needsBind: deskSession.needsBind,
+            }
+          : null,
+        userId,
+      );
+      return true;
+    } catch (e) {
+      setError(getErrorMessage(e));
+      return false;
+    }
+  }, [deskSession, workstation]);
+
   const resetWorkOrder = () => {
     autoFinishForSoRef.current = null;
     setSo(null);
@@ -131,32 +193,16 @@ export default function WmsValidasiPage() {
     setUploadedPhotoIds([]);
     setPhotoUploading(false);
     setPacking(emptyPacking());
+    setFlowModalOpen(false);
+    setFlowModalStep("awb");
+    setAwbLabelAttached(false);
+    setInvoiceQrReady(false);
   };
 
   const openOrder = useCallback(
     async (row: SalesOrder) => {
-      const userId = pb.authStore.model?.id ?? "";
-      try {
-        assertSessionAllowsValidation(
-          deskSession && workstation
-            ? {
-                id: deskSession.id,
-                userId: deskSession.userId,
-                workstation,
-                channel: deskSession.channel,
-                bonusEligible: deskSession.bonusEligible,
-                checkInAt: deskSession.checkInAt,
-                needsBind: deskSession.needsBind,
-              }
-            : null,
-          userId,
-        );
-      } catch (e) {
-        setError(getErrorMessage(e));
-        return;
-      }
-      const ws = workstation;
-      if (!ws) return;
+      if (row.id === so?.id) return;
+
       const wf0 = parseOutboundWorkflow(row.outbound_workflow_json);
       if (!isSoAwaitingValidation(row)) {
         setError(t("wms.validasi.errNotInQueue"));
@@ -168,34 +214,27 @@ export default function WmsValidasiPage() {
       }
       setError("");
       autoFinishForSoRef.current = null;
-      setLoading(true);
+      setOpeningOrderId(row.id);
+      setInfo("");
       try {
-        const audit = validatorAudit();
-        const sessionSo = await ensureValidatePackSession(row, audit);
-        const soLines = await pb.collection(BISNIS_COLLECTIONS.salesOrderLines).getFullList<SalesOrderLine>({
-          filter: `sales_order = "${row.id}"`,
-          expand: "product",
-          requestKey: null,
-        });
-        let slots: Record<string, InvLocation> = {};
-        if (row.warehouse) {
-          const { byProductId } = await fetchWarehouseSlotAssignments(row.warehouse);
-          slots = byProductId;
-        }
-        const wfBase = parseOutboundWorkflow(sessionSo.outbound_workflow_json);
-        const wfExpanded = await mergeOutboundLinesFromSoExpanded(pb, wfBase, soLines);
-        const wfJson = serializeOutboundWorkflow(wfExpanded);
-        let displaySo = sessionSo;
-        if (wfJson !== sessionSo.outbound_workflow_json) {
+        const wfBase = parseOutboundWorkflow(row.outbound_workflow_json);
+        const wfExpanded = pickLinesLookExpanded(wfBase)
+          ? wfBase
+          : await mergeOutboundWorkflowForOrder(row.id, wfBase);
+        // Selalu mulai dari 0 — hindari kondisi menggantung (mis. 3/3 valid tapi belum selesai).
+        const wfFresh = resetValidationScanProgress(wfExpanded);
+        const wfJson = serializeOutboundWorkflow(wfFresh);
+        let displaySo = row;
+        if (wfJson !== row.outbound_workflow_json) {
           displaySo = await pb.collection(BISNIS_COLLECTIONS.salesOrders).update<SalesOrder>(
-            sessionSo.id,
+            row.id,
             { outbound_workflow_json: wfJson },
           );
         }
-        const pickLines = wfExpanded.pick?.lines ?? {};
+        const pickLines = wfFresh.pick?.lines ?? {};
         const componentIds = Object.keys(pickLines);
         const productExpand: Record<string, InvProduct> = {};
-        if (componentIds.length > 0) {
+        if (componentIds.length > 0 && !pickLinesLookExpanded(wfFresh)) {
           const filter = componentIds.map((id) => `id = "${id.replace(/"/g, '\\"')}"`).join(" || ");
           const products = await pb.collection(INV_COLLECTIONS.products).getFullList<InvProduct>({
             filter,
@@ -203,42 +242,38 @@ export default function WmsValidasiPage() {
           });
           for (const p of products) productExpand[p.id] = p;
         }
-        setLineViews(buildWmsLineViewsFromPickLines(pickLines, slots, productExpand));
+        setLineViews(buildWmsLineViewsFromPickLines(pickLines, {}, productExpand));
         const hydrated = await hydrateSalesOrderDisplay({
           ...displaySo,
           expand: row.expand ?? displaySo.expand,
         });
         setSo(hydrated);
-        const wf = parseOutboundWorkflow(displaySo.outbound_workflow_json);
-        const pkgCode = getPackageIdentityView(hydrated, wf).code;
-        const pk = wf.validate_pack?.packing;
-        if (pk) {
-          setPacking({
-            weight_kg: pk.weight_kg != null ? String(pk.weight_kg) : "",
-            length_cm: pk.length_cm != null ? String(pk.length_cm) : "",
-            width_cm: pk.width_cm != null ? String(pk.width_cm) : "",
-            height_cm: pk.height_cm != null ? String(pk.height_cm) : "",
-            colli_count: pk.colli_count != null ? String(pk.colli_count) : "1",
-          });
-        } else {
-          setPacking(emptyPacking());
-        }
-        setUploadedPhotoIds(wf.validate_pack?.pack_photo_ids ?? []);
-        const pkgOk = !!wf.validate_pack?.package_code_verified;
-        setPackageVerified(pkgOk);
-        setScanPackage(pkgOk && pkgCode !== "—" ? pkgCode : "");
+        setPacking(emptyPacking());
+        setUploadedPhotoIds([]);
+        setPackageVerified(false);
+        setScanPackage("");
+        setScanProduct("");
+        autoFinishForSoRef.current = null;
+        setAwbLabelAttached(false);
+        setInvoiceQrReady(false);
+        setFlowModalOpen(false);
+        setFlowModalStep("awb");
+        if (isWmsShipFulfillment(hydrated)) prefetchEnsureAwbLabel(hydrated.id);
+        prefetchEnsurePackingInvoice(hydrated.id);
       } catch (e) {
         setError(getErrorMessage(e));
       } finally {
-        setLoading(false);
+        setOpeningOrderId(null);
       }
     },
-    [validatorAudit, workstation, deskSession, t],
+    [t, so?.id],
   );
+
+  useOutboundOrderFromQuery(queue, queueLoading, so?.id, openOrder);
 
   const loadByRef = useCallback(
     async (code: string) => {
-      setLoading(true);
+      setScanBusy(true);
       setError("");
       try {
         const row = await findSalesOrderByScanRef(code, { onlyAwaitingValidation: true });
@@ -248,15 +283,23 @@ export default function WmsValidasiPage() {
         setSo(null);
         setError(getErrorMessage(e));
       } finally {
-        setLoading(false);
+        setScanBusy(false);
       }
     },
     [openOrder, t],
   );
 
   const wf = so ? parseOutboundWorkflow(so.outbound_workflow_json) : null;
+  const fulfillmentMode = so ? getWmsFulfillmentMode(so) : "ship";
+  const isPickupFulfillment = fulfillmentMode === "pickup";
   const progress = useMemo(() => validationProgress(lineViews), [lineViews]);
   const allSkuValid = wf ? isValidateComplete(wf) : false;
+
+  useEffect(() => {
+    if (!so || !invoiceQrReady || !allSkuValid || awbLabelAttached || flowModalOpen) return;
+    setFlowModalStep("awb");
+    setFlowModalOpen(true);
+  }, [so, invoiceQrReady, allSkuValid, awbLabelAttached, flowModalOpen]);
 
   const persistWorkflow = async (nextWf: ReturnType<typeof parseOutboundWorkflow>) => {
     if (!so) return;
@@ -269,33 +312,53 @@ export default function WmsValidasiPage() {
 
   const handleProductScan = async () => {
     if (!so || !wf) return;
-    const ws = workstation;
-    if (!ws || deskSession?.needsBind) {
-      setError(t("wms.validasi.errScanDesk"));
+    if (!invoiceQrReady) {
+      setError(t("wms.validasi.guideNeedQrFirst"));
       return;
     }
+    if (!requireValidationSession()) return;
+    deskApi.touchActivity();
+    const ws = workstation!;
+    const clearScanReady = () => {
+      setScanProduct("");
+      window.setTimeout(() => {
+        document.querySelector<HTMLInputElement>("[data-validate-scan-input]")?.focus();
+      }, 0);
+    };
     try {
+      let activeSo = so;
+      let activeWf = wf;
+      if (!wf.validate_pack?.started_at) {
+        const sessionSo = await ensureValidatePackSession(so, validatorAudit());
+        if (sessionSo.outbound_workflow_json !== so.outbound_workflow_json) {
+          activeSo = { ...so, outbound_workflow_json: sessionSo.outbound_workflow_json };
+          setSo(activeSo);
+        }
+        activeWf = parseOutboundWorkflow(activeSo.outbound_workflow_json);
+      }
       const product = await validateBarcodeScan(scanProduct);
       const key = product.id;
-      const line = wf.pick?.lines?.[key];
+      const line = activeWf.pick?.lines?.[key];
       if (!line) {
         setError(t("wms.validasi.errSkuNotInOrder", { sku: product.sku }));
+        clearScanReady();
         return;
       }
       const nextValidated = line.qty_validated + 1;
       if (nextValidated > line.qty_required) {
         setError(t("wms.validasi.errQtyExceeded"));
+        clearScanReady();
         return;
       }
       const audit = validatorAudit();
       const nextWf = {
-        ...wf,
+        ...activeWf,
         validate_pack: {
-          ...wf.validate_pack,
+          ...activeWf.validate_pack,
           user_id: audit.userId,
           user_name: audit.userName,
           user_role: audit.userRole,
-          started_at: wf.validate_pack?.started_at ?? new Date().toISOString(),
+          started_at: activeWf.validate_pack?.started_at ?? new Date().toISOString(),
           workstation_code: ws.code,
           workstation_cctv: ws.cctv,
         },
@@ -309,10 +372,11 @@ export default function WmsValidasiPage() {
           validated: wfNext.pick?.lines?.[v.productId]?.qty_validated ?? v.validated,
         })),
       );
-      setScanProduct("");
       setError("");
+      clearScanReady();
     } catch (e) {
       setError(getErrorMessage(e));
+      clearScanReady();
     }
   };
 
@@ -341,19 +405,42 @@ export default function WmsValidasiPage() {
     }
   };
 
+  const confirmAwbAttached = useCallback(async () => {
+    if (!so || !wf) return;
+    const now = new Date().toISOString();
+    const nextWf = {
+      ...wf,
+      validate_pack: {
+        ...wf.validate_pack,
+        user_id: wf.validate_pack?.user_id ?? pb.authStore.model?.id ?? "",
+        label_attached: true,
+        package_code_verified: true,
+        package_code_verified_at: now,
+      },
+    };
+    await persistWorkflow(nextWf);
+    setPackageVerified(true);
+    setAwbLabelAttached(true);
+    setFlowModalStep("photo");
+  }, [so, wf, persistWorkflow]);
+
   const finishValidate = useCallback(async (photoIdsOverride?: string[]) => {
     if (!so || !wf) return;
-    const ws = workstation;
-    if (!ws || deskSession?.needsBind) {
-      setError(t("wms.validasi.errScanDesk"));
-      return;
-    }
+    if (!requireValidationSession()) return;
+    deskApi.touchActivity();
+    const ws = workstation!;
     if (!allSkuValid) {
       setError(t("wms.permintaan.errAllValid"));
       return;
     }
-    if (!packageVerified) {
-      setError(t("wms.validasi.errScanPackageFirst"));
+    if (!invoiceQrReady) {
+      setError(t("wms.validasi.guideNeedQrFirst"));
+      return;
+    }
+    if (!awbLabelAttached) {
+      setError(
+        t(isPickupFulfillment ? "wms.validasi.errPkNotAttached" : "wms.validasi.errAwbNotAttached"),
+      );
       return;
     }
     const photoIds = photoIdsOverride ?? uploadedPhotoIds;
@@ -367,6 +454,7 @@ export default function WmsValidasiPage() {
     }
     setSaving(true);
     setError("");
+    setInfo("");
     try {
       const userId = pb.authStore.model?.id;
       if (!userId) throw new Error(t("wms.validasi.errRelogin"));
@@ -390,8 +478,8 @@ export default function WmsValidasiPage() {
       });
       resetWorkOrder();
       setScanQueue("");
+      setInfo(t("wms.validasi.doneStay"));
       await refreshQueue();
-      router.push(PERMINTAAN_BARANG.pickup);
     } catch (e) {
       setError(getErrorMessage(e));
       autoFinishForSoRef.current = null;
@@ -403,19 +491,22 @@ export default function WmsValidasiPage() {
     wf,
     workstation,
     deskSession,
+    deskApi,
+    requireValidationSession,
     allSkuValid,
-    packageVerified,
-    uploadedPhotoIds,
+    invoiceQrReady,
+    awbLabelAttached,
+    isPickupFulfillment,
     validatorAudit,
     packing,
     refreshQueue,
-    router,
     t,
   ]);
 
   const handlePackPhotoCapture = useCallback(
     async (file: File) => {
       if (!so || !wf) return;
+      deskApi.touchActivity();
       if (uploadedPhotoIds.length >= WMS_PACK_PHOTO_MAX) {
         setError(t("wms.validasi.errMaxPhotos", { max: WMS_PACK_PHOTO_MAX }));
         return;
@@ -429,12 +520,14 @@ export default function WmsValidasiPage() {
 
         const ws = workstation;
         const sessionOk = !!ws && !!deskSession && !deskSession.needsBind;
+        const atMax = nextPhotoIds.length >= WMS_PACK_PHOTO_MAX;
         const ready =
+          atMax &&
           isValidateComplete(wf) &&
-          packageVerified &&
-          nextPhotoIds.length > 0 &&
+          awbLabelAttached &&
           sessionOk;
 
+        // Foto ke-3 (maks) → selesai otomatis. 1–2 foto: operator tekan Simpan.
         if (ready && autoFinishForSoRef.current !== so.id) {
           autoFinishForSoRef.current = so.id;
           setPhotoUploading(false);
@@ -452,7 +545,7 @@ export default function WmsValidasiPage() {
       so,
       wf,
       uploadedPhotoIds,
-      packageVerified,
+      awbLabelAttached,
       workstation,
       deskSession,
       finishValidate,
@@ -478,7 +571,11 @@ export default function WmsValidasiPage() {
       });
       resetWorkOrder();
       await refreshQueue();
-      if (action === "return_to_picking") router.push(PERMINTAAN_BARANG.picking);
+      if (action === "return_to_picking") {
+        setInfo(t("wms.validasi.returnedToPickingStay"));
+      } else if (action === "validation_failed") {
+        setInfo(t("wms.validasi.validationFailedStay"));
+      }
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -487,54 +584,52 @@ export default function WmsValidasiPage() {
   };
 
   const photoReady = uploadedPhotoIds.length > 0;
-  const sessionReady = !!workstation && !!deskSession && !deskSession?.needsBind;
+  const sessionReady = deskApi.sessionReady;
 
   const completionBlockers = useMemo(() => {
     const items: string[] = [];
+    if (!invoiceQrReady) items.push(t("wms.validasi.blockerInvoiceQr"));
     if (!allSkuValid) items.push(t("wms.validasi.blockerAllSku"));
-    if (!packageVerified) items.push(t("wms.validasi.blockerPk"));
+    if (!awbLabelAttached) {
+      items.push(t(isPickupFulfillment ? "wms.validasi.blockerPk" : "wms.validasi.blockerAwb"));
+    }
     if (!photoReady) items.push(t("wms.validasi.blockerPhoto"));
     if (!sessionReady) items.push(t("wms.validasi.blockerSession"));
     return items;
-  }, [allSkuValid, packageVerified, photoReady, sessionReady, t]);
+  }, [invoiceQrReady, allSkuValid, awbLabelAttached, isPickupFulfillment, photoReady, sessionReady, t]);
 
   const canComplete = completionBlockers.length === 0;
 
   const orderCtx = so ? buildValidateOrderContext(so) : null;
-  const stage = wf?.stage ?? "validate_pack";
 
   return (
     <>
-        <OutboundFlowBar stage={stage} />
-        <ValidatorWorkstationSessionBar
-          onWorkstationChange={setWorkstation}
-          onSessionChange={setDeskSession}
-        />
-
-        {error ? (
+        {error || deskApi.localError ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {error}
+            {error || deskApi.localError}
+          </div>
+        ) : null}
+        {info ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {info}
           </div>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-12">
-          <div className="space-y-4 lg:col-span-3">
+        <div className="grid h-[calc(100dvh-8.5rem)] min-h-[32rem] grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="flex min-h-0 flex-col gap-3 lg:col-span-1">
             <OutboundOrderQueue
-              title={t("wms.permintaan.queue")}
+              fillHeight
+              showPkPrintStatus={false}
+              title={t("wms.validasi.queueTitle")}
               subtitle={t("wms.validasi.queueSubtitle")}
               orders={queue}
               selectedId={so?.id}
               loading={queueLoading}
               emptyText={t("wms.validasi.queueEmpty")}
-              onSelect={(o) => {
-                if (!workstation || deskSession?.needsBind) {
-                  setError(t("wms.permintaan.errScanValidator"));
-                  return;
-                }
-                void openOrder(o);
-              }}
+              onRefresh={() => void refreshQueue()}
+              onSelect={(o) => void openOrder(o)}
             />
-            <WmsCard>
+            <WmsCard className="shrink-0">
               <WmsSectionTitle title={t("wms.permintaan.openOrder")} subtitle={t("wms.validasi.openOrderSubtitle")} />
               <div className="mt-2 flex gap-2">
                 <input
@@ -543,283 +638,330 @@ export default function WmsValidasiPage() {
                   value={scanQueue}
                   onChange={(e) => setScanQueue(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      if (!workstation || deskSession?.needsBind) {
-                        setError(t("wms.permintaan.errScanValidator"));
-                        return;
-                      }
-                      void loadByRef(scanQueue);
-                    }
+                    if (e.key === "Enter") void loadByRef(scanQueue);
                   }}
                 />
-                <WmsPrimaryButton type="button" disabled={loading} onClick={() => void loadByRef(scanQueue)}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scan className="h-4 w-4" />}
+                <WmsPrimaryButton
+                  type="button"
+                  disabled={scanBusy || !scanQueue.trim()}
+                  onClick={() => void loadByRef(scanQueue)}
+                >
+                  {scanBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scan className="h-4 w-4" />}
                 </WmsPrimaryButton>
               </div>
             </WmsCard>
           </div>
 
-          <div className="space-y-4 lg:col-span-9">
-            {!so || !orderCtx ? (
-              <WmsCard className="py-16 text-center text-sm text-slate-500">
+          <div className="flex min-h-0 flex-col gap-3 lg:col-span-2">
+            {openingOrderId ? (
+              <WmsCard className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-sm text-slate-500">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+                {t("wms.validasi.openingOrder")}
+              </WmsCard>
+            ) : !so || !orderCtx ? (
+              <WmsCard className="flex flex-1 items-center justify-center text-center text-sm text-slate-500">
                 {t("wms.validasi.selectOrScan")}
               </WmsCard>
             ) : (
-              <>
-                <ValidateOrderSummary ctx={orderCtx} />
-
-                <WmsCard className="border-emerald-200 bg-emerald-50/30">
-                  <WmsSectionTitle title={t("wms.validasi.awbTitle")} subtitle={t("wms.validasi.awbSubtitle")} />
-                  <div className="mt-2 space-y-3">
-                    <AwbLabelPrintActions so={so} />
-                    <InvoicePackQrPanel salesOrderId={so.id} />
-                  </div>
-                </WmsCard>
-
-                <WmsCard className="border-2 border-indigo-200">
-                  <WmsSectionTitle title={t("wms.validasi.scanProduct")} subtitle={t("wms.validasi.scanProductSubtitle")} />
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      autoFocus
-                      className="flex-1 rounded-xl border-2 border-indigo-200 px-4 py-4 font-mono text-lg"
-                      placeholder={t("wms.validasi.scanProductPlaceholder")}
-                      value={scanProduct}
-                      onChange={(e) => setScanProduct(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && void handleProductScan()}
-                    />
-                    <WmsPrimaryButton type="button" onClick={() => void handleProductScan()}>
-                      <Scan className="h-5 w-5" />
-                    </WmsPrimaryButton>
-                  </div>
-                </WmsCard>
-
-                <WmsCard>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[520px] text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
-                          <th className="px-3 py-2">{t("wms.hub.colSku")}</th>
-                          <th className="px-3 py-2">{t("wms.validasi.colProductName")}</th>
-                          <th className="px-3 py-2">{t("wms.validasi.colVariant")}</th>
-                          <th className="px-3 py-2 text-right">{t("wms.validasi.colQtyOrder")}</th>
-                          <th className="px-3 py-2 text-right">{t("wms.validasi.colQtyScan")}</th>
-                          <th className="px-3 py-2 text-center">{t("wms.validasi.colStatus")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lineViews.map((l) => {
-                          const valid = l.validated >= l.qty && l.qty > 0;
-                          return (
-                            <tr key={l.productId} className="border-b border-slate-100">
-                              <td className="px-3 py-2 font-mono text-xs text-indigo-700">{l.sku}</td>
-                              <td className="px-3 py-2 font-medium">
-                                {l.name}
-                                {l.bundleLabel ? (
-                                  <span className="mt-0.5 block text-[11px] font-normal text-amber-800">
-                                    {t("wms.validasi.bundleFor", { label: l.bundleLabel })}
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="px-3 py-2 text-slate-600">{l.variant ?? "—"}</td>
-                              <td className="px-3 py-2 text-right font-semibold">{l.qty}</td>
-                              <td className="px-3 py-2 text-right font-semibold">{l.validated}</td>
-                              <td className="px-3 py-2 text-center">
-                                <span
-                                  className={
-                                    "inline-block rounded-full px-2 py-0.5 text-xs font-bold " +
-                                    (valid
-                                      ? "bg-emerald-100 text-emerald-800"
-                                      : "bg-amber-100 text-amber-900")
-                                  }
-                                >
-                                  {valid ? t("wms.validasi.statusValid") : t("wms.validasi.statusNotValid")}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-4 rounded-lg bg-slate-50 p-4">
-                    <p className="text-sm font-semibold text-slate-800">{t("wms.validasi.progressTitle")}</p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {t("wms.validasi.progressSummary", {
-                        total: progress.totalSku,
-                        valid: progress.validSku,
-                        pending: progress.pendingSku,
-                      })}
-                    </p>
-                    <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className="h-full bg-emerald-500 transition-all"
-                        style={{ width: `${progress.pct}%` }}
-                      />
-                    </div>
-                    <p className="mt-1 text-right text-xs font-bold text-emerald-700">{progress.pct}%</p>
-                  </div>
-                </WmsCard>
-
-                {allSkuValid ? (
-                  <>
-                    <WmsCard className="border-violet-200 bg-violet-50/40">
-                      <WmsSectionTitle title={t("wms.validasi.packing")} subtitle={t("wms.validasi.packingSubtitle")} />
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                        {(
-                          [
-                            ["weight_kg", t("wms.validasi.weightKg")],
-                            ["length_cm", t("wms.validasi.lengthCm")],
-                            ["width_cm", t("wms.validasi.widthCm")],
-                            ["height_cm", t("wms.validasi.heightCm")],
-                            ["colli_count", t("wms.validasi.colliCount")],
-                          ] as const
-                        ).map(([key, label]) => (
-                          <label key={key} className="block text-xs font-medium text-slate-700">
-                            {label}
-                            <input
-                              type="number"
-                              min={0}
-                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                              value={packing[key]}
-                              onChange={(e) => setPacking((p) => ({ ...p, [key]: e.target.value }))}
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </WmsCard>
-
-                    <WmsCard className="border-cyan-200 bg-cyan-50/50">
-                      <WmsSectionTitle
-                        title={t("wms.validasi.scanPkTitle")}
-                        subtitle={t("wms.validasi.scanPkSubtitle")}
-                      />
-                      <div className="mt-2 flex gap-2">
-                        <input
-                          className={
-                            "flex-1 rounded-xl border-2 px-4 py-3 font-mono text-sm " +
-                            (packageVerified ? "border-emerald-400 bg-emerald-50" : "border-cyan-200 bg-white")
-                          }
-                          placeholder={orderCtx.packageCode}
-                          value={scanPackage}
-                          onChange={(e) => {
-                            setScanPackage(e.target.value);
-                            setPackageVerified(false);
-                          }}
-                          onKeyDown={(e) => e.key === "Enter" && void verifyPackageScan()}
-                        />
-                        <WmsPrimaryButton type="button" onClick={() => void verifyPackageScan()}>
-                          <Scan className="h-4 w-4" />
-                        </WmsPrimaryButton>
-                      </div>
-                      {packageVerified ? (
-                        <p className="mt-2 flex items-center gap-1 text-sm font-medium text-emerald-700">
-                          <CheckCircle2 className="h-4 w-4" />
-                          {t("wms.validasi.pkVerified")}
-                        </p>
-                      ) : (
-                        <p className="mt-2 text-xs text-cyan-900">{t("wms.validasi.pkNotVerified")}</p>
-                      )}
-                    </WmsCard>
-
-                    <WmsCard className="border-violet-300 bg-violet-50/60">
-                      <ValidatePackPhotoCapture
-                        uploadedCount={uploadedPhotoIds.length}
-                        uploading={photoUploading}
-                        onCapture={handlePackPhotoCapture}
-                        onRemoveUploaded={() => {
-                          setUploadedPhotoIds([]);
-                          autoFinishForSoRef.current = null;
-                        }}
-                      />
-                      {saving ? (
-                        <p className="mt-3 flex items-center gap-2 text-sm font-medium text-indigo-800">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          {t("wms.validasi.finishing")}
-                        </p>
-                      ) : canComplete && photoReady ? (
-                        <p className="mt-3 text-xs text-emerald-800">
-                          {t("wms.validasi.autoFinishHint")}
-                        </p>
-                      ) : null}
-                    </WmsCard>
-                  </>
-                ) : null}
-
-                {completionBlockers.length > 0 ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                    <p className="font-semibold">{t("wms.validasi.cannotComplete")}</p>
-                    <ul className="mt-1 list-inside list-disc text-xs">
-                      {completionBlockers.map((b) => (
-                        <li key={b}>{b}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : saving ? (
-                  <p className="text-sm font-medium text-indigo-800">{t("wms.validasi.autoFinishing")}</p>
+              <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
+                {/* Tahap 1: cetak QR — scan baru muncul setelah ini */}
+                {!invoiceQrReady ? (
+                  <InvoiceAccessGuidePanel
+                    salesOrderId={so.id}
+                    orderNo={so.order_no}
+                    refreshKey={`${so.status}-${so.updated}`}
+                    confirmed={invoiceQrReady}
+                    requirePrintBeforeConfirm
+                    onConfirmed={() => {
+                      setInvoiceQrReady(true);
+                      setError("");
+                      requestAnimationFrame(() => {
+                        const el = document.querySelector<HTMLInputElement>(
+                          "[data-validate-scan-input]",
+                        );
+                        el?.focus();
+                      });
+                    }}
+                  />
                 ) : (
-                  <p className="text-sm font-medium text-emerald-700">
-                    {t("wms.validasi.completeReady")}
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-xs font-medium text-emerald-900">
+                    {t("wms.validasi.guideQrDone")}
                   </p>
                 )}
 
-                <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
-                  <button
-                    type="button"
-                    disabled={saving}
-                    className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-50"
-                    onClick={() => {
-                      if (window.confirm(t("wms.permintaan.confirmReturnPicking"))) {
-                        void runWarehouseAction("return_to_picking");
-                      }
-                    }}
-                  >
-                    {t("wms.validasi.returnPicking")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    className="rounded-lg border border-orange-300 bg-white px-4 py-2 text-sm font-semibold text-orange-900 hover:bg-orange-50"
-                    onClick={() => {
-                      const reason = window.prompt(t("wms.validasi.promptValidationFailed"));
-                      if (reason !== null) void runWarehouseAction("validation_failed", reason);
-                    }}
-                  >
-                    {t("wms.validasi.validationFailed")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50"
-                    onClick={() => {
-                      const reason = window.prompt(t("wms.validasi.promptCancel"));
-                      if (reason !== null) void runWarehouseAction("cancel_order", reason);
-                    }}
-                  >
-                    {t("wms.validasi.cancelOrder")}
-                  </button>
-                  <WmsPrimaryButton
-                    disabled={saving}
-                    onClick={() => {
-                      if (!canComplete) {
-                        setError(completionBlockers.join(" "));
-                        return;
-                      }
-                      void finishValidate(undefined);
-                    }}
-                  >
-                    {saving ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-1 h-4 w-4" />
-                    )}
-                    {t("wms.validasi.validationComplete")}
-                  </WmsPrimaryButton>
-                </div>
-              </>
+                <ValidateOrderSummary ctx={orderCtx} compact />
+
+                {/* Tahap 2: validasi — hanya setelah cetak QR */}
+                {invoiceQrReady ? (
+                  <>
+                    <WmsCard className="shrink-0 border-2 border-indigo-200">
+                      <WmsSectionTitle
+                        title={t("wms.validasi.scanProduct")}
+                        subtitle={t("wms.validasi.scanProductSubtitle")}
+                      />
+                      {!sessionReady ? (
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                          {t("wms.validasi.needDeskToValidate")}
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          data-validate-scan-input
+                          autoFocus={sessionReady}
+                          disabled={!sessionReady}
+                          className="flex-1 rounded-xl border-2 border-indigo-200 px-4 py-3 font-mono text-lg disabled:bg-slate-50 disabled:text-slate-400"
+                          placeholder={t("wms.validasi.scanProductPlaceholder")}
+                          value={scanProduct}
+                          onChange={(e) => setScanProduct(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && void handleProductScan()}
+                        />
+                        <WmsPrimaryButton
+                          type="button"
+                          disabled={!sessionReady}
+                          onClick={() => void handleProductScan()}
+                        >
+                          <Scan className="h-5 w-5" />
+                        </WmsPrimaryButton>
+                      </div>
+                      <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                        <p className="text-xs text-slate-600">
+                          {t("wms.validasi.progressSummary", {
+                            total: progress.totalSku,
+                            valid: progress.validSku,
+                            pending: progress.pendingSku,
+                            scanned: progress.scannedQty,
+                            totalQty: progress.totalQty,
+                          })}
+                          <span className="ml-2 font-bold text-emerald-700">{progress.pct}%</span>
+                        </p>
+                        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full bg-emerald-500 transition-all"
+                            style={{ width: `${progress.pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    </WmsCard>
+
+                    <WmsCard className="shrink-0">
+                      <WmsSectionTitle
+                        title={t("wms.validasi.productsTitle")}
+                        subtitle={t("wms.validasi.productsSubtitleScan")}
+                      />
+                      <div className="mt-2 overflow-x-auto">
+                        {lineViews.length === 0 ? (
+                          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                            {t("wms.validasi.productsEmpty")}
+                          </p>
+                        ) : (
+                          <table className="w-full min-w-[520px] text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
+                                <th className="px-3 py-2">{t("wms.hub.colSku")}</th>
+                                <th className="px-3 py-2">{t("wms.validasi.colProductName")}</th>
+                                <th className="px-3 py-2 text-right">{t("wms.validasi.colQtyOrder")}</th>
+                                <th className="px-3 py-2 text-right">{t("wms.validasi.colQtyScan")}</th>
+                                <th className="px-3 py-2 text-center">{t("wms.validasi.colStatus")}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lineViews.map((l) => {
+                                const valid = l.validated >= l.qty && l.qty > 0;
+                                return (
+                                  <tr key={l.productId} className="border-b border-slate-100">
+                                    <td className="px-3 py-2 font-mono text-xs text-indigo-700">{l.sku}</td>
+                                    <td className="px-3 py-2 font-medium">
+                                      {l.name}
+                                      {l.bundleLabel ? (
+                                        <span className="mt-0.5 block text-[11px] font-normal text-amber-800">
+                                          {t("wms.validasi.bundleFor", { label: l.bundleLabel })}
+                                        </span>
+                                      ) : null}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold">{l.qty}</td>
+                                    <td className="px-3 py-2 text-right font-semibold">{l.validated}</td>
+                                    <td className="px-3 py-2 text-center">
+                                      <span
+                                        className={
+                                          "inline-block rounded-full px-2 py-0.5 text-xs font-bold " +
+                                          (valid
+                                            ? "bg-emerald-100 text-emerald-800"
+                                            : "bg-amber-100 text-amber-900")
+                                        }
+                                      >
+                                        {valid
+                                          ? t("wms.validasi.statusValid")
+                                          : t("wms.validasi.statusNotValid")}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      {allSkuValid && !awbLabelAttached ? (
+                        <p className="mt-3 text-sm font-medium text-indigo-800">
+                          {t(
+                            isPickupFulfillment
+                              ? "wms.validasi.allValidOpenPk"
+                              : "wms.validasi.allValidOpenAwb",
+                          )}
+                        </p>
+                      ) : null}
+
+                      {completionBlockers.length > 0 && allSkuValid ? (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                          <p className="font-semibold">{t("wms.validasi.cannotComplete")}</p>
+                          <ul className="mt-1 list-inside list-disc text-xs">
+                            {completionBlockers.map((b) => (
+                              <li key={b}>{b}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : saving ? (
+                        <p className="mt-3 text-sm font-medium text-indigo-800">
+                          {t("wms.validasi.autoFinishing")}
+                        </p>
+                      ) : allSkuValid ? (
+                        <p className="mt-3 text-sm font-medium text-emerald-700">
+                          {t("wms.validasi.completeReady")}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-3 border-t border-slate-100 pt-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={saving}
+                            className="rounded-lg border border-orange-300 bg-white px-4 py-2 text-sm font-semibold text-orange-900 hover:bg-orange-50"
+                            onClick={() => {
+                              const reason = window.prompt(t("wms.validasi.promptValidationFailed"));
+                              if (reason === null) return;
+                              if (!reason.trim()) {
+                                setError(t("wms.validasi.errValidationFailedReason"));
+                                return;
+                              }
+                              void runWarehouseAction("validation_failed", reason.trim());
+                            }}
+                          >
+                            {t("wms.validasi.validationFailed")}
+                          </button>
+                          <WmsPrimaryButton
+                            disabled={saving}
+                            onClick={() => {
+                              if (!canComplete) {
+                                setError(completionBlockers.join(" "));
+                                return;
+                              }
+                              void finishValidate(undefined);
+                            }}
+                          >
+                            {saving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="mr-1 h-4 w-4" />
+                            )}
+                            {t("wms.validasi.validationComplete")}
+                          </WmsPrimaryButton>
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500">
+                          {t("wms.validasi.validatorScopeHint")}
+                        </p>
+                      </div>
+                    </WmsCard>
+
+                    <details className="shrink-0 rounded-lg border border-slate-200 bg-white">
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-600">
+                        {t(
+                          isPickupFulfillment
+                            ? "wms.validasi.pkPreviewTitle"
+                            : "wms.validasi.awbPreviewTitle",
+                        )}
+                      </summary>
+                      <div className="border-t border-slate-100 p-2">
+                        {isPickupFulfillment ? (
+                          <PkLabelPrintActions so={so} compact />
+                        ) : (
+                          <AwbLabelPrintActions so={so} compact />
+                        )}
+                      </div>
+                    </details>
+                  </>
+                ) : (
+                  <WmsCard className="shrink-0">
+                    <WmsSectionTitle
+                      title={t("wms.validasi.productsTitle")}
+                      subtitle={t("wms.validasi.productsSubtitleBeforePrint")}
+                    />
+                    <div className="mt-2 overflow-x-auto">
+                      {lineViews.length === 0 ? (
+                        <p className="text-xs text-slate-500">{t("wms.validasi.productsEmpty")}</p>
+                      ) : (
+                        <table className="w-full min-w-[400px] text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
+                              <th className="px-3 py-2">{t("wms.hub.colSku")}</th>
+                              <th className="px-3 py-2">{t("wms.validasi.colProductName")}</th>
+                              <th className="px-3 py-2 text-right">{t("wms.validasi.colQtyOrder")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lineViews.map((l) => (
+                              <tr key={l.productId} className="border-b border-slate-100">
+                                <td className="px-3 py-2 font-mono text-xs text-indigo-700">{l.sku}</td>
+                                <td className="px-3 py-2 font-medium">{l.name}</td>
+                                <td className="px-3 py-2 text-right font-semibold">{l.qty}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">{t("wms.validasi.guideNeedQrFirst")}</p>
+                  </WmsCard>
+                )}
+              </div>
             )}
           </div>
         </div>
+
+        {so && flowModalOpen ? (
+          <ValidatePackFlowModal
+            open={flowModalOpen}
+            step={flowModalStep}
+            so={so}
+            fulfillmentMode={fulfillmentMode}
+            uploadedPhotoCount={uploadedPhotoIds.length}
+            photoUploading={photoUploading}
+            saving={saving}
+            onAwbConfirm={() => void confirmAwbAttached()}
+            onPhotoCapture={handlePackPhotoCapture}
+            onPhotoFinish={() => void finishValidate(undefined)}
+            onPhotoRemove={() => {
+              setUploadedPhotoIds([]);
+              autoFinishForSoRef.current = null;
+            }}
+            onBackToQueue={() => {
+              setFlowModalOpen(false);
+              setFlowModalStep("awb");
+              setAwbLabelAttached(false);
+              resetWorkOrder();
+            }}
+            onCancelOrder={() => {
+              const reason = window.prompt(t("wms.validasi.promptValidationFailed"));
+              if (reason === null) return;
+              if (!reason.trim()) {
+                setError(t("wms.validasi.errValidationFailedReason"));
+                return;
+              }
+              setFlowModalOpen(false);
+              void runWarehouseAction("validation_failed", reason.trim());
+            }}
+          />
+        ) : null}
 
     </>
   );

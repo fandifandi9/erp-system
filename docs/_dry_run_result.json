@@ -1,0 +1,1333 @@
+{
+  "MIGRATION_SPEC": {
+    "users_fields": [
+      {
+        "name": "mobile_session_nonce",
+        "type": "text",
+        "required": false,
+        "notes": "Phase 17E multi-device session. Mobile auth writes nonce on login. Web auth never touches this field."
+      },
+      {
+        "name": "account_type",
+        "type": "select",
+        "required": false,
+        "options": {
+          "maxSelect": 1,
+          "values": [
+            "owner",
+            "user"
+          ]
+        },
+        "notes": "RBAC gate. Source: lib/rbac.ts AccountType. Production rules already reference @request.auth.account_type."
+      },
+      {
+        "name": "role_code",
+        "type": "text",
+        "required": false,
+        "notes": "HR gating. Values: hr|manager|staff|staff-basic|security|ob. Source: lib/rbac.ts UserRoleCode."
+      },
+      {
+        "name": "dashboard_access",
+        "type": "bool",
+        "required": false,
+        "notes": "Dashboard access flag. Source: lib/rbac.ts getOperationalDashboardRoute."
+      }
+    ],
+    "leave_fields": [
+      {
+        "name": "start_date",
+        "type": "text",
+        "required": false,
+        "notes": "Written on every leave create (YMD string). Source: leave-server.ts serverSubmitLeave."
+      },
+      {
+        "name": "end_date",
+        "type": "text",
+        "required": false,
+        "notes": "Written on every leave create. Multi-day leave loses end date without this field."
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "required": false,
+        "notes": "Written with DEFAULT_LEAVE_BOOKING_REASON fallback. Optional in schema."
+      },
+      {
+        "name": "division",
+        "type": "text",
+        "required": false,
+        "notes": "New canonical division field. Source writes both division + devision for legacy compat."
+      },
+      {
+        "name": "position",
+        "type": "text",
+        "required": false,
+        "notes": "Employee position at time of leave. Source: profile.position."
+      },
+      {
+        "name": "booking_date",
+        "type": "text",
+        "required": false,
+        "notes": "ISO datetime of submission. Source: new Date().toISOString()."
+      },
+      {
+        "name": "daily_compensation_rate",
+        "type": "number",
+        "required": false,
+        "notes": "Written on approve. Source: computeLeaveCompensationAmount."
+      },
+      {
+        "name": "compensation_amount",
+        "type": "number",
+        "required": false,
+        "notes": "Written on approve. Source: leave-server.ts serverApproveLeave."
+      },
+      {
+        "name": "rejection_reason",
+        "type": "text",
+        "required": false,
+        "notes": "Written on reject. Fallback to note field if this field absent."
+      }
+    ],
+    "new_collections": [
+      {
+        "name": "hr_rating_periods",
+        "step": "D1",
+        "purpose": "Rating cycle definitions. Owner/HR create periods to group assignments.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "All access via Next.js admin PB. app/api/hr/rating/periods/route.ts.",
+        "schema": [
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "notes": "Period name e.g. Q3-2026"
+          },
+          {
+            "name": "start_date",
+            "type": "date",
+            "required": false,
+            "notes": "ISO date string stored as '2026-01-01 00:00:00.000Z'"
+          },
+          {
+            "name": "end_date",
+            "type": "date",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "status",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "draft",
+                "open",
+                "in_progress",
+                "closed",
+                "cancelled"
+              ]
+            },
+            "notes": "Lifecycle"
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "created_by",
+            "type": "relation",
+            "required": false,
+            "relation_target": "users",
+            "notes": "Source: ctx.userId"
+          }
+        ],
+        "dependencies": [
+          "users"
+        ],
+        "source_consumers": [
+          "lib/hr/rating-server.ts → serverCreatePeriod/serverListPeriods/serverUpdatePeriodStatus"
+        ]
+      },
+      {
+        "name": "hr_rating_aspects",
+        "step": "D2",
+        "purpose": "Rating criteria/dimensions (Discipline, Responsibility, etc.). Score range 1–5.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Only HR/Owner can manage aspects via admin PB.",
+        "schema": [
+          {
+            "name": "code",
+            "type": "text",
+            "required": true,
+            "notes": "Unique code e.g. 'discipline'"
+          },
+          {
+            "name": "name",
+            "type": "text",
+            "required": true,
+            "notes": "Display name"
+          },
+          {
+            "name": "description",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "sort_order",
+            "type": "number",
+            "required": false,
+            "notes": "UI ordering"
+          },
+          {
+            "name": "is_active",
+            "type": "bool",
+            "required": false,
+            "notes": "Only active aspects are included in scoring"
+          },
+          {
+            "name": "min_score",
+            "type": "number",
+            "required": false,
+            "notes": "Typically 1"
+          },
+          {
+            "name": "max_score",
+            "type": "number",
+            "required": false,
+            "notes": "Typically 5"
+          }
+        ],
+        "dependencies": [],
+        "source_consumers": [
+          "lib/hr/rating-server.ts → listActiveAspects"
+        ]
+      },
+      {
+        "name": "hr_rating_assignments",
+        "step": "D3",
+        "purpose": "Maps a subject user to a rating period. One assignment per subject per period.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Selection evidence (reviewer identities) must not be readable by subject.",
+        "schema": [
+          {
+            "name": "period",
+            "type": "relation",
+            "required": true,
+            "relation_target": "hr_rating_periods",
+            "notes": "Parent period"
+          },
+          {
+            "name": "subject",
+            "type": "relation",
+            "required": true,
+            "relation_target": "users",
+            "notes": "Employee being rated"
+          },
+          {
+            "name": "reviewer_count",
+            "type": "number",
+            "required": false,
+            "notes": "Requested reviewer count"
+          },
+          {
+            "name": "assignment_method",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "smart_random",
+                "manual"
+              ]
+            },
+            "notes": ""
+          },
+          {
+            "name": "status",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "draft",
+                "assigned",
+                "in_progress",
+                "completed",
+                "cancelled"
+              ]
+            },
+            "notes": "Lifecycle"
+          },
+          {
+            "name": "selection_evidence_json",
+            "type": "text",
+            "required": false,
+            "notes": "JSON blob: reviewer selection audit trail. NEVER exposed to subject."
+          },
+          {
+            "name": "created_by",
+            "type": "relation",
+            "required": false,
+            "relation_target": "users",
+            "notes": ""
+          }
+        ],
+        "dependencies": [
+          "hr_rating_periods",
+          "users"
+        ],
+        "source_consumers": [
+          "lib/hr/rating-server.ts → serverCreateAssignment/serverListMyReviewerTasks"
+        ]
+      },
+      {
+        "name": "hr_rating_reviewers",
+        "step": "D4",
+        "purpose": "One row per (assignment × reviewer). Tracks submission status and locking.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Reviewer identity must not be exposed to subject via direct PB query.",
+        "schema": [
+          {
+            "name": "assignment",
+            "type": "relation",
+            "required": true,
+            "relation_target": "hr_rating_assignments",
+            "notes": "Parent assignment"
+          },
+          {
+            "name": "reviewer",
+            "type": "relation",
+            "required": true,
+            "relation_target": "users",
+            "notes": "Reviewer user"
+          },
+          {
+            "name": "status",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "assigned",
+                "draft",
+                "submitted",
+                "locked"
+              ]
+            },
+            "notes": "assigned→draft→locked"
+          },
+          {
+            "name": "relevance_tier",
+            "type": "text",
+            "required": false,
+            "notes": "department|division|office|manual"
+          },
+          {
+            "name": "selection_note",
+            "type": "text",
+            "required": false,
+            "notes": "Assignment method used"
+          },
+          {
+            "name": "submitted_at",
+            "type": "date",
+            "required": false,
+            "notes": "Set when locked"
+          }
+        ],
+        "dependencies": [
+          "hr_rating_assignments",
+          "users"
+        ],
+        "source_consumers": [
+          "lib/hr/rating-server.ts → serverSaveReviewerDraft/serverSubmitReviewer"
+        ]
+      },
+      {
+        "name": "hr_rating_scores",
+        "step": "D5",
+        "purpose": "One score row per (reviewer_row × aspect). Replaced on each draft save.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Per-reviewer scores must not be readable by subject or other reviewers.",
+        "schema": [
+          {
+            "name": "reviewer_row",
+            "type": "relation",
+            "required": true,
+            "relation_target": "hr_rating_reviewers",
+            "notes": "Parent reviewer row"
+          },
+          {
+            "name": "aspect",
+            "type": "relation",
+            "required": true,
+            "relation_target": "hr_rating_aspects",
+            "notes": "Which aspect"
+          },
+          {
+            "name": "score",
+            "type": "number",
+            "required": false,
+            "notes": "1–5. Validated server-side."
+          },
+          {
+            "name": "comment",
+            "type": "text",
+            "required": false,
+            "notes": "Optional per-aspect comment"
+          }
+        ],
+        "dependencies": [
+          "hr_rating_reviewers",
+          "hr_rating_aspects"
+        ],
+        "source_consumers": [
+          "lib/hr/rating-server.ts → serverSaveReviewerDraft (delete+recreate pattern)"
+        ]
+      },
+      {
+        "name": "hr_rating_results",
+        "step": "D6",
+        "purpose": "Aggregated result per assignment. Upserted after each reviewer submits.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Served to subject via serverGetMyResult which exposes only aggregate (no reviewer breakdown).",
+        "schema": [
+          {
+            "name": "assignment",
+            "type": "relation",
+            "required": true,
+            "relation_target": "hr_rating_assignments",
+            "notes": "One result per assignment"
+          },
+          {
+            "name": "overall_score",
+            "type": "number",
+            "required": false,
+            "notes": "Mean of reviewer means (0–5)"
+          },
+          {
+            "name": "category",
+            "type": "text",
+            "required": false,
+            "notes": "Sangat Baik|Baik|Perlu Peningkatan|Perlu Perhatian HR"
+          },
+          {
+            "name": "respondent_count",
+            "type": "number",
+            "required": false,
+            "notes": "Submitted reviewer count"
+          },
+          {
+            "name": "aspect_scores_json",
+            "type": "text",
+            "required": false,
+            "notes": "JSON array of per-aspect averages. Exposed to subject in aggregate form only."
+          },
+          {
+            "name": "summary",
+            "type": "text",
+            "required": false,
+            "notes": "AI-generated narrative"
+          },
+          {
+            "name": "strengths",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "improvements",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "suggestions",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "calculated_at",
+            "type": "date",
+            "required": false,
+            "notes": "Last recalculation timestamp"
+          }
+        ],
+        "dependencies": [
+          "hr_rating_assignments"
+        ],
+        "source_consumers": [
+          "lib/hr/rating-server.ts → recalculateAssignmentResult/serverGetMyResult"
+        ]
+      },
+      {
+        "name": "hr_staff_reports",
+        "step": "C1",
+        "purpose": "Staff-submitted incident/facility/safety reports. Employees create; HR/Owner review.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Next.js API enforces: employee can only read own reports. Findings are HR-only.",
+        "schema": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "notes": "Max 180 chars (validated server-side)"
+          },
+          {
+            "name": "body",
+            "type": "text",
+            "required": true,
+            "notes": "Max 8000 chars"
+          },
+          {
+            "name": "category",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "facility",
+                "safety",
+                "misconduct",
+                "operations",
+                "other"
+              ]
+            },
+            "notes": "Report-kind uses facility|safety|other"
+          },
+          {
+            "name": "status",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "draft",
+                "submitted",
+                "in_review",
+                "closed"
+              ]
+            },
+            "notes": "Lifecycle"
+          },
+          {
+            "name": "priority",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "notes": ""
+          },
+          {
+            "name": "location_text",
+            "type": "text",
+            "required": false,
+            "notes": "Max 200 chars"
+          },
+          {
+            "name": "created_by",
+            "type": "relation",
+            "required": true,
+            "relation_target": "users",
+            "notes": "Stamped server-side; never from client body"
+          },
+          {
+            "name": "company_id",
+            "type": "text",
+            "required": false,
+            "notes": "Stamped from ctx.companyIds[0]"
+          },
+          {
+            "name": "hr_note",
+            "type": "text",
+            "required": false,
+            "notes": "HR/Owner only. Never sent to employee in sanitizeCaseForClient."
+          },
+          {
+            "name": "submitted_at",
+            "type": "date",
+            "required": false,
+            "notes": "Set on submit"
+          },
+          {
+            "name": "closed_at",
+            "type": "date",
+            "required": false,
+            "notes": "Set on close"
+          },
+          {
+            "name": "closed_by",
+            "type": "relation",
+            "required": false,
+            "relation_target": "users",
+            "notes": "HR/Owner who closed"
+          }
+        ],
+        "dependencies": [
+          "users"
+        ],
+        "source_consumers": [
+          "lib/hr/reporting-server.ts",
+          "app/api/hr/reports/route.ts"
+        ]
+      },
+      {
+        "name": "hr_findings",
+        "step": "C2",
+        "purpose": "HR/Owner-authored findings. Employees CANNOT list or view findings (403 enforced by API).",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Employees blocked at Next.js API layer: serverListCases checks isOwner||isHr for findings.",
+        "schema": [
+          {
+            "name": "title",
+            "type": "text",
+            "required": true,
+            "notes": "Max 180 chars"
+          },
+          {
+            "name": "body",
+            "type": "text",
+            "required": true,
+            "notes": "Max 8000 chars"
+          },
+          {
+            "name": "category",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "facility",
+                "safety",
+                "misconduct",
+                "operations",
+                "other"
+              ]
+            },
+            "notes": "Finding-kind: safety|misconduct|operations|other"
+          },
+          {
+            "name": "status",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "draft",
+                "submitted",
+                "in_review",
+                "closed"
+              ]
+            },
+            "notes": ""
+          },
+          {
+            "name": "priority",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "notes": ""
+          },
+          {
+            "name": "location_text",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "created_by",
+            "type": "relation",
+            "required": true,
+            "relation_target": "users",
+            "notes": ""
+          },
+          {
+            "name": "company_id",
+            "type": "text",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "hr_note",
+            "type": "text",
+            "required": false,
+            "notes": "HR/Owner note"
+          },
+          {
+            "name": "submitted_at",
+            "type": "date",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "closed_at",
+            "type": "date",
+            "required": false,
+            "notes": ""
+          },
+          {
+            "name": "closed_by",
+            "type": "relation",
+            "required": false,
+            "relation_target": "users",
+            "notes": ""
+          }
+        ],
+        "dependencies": [
+          "users"
+        ],
+        "source_consumers": [
+          "lib/hr/reporting-server.ts",
+          "app/api/hr/findings/route.ts"
+        ]
+      },
+      {
+        "name": "hr_case_attachments",
+        "step": "C3",
+        "purpose": "Attachment metadata + binary file for reports and findings. Files served via auth-gated Next.js routes only.",
+        "rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "rule_rationale": "Admin-only. Files never served as public PocketBase URLs. Served via /api/hr/{reports|findings}/:id/attachments/:attId with auth check.",
+        "schema": [
+          {
+            "name": "kind",
+            "type": "select",
+            "required": false,
+            "options": {
+              "maxSelect": 1,
+              "values": [
+                "report",
+                "finding"
+              ]
+            },
+            "notes": "Discriminator for parent collection"
+          },
+          {
+            "name": "parent_id",
+            "type": "text",
+            "required": true,
+            "notes": "ID of parent hr_staff_reports or hr_findings record"
+          },
+          {
+            "name": "original_name",
+            "type": "text",
+            "required": false,
+            "notes": "Original filename from client"
+          },
+          {
+            "name": "mime",
+            "type": "text",
+            "required": false,
+            "notes": "MIME type: image/jpeg|image/png|image/webp"
+          },
+          {
+            "name": "size",
+            "type": "number",
+            "required": false,
+            "notes": "Bytes. Source validates ≤ 10MB before upload."
+          },
+          {
+            "name": "created_by",
+            "type": "relation",
+            "required": false,
+            "relation_target": "users",
+            "notes": ""
+          },
+          {
+            "name": "file",
+            "type": "file",
+            "required": false,
+            "file_options": {
+              "maxSelect": 1,
+              "maxSize": 10485760,
+              "mimeTypes": [
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ],
+              "thumbs": [],
+              "protected": false
+            },
+            "notes": "CRITICAL: This field is MISSING from bootstrap-local-pb.mjs but REQUIRED by reporting-server.ts:401 (File blob upload). Must be present when creating this collection in Production."
+          }
+        ],
+        "dependencies": [
+          "users"
+        ],
+        "source_consumers": [
+          "lib/hr/reporting-server.ts → serverAddAttachment/serverReadAttachmentBytes"
+        ],
+        "bootstrap_bug": "bootstrap-local-pb.mjs omits the 'file' field. Production creation must include it."
+      }
+    ]
+  },
+  "results": {
+    "generated": "2026-08-28T06:18:56.055Z",
+    "prod_url": "https://pb.serba.space",
+    "summary": {
+      "create_collection": [],
+      "add_field": [],
+      "keep_field": [
+        "users.mobile_session_nonce",
+        "users.account_type",
+        "users.role_code",
+        "users.dashboard_access",
+        "leave_requests.start_date",
+        "leave_requests.end_date",
+        "leave_requests.reason",
+        "leave_requests.division",
+        "leave_requests.position",
+        "leave_requests.booking_date",
+        "leave_requests.daily_compensation_rate",
+        "leave_requests.compensation_amount",
+        "leave_requests.rejection_reason",
+        "hr_rating_periods (all fields OK)",
+        "hr_rating_aspects (all fields OK)",
+        "hr_rating_assignments (all fields OK)",
+        "hr_rating_reviewers (all fields OK)",
+        "hr_rating_scores (all fields OK)",
+        "hr_rating_results (all fields OK)",
+        "hr_staff_reports (all fields OK)",
+        "hr_findings (all fields OK)",
+        "hr_case_attachments (all fields OK)"
+      ],
+      "keep_rule": [
+        "profiles.listRule",
+        "users.listRule",
+        "leave_requests.listRule",
+        "profiles.viewRule",
+        "users.viewRule",
+        "leave_requests.viewRule",
+        "profiles.createRule",
+        "users.createRule",
+        "profiles.updateRule",
+        "users.updateRule",
+        "profiles.deleteRule",
+        "users.deleteRule"
+      ],
+      "conflicts": [],
+      "blockers": []
+    },
+    "users_audit": {
+      "rules": {
+        "listRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "updateRule": "@request.auth.id != \"\" && (\n  (\n    id = @request.auth.id\n    && (@request.data.role:isset = false || @request.data.role = role)\n    && (@request.data.status:isset = false || @request.data.status = status)\n  )\n  || @request.auth.role = \"hr\"\n  || @request.auth.role_code = \"hr\"\n  || @request.auth.role = \"owner\"\n  || @request.auth.role_code = \"owner\"\n  || @request.auth.account_type = \"owner\"\n)",
+        "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+      },
+      "fields": {
+        "mobile_session_nonce": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "account_type": {
+          "status": "EXISTS_OK",
+          "existing_type": "select",
+          "expected_type": "select",
+          "action": "KEEP"
+        },
+        "role_code": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "dashboard_access": {
+          "status": "EXISTS_OK",
+          "existing_type": "bool",
+          "expected_type": "bool",
+          "action": "KEEP"
+        }
+      }
+    },
+    "leave_audit": {
+      "rules": {
+        "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+        "createRule": null,
+        "updateRule": null,
+        "deleteRule": null
+      },
+      "fields": {
+        "start_date": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "end_date": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "reason": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "division": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "position": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "booking_date": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        },
+        "daily_compensation_rate": {
+          "status": "EXISTS_OK",
+          "existing_type": "number",
+          "expected_type": "number",
+          "action": "KEEP"
+        },
+        "compensation_amount": {
+          "status": "EXISTS_OK",
+          "existing_type": "number",
+          "expected_type": "number",
+          "action": "KEEP"
+        },
+        "rejection_reason": {
+          "status": "EXISTS_OK",
+          "existing_type": "text",
+          "expected_type": "text",
+          "action": "KEEP"
+        }
+      }
+    },
+    "collections_audit": {
+      "hr_rating_periods": {
+        "step": "D1",
+        "exists": true,
+        "fields": {
+          "name": {
+            "status": "OK"
+          },
+          "start_date": {
+            "status": "OK"
+          },
+          "end_date": {
+            "status": "OK"
+          },
+          "status": {
+            "status": "OK"
+          },
+          "description": {
+            "status": "OK"
+          },
+          "created_by": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_rating_aspects": {
+        "step": "D2",
+        "exists": true,
+        "fields": {
+          "code": {
+            "status": "OK"
+          },
+          "name": {
+            "status": "OK"
+          },
+          "description": {
+            "status": "OK"
+          },
+          "sort_order": {
+            "status": "OK"
+          },
+          "is_active": {
+            "status": "OK"
+          },
+          "min_score": {
+            "status": "OK"
+          },
+          "max_score": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_rating_assignments": {
+        "step": "D3",
+        "exists": true,
+        "fields": {
+          "period": {
+            "status": "OK"
+          },
+          "subject": {
+            "status": "OK"
+          },
+          "reviewer_count": {
+            "status": "OK"
+          },
+          "assignment_method": {
+            "status": "OK"
+          },
+          "status": {
+            "status": "OK"
+          },
+          "selection_evidence_json": {
+            "status": "OK"
+          },
+          "created_by": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_rating_reviewers": {
+        "step": "D4",
+        "exists": true,
+        "fields": {
+          "assignment": {
+            "status": "OK"
+          },
+          "reviewer": {
+            "status": "OK"
+          },
+          "status": {
+            "status": "OK"
+          },
+          "relevance_tier": {
+            "status": "OK"
+          },
+          "selection_note": {
+            "status": "OK"
+          },
+          "submitted_at": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_rating_scores": {
+        "step": "D5",
+        "exists": true,
+        "fields": {
+          "reviewer_row": {
+            "status": "OK"
+          },
+          "aspect": {
+            "status": "OK"
+          },
+          "score": {
+            "status": "OK"
+          },
+          "comment": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_rating_results": {
+        "step": "D6",
+        "exists": true,
+        "fields": {
+          "assignment": {
+            "status": "OK"
+          },
+          "overall_score": {
+            "status": "OK"
+          },
+          "category": {
+            "status": "OK"
+          },
+          "respondent_count": {
+            "status": "OK"
+          },
+          "aspect_scores_json": {
+            "status": "OK"
+          },
+          "summary": {
+            "status": "OK"
+          },
+          "strengths": {
+            "status": "OK"
+          },
+          "improvements": {
+            "status": "OK"
+          },
+          "suggestions": {
+            "status": "OK"
+          },
+          "calculated_at": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_staff_reports": {
+        "step": "C1",
+        "exists": true,
+        "fields": {
+          "title": {
+            "status": "OK"
+          },
+          "body": {
+            "status": "OK"
+          },
+          "category": {
+            "status": "OK"
+          },
+          "status": {
+            "status": "OK"
+          },
+          "priority": {
+            "status": "OK"
+          },
+          "location_text": {
+            "status": "OK"
+          },
+          "created_by": {
+            "status": "OK"
+          },
+          "company_id": {
+            "status": "OK"
+          },
+          "hr_note": {
+            "status": "OK"
+          },
+          "submitted_at": {
+            "status": "OK"
+          },
+          "closed_at": {
+            "status": "OK"
+          },
+          "closed_by": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_findings": {
+        "step": "C2",
+        "exists": true,
+        "fields": {
+          "title": {
+            "status": "OK"
+          },
+          "body": {
+            "status": "OK"
+          },
+          "category": {
+            "status": "OK"
+          },
+          "status": {
+            "status": "OK"
+          },
+          "priority": {
+            "status": "OK"
+          },
+          "location_text": {
+            "status": "OK"
+          },
+          "created_by": {
+            "status": "OK"
+          },
+          "company_id": {
+            "status": "OK"
+          },
+          "hr_note": {
+            "status": "OK"
+          },
+          "submitted_at": {
+            "status": "OK"
+          },
+          "closed_at": {
+            "status": "OK"
+          },
+          "closed_by": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        }
+      },
+      "hr_case_attachments": {
+        "step": "C3",
+        "exists": true,
+        "fields": {
+          "kind": {
+            "status": "OK"
+          },
+          "parent_id": {
+            "status": "OK"
+          },
+          "original_name": {
+            "status": "OK"
+          },
+          "mime": {
+            "status": "OK"
+          },
+          "size": {
+            "status": "OK"
+          },
+          "created_by": {
+            "status": "OK"
+          },
+          "file": {
+            "status": "OK"
+          }
+        },
+        "action": "COLLECTION_EXISTS",
+        "existing_rules": {
+          "listRule": null,
+          "viewRule": null,
+          "createRule": null,
+          "updateRule": null,
+          "deleteRule": null
+        },
+        "bootstrap_bug_noted": "bootstrap-local-pb.mjs omits the 'file' field. Production creation must include it."
+      }
+    },
+    "profiles_rules": {
+      "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "createRule": "@request.auth.id != \"\" && (@request.data.user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "updateRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"hr\" || @request.auth.role_code = \"hr\" || @request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")",
+      "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"owner\" || @request.auth.role_code = \"owner\" || @request.auth.account_type = \"owner\")"
+    }
+  }
+}

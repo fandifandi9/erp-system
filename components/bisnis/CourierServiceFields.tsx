@@ -15,6 +15,11 @@ type Props = {
   serviceName: string;
   onCourierChange: (name: string) => void;
   onServiceChange: (name: string) => void;
+  /**
+   * Set kurir & layanan sekaligus (hindari race: dua onChange berurutan yang
+   * saling menimpa karena memakai state lama). Dipakai bila tersedia.
+   */
+  onCourierServiceChange?: (courier: string, service: string) => void;
   courierLabel?: string;
   serviceLabel?: string;
   className?: string;
@@ -50,6 +55,7 @@ export function CourierServiceFields({
   serviceName,
   onCourierChange,
   onServiceChange,
+  onCourierServiceChange,
   courierLabel = "Ekspedisi",
   serviceLabel = "Layanan pengiriman",
   className = "",
@@ -135,32 +141,38 @@ export function CourierServiceFields({
       serviceOptions.length === 0 ||
       !serviceOptions.some((s) => s.name === serviceName.trim()));
 
+  /** Set kurir+layanan sekali jalan bila callback gabungan tersedia (hindari saling menimpa). */
+  const emitChange = (courier: string, service: string) => {
+    if (onCourierServiceChange) {
+      onCourierServiceChange(courier, service);
+    } else {
+      onServiceChange(service);
+      onCourierChange(courier);
+    }
+  };
+
   const handleCourierSelect = (id: string) => {
     const prevId = courierId;
     setCourierId(id);
     const c = couriers.find((x) => x.id === id);
-    onCourierChange(c?.name ?? "");
+    const nextCourier = c?.name ?? "";
     // Kosongkan layanan hanya saat ganti ekspedisi — jangan hapus layanan existing saat pertama pilih kurir.
     if (prevId && id !== prevId) {
       setServiceId("");
-      onServiceChange("");
+      emitChange(nextCourier, "");
+    } else {
+      emitChange(nextCourier, serviceName);
     }
   };
 
   const handleServiceSelect = (id: string) => {
     setServiceId(id);
     const s = serviceOptions.find((x) => x.id === id);
-    onServiceChange(s?.name ?? "");
-    if (selectedCourier?.name) {
-      onCourierChange(selectedCourier.name);
-    }
+    emitChange(selectedCourier?.name ?? courierName, s?.name ?? "");
   };
 
   const handleServiceTextChange = (value: string) => {
-    onServiceChange(value);
-    if (selectedCourier?.name) {
-      onCourierChange(selectedCourier.name);
-    }
+    emitChange(selectedCourier?.name ?? courierName, value);
   };
 
   if (loadError && couriers.length === 0) {

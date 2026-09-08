@@ -59,18 +59,6 @@ function userIdFromRecord(raw: { user?: unknown }): string {
   return String(u ?? "");
 }
 
-function hrActionPayload(): Record<string, string> {
-  const m = pb.authStore.model as { id?: string; name?: string; email?: string } | null;
-  if (!m?.id) return {};
-  const id = String(m.id);
-  const name = String(m.name ?? m.email ?? "").trim();
-  return {
-    [HR_ACTION_BY_FIELD]: id,
-    [HR_ACTION_NAME_FIELD]: name || id,
-    [HR_ACTION_AT_FIELD]: new Date().toISOString(),
-  };
-}
-
 export function normalizeFieldActivityRows(items: unknown[]): FieldActivityRequest[] {
   return items.map((row) => {
     const raw = row as Record<string, unknown>;
@@ -138,12 +126,21 @@ export async function fetchFieldActivityForUser(userId: string): Promise<FieldAc
 }
 
 export async function fetchFieldActivityForHr(): Promise<FieldActivityRequest[]> {
-  const list = await pb.collection(FIELD_ACTIVITY_COLLECTION).getFullList({
-    sort: "-created",
-    expand: "user",
-    requestKey: null,
+  // FLEX-ORG-05-FIX — scoped server API; do not use client getFullList.
+  const { hrApiAuthHeaders } = await import("@/lib/hr/hr-api-client");
+  const res = await fetch("/api/hr/field-activity?pendingForApprover=1", {
+    credentials: "include",
+    headers: hrApiAuthHeaders(),
   });
-  return normalizeFieldActivityRows(list as unknown[]);
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    items?: unknown[];
+  };
+  if (!res.ok || json.ok === false) {
+    throw new Error(json.error || "Gagal memuat field activity.");
+  }
+  return normalizeFieldActivityRows(json.items ?? []);
 }
 
 export async function createFieldActivityRequest(input: {
@@ -173,19 +170,27 @@ export async function createFieldActivityRequest(input: {
   if (reason.length < 10) return { success: false, message: "Jelaskan keperluan aktivitas (min. 10 karakter)." };
 
   try {
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).create({
-      user: uid,
-      start_date: sd,
-      end_date: ed,
-      activity_type: input.activity_type,
-      destination: dest,
-      reason,
-      status: "pending_hr",
+    const { hrApiAuthHeaders } = await import("@/lib/hr/hr-api-client");
+    const res = await fetch("/api/hr/field-activity", {
+      method: "POST",
+      credentials: "include",
+      headers: hrApiAuthHeaders(),
+      body: JSON.stringify({
+        start_date: sd,
+        end_date: ed,
+        activity_type: input.activity_type,
+        destination: dest,
+        reason,
+      }),
     });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.error || json.message || "Gagal menyimpan pengajuan." };
+    }
     return {
       success: true,
       message:
-        "Pengajuan terkirim. Setelah HR menyetujui, Anda dapat check-in di luar zona kantor pada tanggal yang diajukan.",
+        "Pengajuan terkirim. Setelah disetujui, Anda dapat check-in di luar zona kantor pada tanggal yang diajukan.",
     };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyimpan pengajuan.") };
@@ -194,16 +199,18 @@ export async function createFieldActivityRequest(input: {
 
 export async function hrApproveFieldActivity(id: string): Promise<{ success: boolean; message: string }> {
   try {
-    const rec = await pb.collection(FIELD_ACTIVITY_COLLECTION).getOne(id);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.status) !== "pending_hr") {
-      return { success: false, message: "Hanya pengajuan menunggu ACC yang dapat disetujui." };
-    }
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).update(id, {
-      status: "approved",
-      ...hrActionPayload(),
+    const { hrApiAuthHeaders } = await import("@/lib/hr/hr-api-client");
+    const res = await fetch(`/api/hr/field-activity/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      credentials: "include",
+      headers: hrApiAuthHeaders(),
+      body: JSON.stringify({}),
     });
-    return { success: true, message: "Aktivitas luar disetujui. Staff dapat absensi di luar radius pada tanggal tersebut." };
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.error || json.message || "Gagal menyetujui." };
+    }
+    return { success: true, message: json.message || "Aktivitas luar disetujui." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menyetujui.") };
   }
@@ -216,17 +223,18 @@ export async function hrRejectFieldActivity(
   const r = String(reason ?? "").trim();
   if (r.length < 5) return { success: false, message: "Alasan penolakan minimal 5 karakter." };
   try {
-    const rec = await pb.collection(FIELD_ACTIVITY_COLLECTION).getOne(id);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (String(raw.status) !== "pending_hr") {
-      return { success: false, message: "Hanya pengajuan menunggu ACC yang dapat ditolak." };
-    }
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).update(id, {
-      status: "rejected",
-      rejection_reason: r,
-      ...hrActionPayload(),
+    const { hrApiAuthHeaders } = await import("@/lib/hr/hr-api-client");
+    const res = await fetch(`/api/hr/field-activity/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      credentials: "include",
+      headers: hrApiAuthHeaders(),
+      body: JSON.stringify({ reason: r }),
     });
-    return { success: true, message: "Pengajuan ditolak." };
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.error || json.message || "Gagal menolak." };
+    }
+    return { success: true, message: json.message || "Pengajuan ditolak." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal menolak.") };
   }
@@ -236,16 +244,18 @@ export async function staffCancelPending(id: string): Promise<{ success: boolean
   const uid = pb.authStore.model?.id;
   if (!uid) return { success: false, message: "Silakan login." };
   try {
-    const rec = await pb.collection(FIELD_ACTIVITY_COLLECTION).getOne(id);
-    const raw = rec as unknown as Record<string, unknown>;
-    if (userIdFromRecord(raw as { user?: unknown }) !== uid) {
-      return { success: false, message: "Bukan pengajuan Anda." };
+    const { hrApiAuthHeaders } = await import("@/lib/hr/hr-api-client");
+    const res = await fetch(`/api/hr/field-activity/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      credentials: "include",
+      headers: hrApiAuthHeaders(),
+      body: JSON.stringify({}),
+    });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+    if (!res.ok || json.ok === false) {
+      return { success: false, message: json.error || json.message || "Gagal membatalkan." };
     }
-    if (String(raw.status) !== "pending_hr") {
-      return { success: false, message: "Hanya pengajuan menunggu HR yang dapat dibatalkan." };
-    }
-    await pb.collection(FIELD_ACTIVITY_COLLECTION).update(id, { status: "cancelled" });
-    return { success: true, message: "Pengajuan dibatalkan." };
+    return { success: true, message: json.message || "Pengajuan dibatalkan." };
   } catch (e: unknown) {
     return { success: false, message: getErrorMessage(e, "Gagal membatalkan.") };
   }

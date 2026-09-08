@@ -1,14 +1,14 @@
 import type { SalesOrder } from "@/lib/bisnis/types";
-import { parseNotesWithShipping } from "@/lib/bisnis/shipping-notes";
 import { hasAwbLabelFile } from "@/lib/bisnis/awb-label";
 import type { OutboundWorkflow } from "./outbound-workflow";
+import { isWmsShipFulfillment } from "./fulfillment-mode";
 
 export type PickupGate = "menunggu_awb" | "siap_serah";
 
 export function shipmentRequiresAwb(
   so: Pick<SalesOrder, "notes">,
 ): boolean {
-  return parseNotesWithShipping(so.notes).shipping.enabled;
+  return isWmsShipFulfillment(so);
 }
 
 export function computePickupGate(

@@ -1,0 +1,41 @@
+{
+  "phase": "26A",
+  "started_at": "2026-08-29T04:26:28.264Z",
+  "prod_url": "https://pb.serba.space",
+  "operations": [
+    {
+      "timestamp": "2026-08-29T04:26:29.074Z",
+      "operation": "CREATE",
+      "collection": "notifications",
+      "result": "OK",
+      "detail": "id=erfmaoadnln4j68"
+    },
+    {
+      "timestamp": "2026-08-29T04:26:29.135Z",
+      "operation": "CREATE",
+      "collection": "push_tokens",
+      "result": "OK",
+      "detail": "id=8m326sq1plibdab"
+    }
+  ],
+  "pre_counts": {
+    "users": 23,
+    "profiles": 23,
+    "leave_requests": 34,
+    "notifications": null,
+    "push_tokens": null
+  },
+  "post_counts": {
+    "users": 23,
+    "profiles": 23,
+    "leave_requests": 34,
+    "notifications": 0,
+    "push_tokens": 0
+  },
+  "completed_at": "2026-08-29T04:26:29.319Z",
+  "summary": {
+    "notifications": "CREATED",
+    "push_tokens": "CREATED",
+    "status": "PASS"
+  }
+}

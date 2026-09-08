@@ -130,7 +130,7 @@ export default function LaporanPenjualanPage() {
         })
       );
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Gagal export Excel");
+      alert(e instanceof Error ? e.message : "Gagal ekspor Excel");
     } finally {
       setExporting(false);
     }
@@ -149,8 +149,8 @@ export default function LaporanPenjualanPage() {
   const stats = [
     { label: "Penjualan Tahun Ini", value: currency(totalRevenue), icon: TrendingUp, color: "bg-green-50 text-green-600" },
     { label: "Total Transaksi", value: String(totalOrders), icon: ShoppingBag, color: "bg-blue-50 text-blue-600" },
-    { label: "Customer Aktif", value: String(customerCount), icon: Users, color: "bg-purple-50 text-purple-600" },
-    { label: "Rata-rata Order", value: currency(avgOrder), icon: BarChart3, color: "bg-amber-50 text-amber-600" },
+    { label: "Pelanggan aktif", value: String(customerCount), icon: Users, color: "bg-purple-50 text-purple-600" },
+    { label: "Rata-rata pesanan", value: currency(avgOrder), icon: BarChart3, color: "bg-amber-50 text-amber-600" },
   ];
 
   return (
@@ -159,7 +159,7 @@ export default function LaporanPenjualanPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Laporan Penjualan</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Analisis penjualan dan tren customer
+            Analisis penjualan dan tren pelanggan
             {dimSummary ? ` · ${dimSummary}` : ""}
           </p>
         </div>
@@ -170,7 +170,7 @@ export default function LaporanPenjualanPage() {
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 transition disabled:opacity-50"
         >
           {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Export Excel
+          Ekspor Excel
         </button>
       </div>
 
@@ -228,7 +228,7 @@ export default function LaporanPenjualanPage() {
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-semibold text-slate-800">Top Customer</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Pelanggan teratas</h2>
         </div>
         {topCustomers.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">Belum ada data</div>
@@ -263,7 +263,7 @@ export default function LaporanPenjualanPage() {
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500">Tanggal</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">No. Invoice</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">No. faktur</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500">Pelanggan</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500">Status</th>
                   <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Total</th>

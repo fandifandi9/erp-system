@@ -83,9 +83,9 @@ export function ReportDimensionFilters({
       )}
       {showChannel && channels.length > 0 && onChannelChange && (
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Channel</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Saluran</label>
           <select value={channelId} onChange={(e) => onChannelChange(e.target.value)} className={selectCls}>
-            <option value={REPORT_ALL}>Semua channel</option>
+            <option value={REPORT_ALL}>Semua saluran</option>
             {channels.map((c) => (
               <option key={c.id} value={c.name}>
                 {c.name}

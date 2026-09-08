@@ -12,9 +12,6 @@ export type WmsOrderLineView = {
   productId: string;
   sku: string;
   name: string;
-  variant?: string;
-  color?: string;
-  size?: string;
   qty: number;
   picked: number;
   validated: number;
@@ -58,12 +55,6 @@ export function buildWmsOrderHeader(so: SalesOrder): WmsOrderHeader {
   };
 }
 
-function variantFromName(name: string): { variant?: string; color?: string; size?: string } {
-  const parts = name.split(/[·|/]/).map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 1) return {};
-  return { variant: parts.slice(1).join(" · ") || undefined };
-}
-
 export function buildWmsLineViews(
   soLines: SalesOrderLine[],
   wfLines: Record<string, { qty_picked?: number; qty_validated?: number; sku?: string; name?: string }>,
@@ -74,13 +65,11 @@ export function buildWmsLineViews(
     const wfLine = wfLines[l.product] ?? {};
     const prod = productExpand?.[l.product] ?? (l.expand?.product as InvProduct | undefined);
     const name = l.name_snapshot || prod?.name || l.product;
-    const extra = variantFromName(name);
     const slot = slotByProduct[l.product];
     return {
       productId: l.product,
       sku: l.sku_snapshot || prod?.sku || "—",
-      name: name.split(/[·|]/)[0]?.trim() || name,
-      ...extra,
+      name,
       qty: Number(l.qty) || 0,
       picked: wfLine.qty_picked ?? 0,
       validated: wfLine.qty_validated ?? 0,
@@ -100,13 +89,11 @@ export function buildWmsLineViewsFromPickLines(
     const productId = wfLine.product_id;
     const prod = productExpand?.[productId];
     const name = wfLine.name || prod?.name || productId;
-    const extra = variantFromName(name);
     const slot = slotByProduct[productId];
     return {
       productId,
       sku: wfLine.sku || prod?.sku || "—",
-      name: name.split(/[·|]/)[0]?.trim() || name,
-      ...extra,
+      name,
       qty: wfLine.qty_required,
       picked: wfLine.qty_picked ?? 0,
       validated: wfLine.qty_validated ?? 0,
@@ -129,4 +116,19 @@ export async function fetchInvoiceNoForSo(soId: string): Promise<string | null> 
   } catch {
     return null;
   }
+}
+
+/**
+ * Nomor invoice untuk tampilan — meta → DB saja (ringan).
+ * Tidak memanggil ensure-invoice (itu di pick ACC / complete_pickup).
+ * Tidak fallback ke nomor SO.
+ */
+export async function resolveInvoiceNoForSo(so: SalesOrder): Promise<string> {
+  const meta = parseOutboundWorkflow(so.outbound_workflow_json).order_meta?.invoice_no?.trim();
+  if (meta) return meta;
+
+  const fromDb = (await fetchInvoiceNoForSo(so.id))?.trim();
+  if (fromDb) return fromDb;
+
+  return "—";
 }

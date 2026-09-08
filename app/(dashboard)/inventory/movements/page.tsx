@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { InventoryGate } from "@/components/inventory/InventoryGate";
 import { InventoryShell } from "@/components/inventory/InventoryShell";
-import { fetchMovements, fetchWarehouses, postMovement } from "@/lib/inventory/client";
+import { fetchMovements, postMovement } from "@/lib/inventory/client";
+import { useWorkContext } from "@/components/WorkContextProvider";
 import { canPostInventoryMovement } from "@/lib/inventory/access";
 import { labelMovementStatus, labelMovementType, MOVEMENT_STATUS_LABELS } from "@/lib/inventory/labels";
 import { pb } from "@/lib/pocketbase";
@@ -12,6 +13,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { InvMovement } from "@/lib/inventory/types";
 import { formatIntegerId } from "@/lib/format-number";
 import { Loader2, Plus } from "lucide-react";
+import { useLocale } from "@/components/LocaleProvider";
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-slate-100 text-slate-700",
@@ -21,6 +23,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function InventoryMovementsPage() {
+  const { t } = useLocale();
   const user = pb.authStore.model;
   const canPost = user && canPostInventoryMovement(user);
   const [items, setItems] = useState<InvMovement[]>([]);
@@ -28,7 +31,11 @@ export default function InventoryMovementsPage() {
   const [loading, setLoading] = useState(true);
   const [postingId, setPostingId] = useState<string | null>(null);
   const [banner, setBanner] = useState("");
-  const [whCodeById, setWhCodeById] = useState<Record<string, string>>({});
+  const { warehouses } = useWorkContext();
+  const whCodeById = useMemo(
+    () => Object.fromEntries(warehouses.map((w) => [w.id, w.code])),
+    [warehouses],
+  );
 
   const load = async () => {
     setLoading(true);
@@ -39,12 +46,6 @@ export default function InventoryMovementsPage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    void fetchWarehouses().then((list) => {
-      setWhCodeById(Object.fromEntries(list.map((w) => [w.id, w.code])));
-    });
-  }, []);
 
   useEffect(() => {
     void load();
@@ -66,7 +67,7 @@ export default function InventoryMovementsPage() {
 
   return (
     <InventoryGate>
-      <InventoryShell title="Mutasi stok" subtitle="Transfer antar gudang. Stok masuk/keluar otomatis dari penjualan & pembelian.">
+      <InventoryShell title={t("inventory.movements.title")} subtitle={t("inventory.movements.subtitle")}>
         {banner ? (
           <p className={"rounded-lg px-3 py-2 text-sm " + (banner.includes("berhasil") ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800")}>
             {banner}
@@ -78,7 +79,7 @@ export default function InventoryMovementsPage() {
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            <option value="">Semua status</option>
+            <option value="">{t("inventory.common.all")}</option>
             <option value="draft">{MOVEMENT_STATUS_LABELS.draft}</option>
             <option value="posted">{MOVEMENT_STATUS_LABELS.posted}</option>
           </select>
@@ -96,9 +97,9 @@ export default function InventoryMovementsPage() {
               <tr>
                 <th className="px-4 py-3">No</th>
                 <th className="px-4 py-3">Tipe</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Gudang</th>
-                <th className="px-4 py-3">Qty</th>
+                <th className="px-4 py-3">{t("inventory.common.status")}</th>
+                <th className="px-4 py-3">{t("inventory.common.warehouse")}</th>
+                <th className="px-4 py-3">{t("inventory.common.qty")}</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -112,7 +113,7 @@ export default function InventoryMovementsPage() {
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                    Belum ada mutasi.
+                    {t("inventory.movements.empty")}
                   </td>
                 </tr>
               ) : (

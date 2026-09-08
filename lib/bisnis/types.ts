@@ -67,6 +67,7 @@ export type ReturWorkflowPhase =
   | "wms_received"
   | "awaiting_business"
   | "awaiting_settlement"
+  | "resend"
   | "completed"
   | "cancelled";
 
@@ -179,6 +180,7 @@ export type SalesOrder = {
   updated: string;
   expand?: {
     customer?: Customer;
+    store?: Store;
     warehouse?: { id: string; code: string; name: string };
     created_by?: { id: string; name?: string; email?: string };
     warehouse_processed_by?: { id: string; name?: string; email?: string };
@@ -250,6 +252,7 @@ export type Invoice = {
   updated: string;
   expand?: {
     customer?: Customer;
+    store?: Store;
     sales_order?: SalesOrder;
     sales_channel?: SalesChannel;
     store_channel_account?: StoreChannelAccount;
@@ -688,10 +691,50 @@ export type Retur = {
   warehouse: string;
   damaged_warehouse?: string;
   reason?: string;
+  /** Catatan claim / internal bisnis (bukan instruksi gudang). */
   notes?: string;
+  /** Instruksi bisnis khusus untuk tim WMS. */
+  notes_for_wms?: string;
+  /** Catatan hasil pemeriksaan dari WMS. */
+  wms_note?: string;
+  /**
+   * Nomor retur dari platform/marketplace — ditampilkan sebagai nomor utama untuk WMS/bisnis
+   * (menggantikan tampilan RET sistem jika diisi). Sistem tetap menyimpan retur_no internal.
+   */
+  platform_retur_no?: string;
+  /** Keputusan WMS terhadap claim/instruksi bisnis. */
+  wms_claim_decision?: "agree" | "disagree";
+  /** Sanggahan WMS jika tidak setuju claim bisnis. */
+  wms_dispute_note?: string;
+  /** Putusan bisnis setelah bantahan WMS: terima klarifikasi atau kirim kembali. */
+  business_resolution?: "accept_wms" | "resend" | "";
+  /** Nomor pickup untuk kirim kembali ke pelanggan. */
+  resend_pickup_no?: string;
+  /** Cara serah terima kirim kembali: ambil sendiri atau kurir. */
+  resend_method?: "pickup" | "ship" | "";
+  /** JSON: ekspedisi, layanan, alamat, ongkir, penanggung ongkir (mode ship). */
+  resend_shipping_json?: string;
+  /** Audit proses WMS. */
+  wms_process_started_at?: string;
+  wms_process_completed_at?: string;
+  wms_processed_by?: string;
+  /** Nama tampilan prosesor WMS (denormalized). */
+  wms_processed_by_name?: string;
+  /** Audit proses bisnis. */
+  business_process_started_at?: string;
+  business_process_completed_at?: string;
+  business_processed_by?: string;
+  /** Nama tampilan prosesor bisnis (denormalized). */
+  business_processed_by_name?: string;
   mp_claim_amount?: number;
   shipping_reimb_amount?: number;
   settlement_estimate_json?: string;
+  /** Cara barang dikembalikan ke gudang. */
+  return_method?: "dropoff" | "courier";
+  /** Nama ekspedisi retur (jika via kurir). */
+  return_courier?: string;
+  /** Nomor resi / nomor lacak retur. */
+  return_tracking_no?: string;
   completed_at?: string;
   exception_status?: TransactionExceptionStatus;
   stock_posted_at?: string;
@@ -924,6 +967,7 @@ export type CompanyProfile = {
   company_name: string;
   legal_name?: string;
   is_active?: boolean;
+  entity_type?: string;
   npwp?: string;
   show_npwp_on_documents?: boolean;
   npwp_display_mode?: NpwpDisplayMode;
@@ -932,6 +976,7 @@ export type CompanyProfile = {
   phone?: string;
   email?: string;
   website?: string;
+  logo?: string;
   created: string;
   updated: string;
 };

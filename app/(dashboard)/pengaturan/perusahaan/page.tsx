@@ -17,6 +17,7 @@ import {
   type EntityProvisionForm,
 } from "@/lib/bisnis/entity-provision";
 import { EntitySetupFormSection } from "@/components/bisnis/EntitySetupFormSection";
+import { EntityLogoSection } from "@/components/bisnis/EntityLogoSection";
 import type { CompanyProfile, NpwpDisplayMode } from "@/lib/bisnis/types";
 import { writeAuditLog } from "@/lib/tenant/audit-log";
 import { useLocale } from "@/components/LocaleProvider";
@@ -100,19 +101,6 @@ export default function PerusahaanPage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!isNew || !form.company_name.trim()) return;
-    setProvision((p) => ({
-      ...p,
-      cashAccount: p.cashAccount.selectedId
-        ? p.cashAccount
-        : {
-            ...p.cashAccount,
-            newName: p.cashAccount.newName || `Rekening ${form.company_name}`,
-          },
-    }));
-  }, [form.company_name, isNew]);
-
   const selectEntity = (id: string) => {
     setSelectedId(id);
     setSaved(false);
@@ -148,11 +136,11 @@ export default function PerusahaanPage() {
         provision.cashAccount.selectedId ? "ditautkan" : "dibuat",
       ];
       setProvisionMsg(
-        `Gudang "${result.warehouse.name}" (${linked[0]})` +
+        `Gudang entitas "${result.warehouse.name}", sementara "${result.transitWarehouse.name}", rusak "${result.damagedWarehouse.name}"` +
           (result.cashAccount
             ? `, rekening "${result.cashAccount.name}" (${linked[1]})`
             : "") +
-          " — terkunci pada entitas ini.",
+          " — otomatis terkunci per entitas (tidak bisa dihapus).",
       );
       setStackComplete(true);
       return true;
@@ -233,7 +221,7 @@ export default function PerusahaanPage() {
         </Link>
         <h1 className="text-2xl font-bold text-slate-900">{t("pengaturan.perusahaan.title")}</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Kelola entitas perusahaan — satu gudang (penerimaan & WMS) dan satu rekening bank per entitas.
+          Kelola entitas perusahaan — saat entitas baru dibuat, sistem otomatis menyiapkan gudang entitas, sementara, rusak, dan rekening bank (masing-masing satu per entitas).
         </p>
       </div>
 
@@ -404,6 +392,16 @@ export default function PerusahaanPage() {
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 />
               </label>
+
+              {!isNew && selectedId ? (
+                <EntityLogoSection
+                  entityId={selectedId}
+                  companyName={form.company_name || "Entitas"}
+                  logoFilename={entities.find((e) => e.id === selectedId)?.logo}
+                  updated={entities.find((e) => e.id === selectedId)?.updated}
+                  onChanged={() => void load()}
+                />
+              ) : null}
 
               {!isNew ? (
                 <div

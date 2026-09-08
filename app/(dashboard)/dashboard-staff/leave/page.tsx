@@ -8,18 +8,18 @@ import { StaffLeaveHistoryPanel } from "./HistoryPanel";
 
 const BASE_PATH = "/dashboard-staff/leave";
 
-function StaffLeaveModuleShell() {
+function StaffLeaveModuleShell({ basePath = BASE_PATH }: { basePath?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab") === "history" ? "history" : "request";
 
   const goRequest = useCallback(() => {
-    router.replace(BASE_PATH);
-  }, [router]);
+    router.replace(basePath);
+  }, [router, basePath]);
 
   const goHistory = useCallback(() => {
-    router.replace(`${BASE_PATH}?tab=history`);
-  }, [router]);
+    router.replace(`${basePath}?tab=history`);
+  }, [router, basePath]);
 
   const tabBtnClass = (active: boolean) =>
     `rounded-lg px-4 py-2 text-sm font-semibold transition ${
@@ -54,16 +54,16 @@ function StaffLeaveModuleShell() {
 
       <div className="mx-auto max-w-5xl px-6">
         {tab === "request" ? (
-          <StaffLeaveBookingPanel omitPageHeader />
+          <StaffLeaveBookingPanel omitPageHeader basePath={basePath} />
         ) : (
-          <StaffLeaveHistoryPanel omitPageHeader />
+          <StaffLeaveHistoryPanel omitPageHeader basePath={basePath} />
         )}
       </div>
     </div>
   );
 }
 
-export default function StaffLeavePage() {
+export function StaffLeaveModule({ basePath = BASE_PATH }: { basePath?: string }) {
   return (
     <Suspense
       fallback={
@@ -72,7 +72,11 @@ export default function StaffLeavePage() {
         </div>
       }
     >
-      <StaffLeaveModuleShell />
+      <StaffLeaveModuleShell basePath={basePath} />
     </Suspense>
   );
+}
+
+export default function StaffLeavePage() {
+  return <StaffLeaveModule />;
 }

@@ -12,6 +12,12 @@ export const PRODUCTION_HOST_BLOCKLIST = [
   "www.serba.space",
 ];
 
+/** Explicit staging public hosts (Nginx UAT). Not production. */
+export const STAGING_PUBLIC_HOST_ALLOWLIST = [
+  "staging.serba.space",
+  "pb-staging.serba.space",
+];
+
 export function loadEnvFile(name) {
   const p = path.join(process.cwd(), name);
   if (!fs.existsSync(p)) return {};
@@ -76,19 +82,38 @@ export function assertStagingOnly(env, stagingUrl, { requireUrl = true } = {}) {
     process.exit(2);
   }
 
-  if (PRODUCTION_HOST_BLOCKLIST.some((h) => host === h || host.endsWith("." + h))) {
-    console.error("BLOCKED — refused production host:", host);
-    console.error("Staging scripts never target pb.serba.space / serba.space.");
-    process.exit(2);
+  // Allow explicit staging public hostnames (Phase 12B UAT).
+  const hostNoPort = host.split(":")[0];
+  const isAllowlistedStaging = STAGING_PUBLIC_HOST_ALLOWLIST.includes(hostNoPort);
+
+  if (!isAllowlistedStaging) {
+    // Exact production hosts only — do NOT treat all *.serba.space as production
+    // (that would incorrectly block pb-staging.serba.space / staging.serba.space).
+    if (PRODUCTION_HOST_BLOCKLIST.some((h) => hostNoPort === h)) {
+      console.error("BLOCKED — refused production host:", host);
+      console.error("Staging scripts never target pb.serba.space / serba.space.");
+      process.exit(2);
+    }
   }
 
   const primary = normalizeUrl(env.NEXT_PUBLIC_POCKETBASE_URL || "");
   if (primary && hostOf(primary) === host) {
-    console.error(
-      "BLOCKED — POCKETBASE_STAGING_URL equals NEXT_PUBLIC_POCKETBASE_URL (" + host + ")",
-    );
-    console.error("Use a separate staging instance (e.g. tunnel to 127.0.0.1:8092).");
-    process.exit(2);
+    // Local SSH tunnel: Next dev and staging scripts both target 127.0.0.1:8092 — safe.
+    let tunnelException = false;
+    try {
+      const u = new URL(url);
+      const isLoopback = u.hostname === "127.0.0.1" || u.hostname === "localhost";
+      tunnelException = isLoopback && u.port === "8092";
+    } catch {
+      tunnelException = false;
+    }
+    if (!tunnelException) {
+      console.error(
+        "BLOCKED — POCKETBASE_STAGING_URL equals NEXT_PUBLIC_POCKETBASE_URL (" + host + ")",
+      );
+      console.error("Use a separate staging instance (e.g. tunnel to 127.0.0.1:8092).");
+      process.exit(2);
+    }
   }
 
   // Port 8091 is production PB on the VPS — refuse even via tunnel misconfig.

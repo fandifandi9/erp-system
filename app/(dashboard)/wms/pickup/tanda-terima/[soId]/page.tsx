@@ -5,19 +5,25 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, Printer } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
-import { BISNIS_COLLECTIONS, type SalesOrder, type SalesOrderLine } from "@/lib/bisnis/types";
+import { BISNIS_COLLECTIONS, type SalesOrder } from "@/lib/bisnis/types";
 import { PickupHandoverReceipt } from "@/components/wms/PickupHandoverReceipt";
 import { parseOutboundWorkflow } from "@/lib/wms/outbound-workflow";
 import { getErrorMessage } from "@/lib/errors";
 import { PERMINTAAN_BARANG } from "@/lib/wms/permintaan-barang-routes";
+import {
+  buildHandoverReceiptPrintData,
+  printHandoverReceiptForOrder,
+} from "@/lib/wms/print-handover-receipt-client";
+import type { HandoverReceiptPrintData } from "@/lib/wms/print-handover-receipt";
 
 export default function WmsPickupReceiptPage() {
   const params = useParams();
   const search = useSearchParams();
   const soId = typeof params.soId === "string" ? params.soId : "";
   const [so, setSo] = useState<SalesOrder | null>(null);
-  const [lines, setLines] = useState<{ sku: string; name: string; qty: number }[]>([]);
+  const [data, setData] = useState<HandoverReceiptPrintData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -26,20 +32,10 @@ export default function WmsPickupReceiptPage() {
     setError("");
     try {
       const row = await pb.collection(BISNIS_COLLECTIONS.salesOrders).getOne<SalesOrder>(soId, {
-        expand: "warehouse,customer",
-      });
-      const soLines = await pb.collection(BISNIS_COLLECTIONS.salesOrderLines).getFullList<SalesOrderLine>({
-        filter: `sales_order = "${soId}"`,
-        expand: "product",
+        expand: "warehouse,customer,store",
       });
       setSo(row);
-      setLines(
-        soLines.map((l) => ({
-          sku: l.sku_snapshot || l.expand?.product?.sku || "—",
-          name: l.name_snapshot || l.expand?.product?.name || l.product,
-          qty: Number(l.qty) || 0,
-        })),
-      );
+      setData(await buildHandoverReceiptPrintData(row));
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -51,11 +47,26 @@ export default function WmsPickupReceiptPage() {
     void load();
   }, [load]);
 
+  const doPrint = useCallback(async () => {
+    if (!soId) return;
+    setPrinting(true);
+    setError("");
+    try {
+      await printHandoverReceiptForOrder(soId);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setPrinting(false);
+    }
+  }, [soId]);
+
   useEffect(() => {
-    if (loading || !so || search.get("print") !== "1") return;
-    const t = window.setTimeout(() => window.print(), 400);
+    if (loading || !so || !data || search.get("print") !== "1") return;
+    const t = window.setTimeout(() => {
+      void doPrint();
+    }, 400);
     return () => window.clearTimeout(t);
-  }, [loading, so, search]);
+  }, [loading, so, data, search, doPrint]);
 
   if (loading) {
     return (
@@ -65,46 +76,64 @@ export default function WmsPickupReceiptPage() {
     );
   }
 
-  if (error || !so) {
+  if (error && !so) {
     return (
       <div className="p-8 text-center text-sm text-red-700">
-        {error || "Order tidak ditemukan"}
+        {error || "Pesanan tidak ditemukan"}
         <div className="mt-4">
           <Link href={PERMINTAAN_BARANG.pickup} className="text-indigo-600 underline">
-            Kembali ke Ready To Pickup
+            Kembali ke Siap ambil
           </Link>
         </div>
       </div>
     );
   }
 
+  if (!so || !data) return null;
+
   const wf = parseOutboundWorkflow(so.outbound_workflow_json);
+  const pkgCount = data.items.length;
 
   return (
     <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
-      <div className="mx-auto mb-4 flex max-w-2xl justify-center gap-3 print:hidden">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white"
-        >
-          <Printer className="h-4 w-4" />
-          Cetak
-        </button>
-        <Link
-          href={PERMINTAAN_BARANG.pickup}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-        >
-          Kembali
-        </Link>
+      <div className="mx-auto mb-4 flex max-w-md flex-col items-center gap-2 print:hidden">
+        <div className="flex justify-center gap-3">
+          <button
+            type="button"
+            disabled={printing}
+            onClick={() => void doPrint()}
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            Cetak (80mm)
+          </button>
+          <Link
+            href={PERMINTAAN_BARANG.pickup}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+          >
+            Kembali
+          </Link>
+        </div>
+        <p className="text-center text-[11px] text-slate-500">
+          {data.ttNo !== "—"
+            ? `TT ${data.ttNo} · ${pkgCount} paket — bukti serah terima kurir.`
+            : "Tanda terima ekspedisi — daftar paket yang diserahkan."}
+        </p>
+        {wf.pickup?.batch_size && wf.pickup.batch_size > 1 ? (
+          <p className="text-center text-[11px] text-cyan-700">
+            Serah terima kelompok ({wf.pickup.batch_size} paket) — satu nomor TT.
+          </p>
+        ) : null}
+        {error ? <p className="text-center text-sm text-red-700">{error}</p> : null}
       </div>
       <PickupHandoverReceipt
-        so={so}
-        lines={lines}
-        warehouseStaff={wf.pickup?.user_name ?? pb.authStore.model?.name as string | undefined}
-        courierName={wf.pickup?.driver_name}
-        courierPhone={wf.pickup?.driver_phone}
-        courierCompany={wf.pickup?.courier_company}
+        ttNo={data.ttNo}
+        items={data.items}
+        warehouseStaff={data.warehouseStaff}
+        courierName={data.courierName}
+        courierPhone={data.courierPhone}
+        courierCompany={data.courierCompany}
+        showPrintHint={false}
       />
     </div>
   );

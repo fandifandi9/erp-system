@@ -19,6 +19,18 @@ export const authLog = {
   secureStoreClearFail(err: unknown) {
     console.warn(`${TAG} SecureStore clear fail`, err);
   },
+  loginStart(pocketBaseHost: string) {
+    console.log(`${TAG} Login start`, { pocketBaseHost });
+  },
+  loginPbAuthOk(userId?: string) {
+    console.log(`${TAG} Login PB auth OK`, { userId });
+  },
+  loginFail(httpStatus: number, category: string) {
+    console.warn(`${TAG} Login fail`, { httpStatus, category });
+  },
+  sessionNonceSaved(ok: boolean) {
+    console.log(`${TAG} Session nonce saved`, { ok });
+  },
   authRestoreSuccess(userId?: string) {
     console.log(`${TAG} Auth restore success`, { userId });
   },

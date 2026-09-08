@@ -44,6 +44,10 @@ function fieldId(p) {
 async function patchCollection(name, fields) {
   const colRes = await fetch(`${url}/api/collections/${name}`, { headers });
   const col = await colRes.json();
+  if (!col.id) {
+    console.log(`  skip ${name} — koleksi belum ada (jalankan npm run pb:cash-schema jika perlu)`);
+    return;
+  }
   const schema = [...(col.schema ?? col.fields ?? [])];
   let changed = false;
   for (const f of fields) {
@@ -62,9 +66,47 @@ async function patchCollection(name, fields) {
     body: JSON.stringify({ schema }),
   });
   if (!patchRes.ok) {
-    console.error(await patchRes.json());
+    console.error(`PATCH schema ${name} failed`, await patchRes.json());
     process.exit(1);
   }
+}
+
+const OWNER_ENTITY_RULES = {
+  listRule: '@request.auth.id != ""',
+  viewRule: '@request.auth.id != ""',
+  createRule:
+    '@request.auth.id != "" && (@request.auth.role = "owner" || @request.auth.account_type = "owner")',
+  updateRule:
+    '@request.auth.id != "" && (@request.auth.role = "owner" || @request.auth.account_type = "owner")',
+  deleteRule:
+    '@request.auth.id != "" && (@request.auth.role = "owner" || @request.auth.account_type = "owner")',
+};
+
+async function patchOwnerEntityRules(name) {
+  const colRes = await fetch(`${url}/api/collections/${name}`, { headers });
+  const col = await colRes.json();
+  if (!col.id) {
+    console.log(`  skip ${name} — koleksi belum ada`);
+    return;
+  }
+  const patchRes = await fetch(`${url}/api/collections/${col.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      ...col,
+      listRule: OWNER_ENTITY_RULES.listRule,
+      viewRule: OWNER_ENTITY_RULES.viewRule,
+      createRule: OWNER_ENTITY_RULES.createRule,
+      updateRule: OWNER_ENTITY_RULES.updateRule,
+      deleteRule: OWNER_ENTITY_RULES.deleteRule,
+    }),
+  });
+  if (!patchRes.ok) {
+    const err = await patchRes.json();
+    console.warn(`  warn ${name} rules: ${err.message || JSON.stringify(err)} — tetap open rule`);
+    return;
+  }
+  console.log(`  rules OK: ${name} (Owner write)`);
 }
 
 const boolField = (name, p) => ({
@@ -97,6 +139,11 @@ await patchCollection("inv_warehouses", [
 await patchCollection("biz_cash_accounts", [boolField("is_primary", "cshpr")]);
 await patchCollection("biz_stores", [boolField("is_primary", "stpr")]);
 
+console.log("Owner write rules (Profil Perusahaan / setup modul):");
+for (const col of ["biz_company_profile", "biz_stores", "inv_warehouses", "biz_cash_accounts"]) {
+  await patchOwnerEntityRules(col);
+}
+
 // Backfill: gudang pertama per company → main + is_primary
 const whRes = await fetch(`${url}/api/collections/inv_warehouses/records?perPage=500&sort=created`, { headers });
 const warehouses = (await whRes.json()).items ?? [];
@@ -114,20 +161,28 @@ for (const [cid, wid] of byCompany) {
   console.log(`Backfill gudang utama: ${wid} (company ${cid})`);
 }
 
-const caRes = await fetch(`${url}/api/collections/biz_cash_accounts/records?perPage=500&sort=created`, { headers });
-const accounts = (await caRes.json()).items ?? [];
-const caByCo = new Map();
-for (const a of accounts) {
-  if (!a.company) continue;
-  if (!caByCo.has(a.company)) caByCo.set(a.company, a.id);
-}
-for (const [cid, aid] of caByCo) {
-  await fetch(`${url}/api/collections/biz_cash_accounts/records/${aid}`, {
-    method: "PATCH",
+const caColRes = await fetch(`${url}/api/collections/biz_cash_accounts`, { headers });
+const caCol = await caColRes.json();
+if (caCol.id) {
+  const caRes = await fetch(`${url}/api/collections/biz_cash_accounts/records?perPage=500&sort=created`, {
     headers,
-    body: JSON.stringify({ is_primary: true }),
   });
-  console.log(`Backfill rekening utama: ${aid} (company ${cid})`);
+  const accounts = (await caRes.json()).items ?? [];
+  const caByCo = new Map();
+  for (const a of accounts) {
+    if (!a.company) continue;
+    if (!caByCo.has(a.company)) caByCo.set(a.company, a.id);
+  }
+  for (const [cid, aid] of caByCo) {
+    await fetch(`${url}/api/collections/biz_cash_accounts/records/${aid}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ is_primary: true }),
+    });
+    console.log(`Backfill rekening utama: ${aid} (company ${cid})`);
+  }
+} else {
+  console.log("skip backfill biz_cash_accounts — koleksi belum ada");
 }
 
 console.log("Selesai — modul entitas (role + primary) siap.");

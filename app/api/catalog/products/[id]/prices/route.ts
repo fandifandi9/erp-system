@@ -3,6 +3,7 @@ import { jsonError } from "@/lib/inventory/api-auth";
 import { requireCatalogAccess } from "@/lib/catalog/api-auth";
 import { canEditCatalogPrices } from "@/lib/catalog/catalog-access";
 import { getCatalogPb } from "@/lib/catalog/api-server";
+import { touchCatalogProductUpdatedAt } from "@/lib/catalog/catalog-meta";
 import {
   deleteStoreProductPrice,
   listStorePricesForProduct,
@@ -39,6 +40,7 @@ export async function PUT(req: Request, ctx: Ctx) {
 
     if (body.deletePriceId) {
       await deleteStoreProductPrice(pb, body.deletePriceId);
+      await touchCatalogProductUpdatedAt(pb, id);
       return NextResponse.json({ ok: true });
     }
 
@@ -50,6 +52,7 @@ export async function PUT(req: Request, ctx: Ctx) {
       storeId: body.storeId.trim(),
       sellPrice: Number(body.sellPrice) || 0,
     });
+    await touchCatalogProductUpdatedAt(pb, id);
     return NextResponse.json({ ok: true, item: row });
   } catch (err) {
     return jsonError(err, "Gagal menyimpan harga.");

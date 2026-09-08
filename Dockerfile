@@ -7,7 +7,14 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+ARG NEXT_PUBLIC_POCKETBASE_URL
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_POCKETBASE_URL=$NEXT_PUBLIC_POCKETBASE_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN test -n "$NEXT_PUBLIC_POCKETBASE_URL" || (echo "NEXT_PUBLIC_POCKETBASE_URL wajib saat docker build" && exit 1)
 RUN npm run build
 
 FROM node:22-alpine AS runner
@@ -22,4 +29,6 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
 CMD ["node", "server.js"]

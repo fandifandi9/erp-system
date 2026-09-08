@@ -153,7 +153,7 @@ function ImportMassalContent() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Import massal</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Upload Excel penjualan marketplace atau pelunasan. Rumus potongan di{" "}
+              Unggah Excel penjualan marketplace atau pelunasan. Rumus potongan di{" "}
               <Link href="/bisnis/marketplace" className="font-medium text-indigo-600 hover:underline">
                 Master Marketplace
               </Link>
@@ -311,7 +311,7 @@ function ImportMassalContent() {
               }`}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {uploading ? "Memproses…" : "Upload Excel"}
+              {uploading ? "Memproses…" : "Unggah Excel"}
               <input
                 ref={fileRef}
                 type="file"

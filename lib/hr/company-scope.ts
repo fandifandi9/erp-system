@@ -55,6 +55,33 @@ export async function getAccessibleCompanyIds(
   }
 }
 
+/**
+ * FLEX-ORG-04 — Keep only active legal entities (biz_company_profile.is_active).
+ * Fail-closed: missing / inactive / unknown ids are dropped.
+ */
+export async function filterActiveCompanyIds(
+  adminPb: PocketBase,
+  companyIds: readonly string[],
+): Promise<string[]> {
+  const ids = [...new Set(companyIds.map((x) => String(x || "").trim()).filter(Boolean))];
+  if (ids.length === 0) return [];
+  try {
+    const or = ids.map((id) => `id = "${id.replace(/"/g, '\\"')}"`).join(" || ");
+    const rows = await adminPb.collection("biz_company_profile").getFullList<{
+      id: string;
+      is_active?: boolean;
+    }>({
+      filter: `(${or}) && is_active = true`,
+      fields: "id,is_active",
+      requestKey: null,
+    });
+    const active = new Set(rows.map((r) => r.id).filter(Boolean));
+    return ids.filter((id) => active.has(id));
+  } catch {
+    return [];
+  }
+}
+
 /** Fail closed: missing / empty companyId or not in allowed set → false. */
 export function isCompanyInScope(
   companyId: string | null | undefined,

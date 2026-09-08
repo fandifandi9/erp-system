@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
-const pocketBaseUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || "http://72.62.194.224:8091";
+const pocketBaseUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL?.trim();
+if (!pocketBaseUrl) {
+  throw new Error(
+    "NEXT_PUBLIC_POCKETBASE_URL wajib diset saat build (contoh: https://pb.serba.space)",
+  );
+}
 const parsedPocketBaseUrl = new URL(pocketBaseUrl);
 
 /** Outbound gudang → permintaan barang. Inbound (penerimaan/qc/putaway) tetap di /gudang/*. */

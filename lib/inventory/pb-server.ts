@@ -1,6 +1,7 @@
 import PocketBase from "pocketbase";
 import type { ApiAuthContext } from "@/lib/inventory/api-auth";
 import { parsePbAuthCookieValue } from "@/lib/pb-auth-cookie";
+import { PbServiceUnavailableError } from "@/lib/inventory/pb-service-error";
 
 let cachedPb: PocketBase | null = null;
 let cachedAt = 0;
@@ -92,11 +93,7 @@ async function authAdminLegacy(
   }
 
   if (!res.ok || !data.token) {
-    const hint =
-      res.status === 400
-        ? "Email atau kata sandi admin salah."
-        : data.message || `HTTP ${res.status}`;
-    throw new Error(`Login admin PocketBase gagal: ${hint}`);
+    throw new PbServiceUnavailableError();
   }
 
   pb.authStore.save(data.token, (data.admin || {}) as never);
@@ -108,11 +105,9 @@ export async function getInventoryAdminPb(): Promise<PocketBase> {
   const email = readEnvSecret(process.env.POCKETBASE_ADMIN_EMAIL);
   const password = readEnvSecret(process.env.POCKETBASE_ADMIN_PASSWORD);
 
-  if (!url) throw new Error("NEXT_PUBLIC_POCKETBASE_URL belum diset.");
+  if (!url) throw new PbServiceUnavailableError();
   if (!email || !password) {
-    throw new Error(
-      "POCKETBASE_ADMIN_EMAIL dan POCKETBASE_ADMIN_PASSWORD wajib di .env.local untuk posting stok."
-    );
+    throw new PbServiceUnavailableError();
   }
 
   const now = Date.now();
@@ -128,7 +123,8 @@ export async function getInventoryAdminPb(): Promise<PocketBase> {
   } catch (err) {
     cachedPb = null;
     cachedAt = 0;
-    throw err;
+    if (err instanceof PbServiceUnavailableError) throw err;
+    throw new PbServiceUnavailableError();
   }
 
   cachedPb = pb;

@@ -1,0 +1,44 @@
+/**
+ * PM2 example for PocketBase ERP STAGING — SECRET-FREE.
+ *
+ * DO NOT start this against production.
+ * DO NOT use production credentials here.
+ * Deploy only after explicit approval.
+ *
+ * Production (untouched):
+ *   cwd=/var/www/pocketbase-erp  port=8091  name=pb-erp
+ *
+ * Staging target:
+ *   cwd=/var/www/pocketbase-erp-staging  http=127.0.0.1:8092  name=pb-erp-staging
+ *
+ * --- Flag verification (PocketBase 0.22.0) ---
+ * Docs indicate:
+ *   ./pocketbase serve --http=<addr> --dir=<dataDir>
+ * with --dir defaulting to ./pb_data next to the executable.
+ *
+ * BEFORE first PM2 start on the VPS, verify locally on the server:
+ *   /var/www/pocketbase-erp-staging/pocketbase serve --help
+ * Confirm --http and --dir (or --dir as global flag before serve) match 0.22.0.
+ * If --dir is not accepted as written below, adjust args only after verification —
+ * do not invent unsupported flags.
+ *
+ * Usage (after approval + files exist on VPS):
+ *   pm2 start ecosystem.pb-erp-staging.cjs
+ *   # or copy this example to a server-local file outside Git
+ */
+
+module.exports = {
+  apps: [
+    {
+      name: "pb-erp-staging",
+      cwd: "/var/www/pocketbase-erp-staging",
+      script: "./pocketbase",
+      // VERIFY on VPS with: ./pocketbase serve --help  (PB 0.22.0)
+      args: "serve --http=127.0.0.1:8092 --dir=./pb_data",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "512M",
+    },
+  ],
+};

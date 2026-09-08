@@ -12,24 +12,24 @@ type InvoiceQrData = {
   qr_payload?: string;
 };
 
-/** QR invoice aman untuk ditempel dalam paket (Packing + QC). */
+/** QR invoice aman untuk ditempel dalam paket — hanya tampil jika invoice sudah ada. */
 export function InvoicePackQrPanel({ salesOrderId }: { salesOrderId: string }) {
   const [data, setData] = useState<InvoiceQrData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const res = await fetch(`/api/bisnis/sales-orders/${salesOrderId}/invoice-qr`, {
         credentials: "include",
       });
       const json = (await res.json()) as InvoiceQrData & { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Gagal memuat QR invoice");
+      if (!res.ok) {
+        setData(null);
+        return;
+      }
       setData(json);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Gagal memuat QR invoice");
+    } catch {
       setData(null);
     } finally {
       setLoading(false);
@@ -40,26 +40,7 @@ export function InvoicePackQrPanel({ salesOrderId }: { salesOrderId: string }) {
     void load();
   }, [load]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Memuat QR invoice…
-      </div>
-    );
-  }
-
-  if (error) {
-    return <p className="text-sm text-red-600">{error}</p>;
-  }
-
-  if (!data?.ok) {
-    return (
-      <p className="text-sm text-amber-800">
-        Invoice belum dibuat untuk order ini — QR tersedia setelah invoice terbit di penjualan.
-      </p>
-    );
-  }
+  if (loading || !data?.ok) return null;
 
   const payload = data.qr_payload ?? data.public_url ?? "";
   const labelUrl = `/wms/barcode?pkg=${encodeURIComponent(payload)}&order=${encodeURIComponent(data.invoice_no ?? "Invoice")}&sym=qr`;

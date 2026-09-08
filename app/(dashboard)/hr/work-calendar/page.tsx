@@ -7,7 +7,6 @@ import { pb } from "@/lib/pocketbase";
 import { ClientResponseError } from "pocketbase";
 import { canAccess } from "@/lib/rbac";
 import {
-  OFFICE_HOLIDAYS_COLLECTION,
   WORK_CALENDAR_DAY_ROWS,
   WORK_CALENDAR_SETTINGS_COLLECTION,
   isWorkDayKeyEnabled,
@@ -18,7 +17,20 @@ import {
 import { ArrowLeft, CalendarRange, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 
-type HolidayRow = { id: string; date: string; name: string };
+type HolidayRow = { id: string; date: string; name: string; holiday_type?: string };
+
+async function fetchHrHolidays(): Promise<HolidayRow[]> {
+  const res = await fetch("/api/hr/holidays", { credentials: "include" });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    items?: HolidayRow[];
+    error?: string;
+  };
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || "Gagal memuat hari libur.");
+  }
+  return data.items ?? [];
+}
 
 function maskToPayload(mask: WeekDayMask): Record<string, boolean> {
   const keys = [
@@ -53,12 +65,12 @@ export default function HrWorkCalendarPage() {
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [newHolidayName, setNewHolidayName] = useState("");
   const [adding, setAdding] = useState(false);
-  const [officeHolidaysUnavailable, setOfficeHolidaysUnavailable] = useState(false);
+  const [holidayError, setHolidayError] = useState("");
 
   const load = useCallback(async () => {
     if (!hasAccess) return;
     setLoading(true);
-    setOfficeHolidaysUnavailable(false);
+    setHolidayError("");
     try {
       let calRows: unknown[] = [];
       try {
@@ -82,29 +94,20 @@ export default function HrWorkCalendarPage() {
         setMask(initialMask());
       }
 
-      let hRows: unknown[] = [];
+      let hRows: HolidayRow[] = [];
       try {
-        hRows = await pb.collection(OFFICE_HOLIDAYS_COLLECTION).getFullList({
-          sort: "date",
-          requestKey: null,
-        });
+        hRows = await fetchHrHolidays();
       } catch (e) {
-        if (e instanceof ClientResponseError && e.status === 404) {
-          hRows = [];
-          setOfficeHolidaysUnavailable(true);
-        } else {
-          throw e;
-        }
+        setHolidayError(e instanceof Error ? e.message : "Gagal memuat hari libur.");
+        hRows = [];
       }
       setHolidays(
-        hRows.map((r) => {
-          const x = r as unknown as Record<string, unknown>;
-          return {
-            id: String(x.id ?? ""),
-            date: String(x.date ?? "").slice(0, 10),
-            name: String(x.name ?? "").trim(),
-          };
-        }),
+        hRows.map((x) => ({
+          id: x.id,
+          date: x.date.slice(0, 10),
+          name: x.name,
+          holiday_type: x.holiday_type,
+        })),
       );
     } catch (e) {
       console.error(e);
@@ -169,11 +172,18 @@ export default function HrWorkCalendarPage() {
     }
     setAdding(true);
     try {
-      await pb.collection(OFFICE_HOLIDAYS_COLLECTION).create({
-        date: d,
-        name: newHolidayName.trim() || t("hr.workCalendar.defaultHoliday"),
-        is_active: true,
+      const res = await fetch("/api/hr/holidays", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: d,
+          name: newHolidayName.trim() || t("hr.workCalendar.defaultHoliday"),
+          holiday_type: "company",
+        }),
       });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Gagal menambah libur.");
       setNewHolidayDate("");
       setNewHolidayName("");
       await load();
@@ -188,7 +198,12 @@ export default function HrWorkCalendarPage() {
   const deleteHoliday = async (id: string) => {
     if (!confirm(t("hr.workCalendar.deleteConfirm"))) return;
     try {
-      await pb.collection(OFFICE_HOLIDAYS_COLLECTION).delete(id);
+      const res = await fetch(`/api/hr/holidays/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Gagal menghapus libur.");
       await load();
     } catch (err) {
       console.error(err);
@@ -272,12 +287,13 @@ export default function HrWorkCalendarPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-800">{t("hr.workCalendar.holidaysTitle")}</h2>
-            <p className="mt-1 text-xs text-slate-500">{t("hr.workCalendar.holidaysDesc")}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {t("hr.workCalendar.holidaysDesc")} Kelola via API server — staff hanya melihat libur entitas mereka.
+            </p>
 
-            {officeHolidaysUnavailable ? (
+            {holidayError ? (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                <p className="font-medium">{t("hr.workCalendar.pb404Title")}</p>
-                <p className="mt-1 text-xs text-amber-900">{t("hr.workCalendar.pb404Desc")}</p>
+                {holidayError}
               </div>
             ) : null}
 
@@ -290,7 +306,6 @@ export default function HrWorkCalendarPage() {
                   onChange={(e) => setNewHolidayDate(e.target.value)}
                   className="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   required
-                  disabled={officeHolidaysUnavailable}
                 />
               </div>
               <div className="min-w-[180px] flex-1">
@@ -301,12 +316,11 @@ export default function HrWorkCalendarPage() {
                   onChange={(e) => setNewHolidayName(e.target.value)}
                   placeholder={t("hr.workCalendar.notePlaceholder")}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  disabled={officeHolidaysUnavailable}
                 />
               </div>
               <button
                 type="submit"
-                disabled={adding || officeHolidaysUnavailable}
+                disabled={adding}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-60"
               >
                 {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
