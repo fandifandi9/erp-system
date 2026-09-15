@@ -5,6 +5,7 @@
  */
 import { spawn } from "child_process";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { pipeline } from "stream/promises";
 import { createWriteStream } from "fs";
@@ -16,10 +17,24 @@ const BIND = "127.0.0.1:8090";
 const BASE = `http://${BIND}`;
 const DATA_DIR = path.join(ROOT, "pb_data");
 const BIN_DIR = path.join(ROOT, "tools", "local-pb");
-const EXE = path.join(BIN_DIR, "pocketbase.exe");
-const ZIP = path.join(BIN_DIR, "pocketbase.zip");
+
+const IS_WINDOWS = process.platform === "win32";
 const PB_VERSION = "0.22.27";
-const PB_ZIP_URL = `https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_windows_amd64.zip`;
+
+/** Map Node platform/arch to the PocketBase release asset suffix. */
+function pbAssetSuffix() {
+  const arch = os.arch();
+  if (IS_WINDOWS) return `windows_${arch === "arm64" ? "arm64" : "amd64"}`;
+  if (process.platform === "darwin") return `darwin_${arch === "arm64" ? "arm64" : "amd64"}`;
+  // linux (default)
+  if (arch === "arm64") return "linux_arm64";
+  if (arch === "arm") return "linux_armv7";
+  return "linux_amd64";
+}
+
+const EXE = path.join(BIN_DIR, IS_WINDOWS ? "pocketbase.exe" : "pocketbase");
+const ZIP = path.join(BIN_DIR, "pocketbase.zip");
+const PB_ZIP_URL = `https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_${pbAssetSuffix()}.zip`;
 
 function refuseIfBlocked(url) {
   const u = String(url || "").toLowerCase();
@@ -61,17 +76,22 @@ async function downloadBinary() {
     return;
   }
   fs.mkdirSync(BIN_DIR, { recursive: true });
-  console.log("Downloading PocketBase", PB_VERSION, "...");
+  console.log("Downloading PocketBase", PB_VERSION, "from", PB_ZIP_URL);
   const res = await fetch(PB_ZIP_URL, { redirect: "follow" });
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   await pipeline(Readable.fromWeb(res.body), createWriteStream(ZIP));
   const { execFileSync } = await import("child_process");
-  execFileSync(
-    "powershell.exe",
-    ["-NoProfile", "-Command", `Expand-Archive -Force -Path '${ZIP}' -DestinationPath '${BIN_DIR}'`],
-    { stdio: "inherit" },
-  );
-  if (!fs.existsSync(EXE)) throw new Error("pocketbase.exe missing after unzip");
+  if (IS_WINDOWS) {
+    execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-Command", `Expand-Archive -Force -Path '${ZIP}' -DestinationPath '${BIN_DIR}'`],
+      { stdio: "inherit" },
+    );
+  } else {
+    execFileSync("unzip", ["-o", ZIP, "-d", BIN_DIR], { stdio: "inherit" });
+    fs.chmodSync(EXE, 0o755);
+  }
+  if (!fs.existsSync(EXE)) throw new Error(`pocketbase binary missing after unzip: ${EXE}`);
   console.log("Binary ready:", EXE);
 }
 
@@ -91,7 +111,10 @@ async function waitHealth(timeoutMs = 20000) {
 
 function startServe() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  const child = spawn(EXE, ["serve", `--http=${BIND}`, `--dir=${DATA_DIR}`], {
+  // --automigrate=0: apply the committed pb_migrations on boot, but do NOT
+  // write new auto-generated migration files into the tracked pb_migrations/
+  // when the bootstrap PATCHes collections through the Admin API.
+  const child = spawn(EXE, ["serve", `--http=${BIND}`, `--dir=${DATA_DIR}`, "--automigrate=0"], {
     cwd: ROOT,
     detached: true,
     stdio: "ignore",
